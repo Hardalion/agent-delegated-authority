@@ -1,0 +1,19 @@
+{
+  "intent_id": "int_nonce_raised",
+  "actor": "agt_b",
+  "delegation_chain": [
+    "del_root",
+    "del_raised"
+  ],
+  "action": "search",
+  "target": "airline/example",
+  "parameters": {
+    "currency": "EUR",
+    "purpose": "book_flight",
+    "route": "ATH-LON"
+  },
+  "nonce": "nonce_raised",
+  "issued_at": "2026-10-06T18:00:00.000Z",
+  "expires_at": "2026-10-06T18:10:00.000Z",
+  "signature": "AxGQH18USa2mcrO4EHMb-edAHyvutgEX8Nva41oO-2OuKcY5FOIfVNCBxtg7uh1JaGe0po2kQdB8ng-H_pQFAw"
+}

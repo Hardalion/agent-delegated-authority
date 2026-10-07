@@ -1,0 +1,10 @@
+version: "1.0.0"
+policyName: minimal
+description: Example policy document.
+targetAgents: ["*"]
+defaultAction: BLOCK
+rules:
+  - ruleId: allow_read
+    action: ALLOW
+    condition: "tool.name == 'read'"
+    alertSeverity: LOW

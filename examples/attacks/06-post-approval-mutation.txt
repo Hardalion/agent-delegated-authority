@@ -1,0 +1,18 @@
+ATTACK #06
+POST-APPROVAL MUTATION
+
+The principal approved purchase €420.
+The intent then changes to purchase €480 and presents that approval.
+
+EXPECTED
+An approval is bound to one intent hash. A changed intent does not execute.
+
+ADAP DECISION
+BLOCK
+reason: approval is not bound to this intent
+
+EXECUTION
+NOT CALLED
+
+RECEIPT
+VERIFIED

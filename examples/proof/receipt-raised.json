@@ -1,0 +1,65 @@
+{
+  "v": 1,
+  "kind": "adap.receipt",
+  "receiptId": "rcpt_38164e18e3a2c86f9b4d_block",
+  "issuer": "reference-runtime",
+  "issuerKeyId": "ed25519:695cf5b021e3384c43c762f507620ae1",
+  "decidedAt": "2026-10-06T18:00:00.000Z",
+  "intent": {
+    "toolName": "search",
+    "argsHash": "89d79c2d3423cfc4e76489a48ccdb298c035b3941d7114241a8f0f91b0923e09",
+    "argsRedacted": {
+      "currency": "EUR",
+      "purpose": "book_flight",
+      "route": "ATH-LON"
+    }
+  },
+  "identity": {
+    "agentId": "agt_b",
+    "actorType": "non_human_agent",
+    "principalId": "prn_alex",
+    "delegationChain": [
+      "agt_a",
+      "agt_b"
+    ]
+  },
+  "authority": {
+    "principalId": "prn_alex",
+    "chain": [
+      {
+        "delegationId": "del_root",
+        "subject": "agt_a",
+        "hash": "91c07f4b389a2ff9dda88139f43b9e08b5a7917ff25729b14957315b20e3af75"
+      },
+      {
+        "delegationId": "del_raised",
+        "subject": "agt_b",
+        "hash": "c9e5b5a32e407017dbc18b481eb07d44d80a7944f4e8bb298e38b4e77ba2d5ff"
+      }
+    ]
+  },
+  "policy": {
+    "policyUri": "book-flight@1.0.0",
+    "policyName": "book-flight",
+    "policyVersion": "1.0.0",
+    "ruleId": "narrowing",
+    "contentHash": "56f33f42aba15151e9a1cb555e6ba424c13835febe17107533c4201fcf3e4c71"
+  },
+  "decision": {
+    "action": "BLOCK",
+    "outcome": "rejected",
+    "reason": "child raises max_amount",
+    "alertSeverity": "CRITICAL",
+    "matched": false,
+    "failureMode": "RULE_VIOLATION"
+  },
+  "execution": {
+    "targetSystem": "airline/example",
+    "executed": false,
+    "intentHash": "38164e18e3a2c86f9b4d4887d2b6996ad70966fe62dabf0a7aa9be61600e4330"
+  },
+  "integrity": {
+    "contentHash": "fd63403c53bb0fd2575eafdd69cd22bcee2145498b1b512ce4fd5c65f43fb3e0"
+  },
+  "signature": "07b7900bcb526c626c4b931550f0e86c6f6f98213b30e8410fa91bdf367dca6fa56740eb99eb912bdf9a11c22eb6f1241bd19a236715514d5c6a48404814f50e"
+}

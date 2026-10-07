@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "kind": "adap.receipt",
+  "receiptId": "rcpt_example_1",
+  "issuer": "reference-runtime",
+  "decidedAt": "2026-08-10T12:00:00.000Z",
+  "intent": {
+    "toolName": "apply",
+    "argsHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "argsRedacted": {
+      "amount": 420
+    }
+  },
+  "identity": {
+    "agentId": "agt_a",
+    "actorType": "non_human_agent",
+    "principalId": "prn_example"
+  },
+  "policy": {
+    "policyUri": "basic-agent-authority@1.0.0",
+    "policyName": "basic-agent-authority",
+    "policyVersion": "1.0.0",
+    "ruleId": "apply_needs_human",
+    "contentHash": "cca46c2d665227716f35137fd544e06c154cc463db0138ab112f3498e43bbe51"
+  },
+  "decision": {
+    "action": "REQUIRE_HUMAN",
+    "outcome": "pending_human",
+    "reason": "Apply waits for the principal",
+    "alertSeverity": "MEDIUM",
+    "matched": true
+  },
+  "execution": {
+    "targetSystem": "resource/example",
+    "executed": false,
+    "intentHash": "e127511bec8f8a94fa1b36d8dc6712a366ab90a79d567cc55c9ebafbc0cf858a"
+  },
+  "human": {
+    "required": true,
+    "status": "pending"
+  },
+  "issuerKeyId": "ed25519:ac7abd8478f7636a2fb92a6184b11273",
+  "integrity": {
+    "contentHash": "35a2f27d1d11b306fbbfa81d0345afe66db6c9087d760eec7f20644744f2511c"
+  },
+  "signature": "ee29a776cc82462efebcb8c43386dfc82f6c5b868f047e9163480350e0f54614a3921ef136517ccb6ede166bea92f97f35a7dcf2e5f8b98784c5b393f15bf707"
+}

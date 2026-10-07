@@ -1,0 +1,51 @@
+{
+  "name": "adap",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Reference implementation of the Agent Delegated Authority Protocol (ADAP): delegation, signed intent, policy decision, human approval, receipt",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "prebuild": "pnpm --dir ../.. --filter adap-policy --filter adap-receipt build",
+    "build": "tsc",
+    "pretypecheck": "pnpm --dir ../.. --filter adap-policy --filter adap-receipt build",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --dir ../.. --filter adap-policy --filter adap-receipt build",
+    "test": "vitest run",
+    "demo": "pnpm build && node dist/print-demo.js",
+    "attacks": "pnpm build && node dist/print-attacks.js"
+  },
+  "dependencies": {
+    "adap-receipt": "workspace:*",
+    "adap-policy": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hardalion/agent-delegated-authority.git",
+    "directory": "packages/aap"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

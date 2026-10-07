@@ -1,0 +1,18 @@
+ATTACK #04
+REPLAY
+
+The same signed intent is presented again after the nonce was consumed.
+First decision: ALLOW. Second decision: BLOCK.
+
+EXPECTED
+A consumed nonce cannot authorize the action again. The second attempt does not call the executor.
+
+ADAP DECISION
+BLOCK
+reason: nonce already used
+
+EXECUTION
+NOT CALLED
+
+RECEIPT
+VERIFIED

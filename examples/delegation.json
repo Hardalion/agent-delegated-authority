@@ -1,0 +1,14 @@
+{
+  "delegation_id": "del_example",
+  "issuer": "prn_example",
+  "subject": "agt_a",
+  "capabilities": [
+    { "action": "read", "target": "resource/*" },
+    { "action": "apply", "target": "resource/*", "delegable": false }
+  ],
+  "constraints": {
+    "max_amount": 500
+  },
+  "issued_at": "2026-10-06T18:00:00.000Z",
+  "expires_at": "2026-10-06T18:15:00.000Z"
+}

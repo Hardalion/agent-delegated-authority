@@ -1,0 +1,18 @@
+ATTACK #02
+PRIVILEGE ESCALATION
+
+purchase is delegable: false on the parent grant.
+Agent A tries to pass purchase to Agent B.
+
+EXPECTED
+A non-delegable capability cannot be passed on. The executor is not called.
+
+ADAP DECISION
+BLOCK
+reason: capability cannot be re-delegated: purchase
+
+EXECUTION
+NOT CALLED
+
+RECEIPT
+VERIFIED

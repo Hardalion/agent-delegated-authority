@@ -1,0 +1,57 @@
+{
+  "name": "adap-policy",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Reference policy evaluator for the Agent Delegated Authority Protocol (Apache 2.0)",
+  "license": "Apache-2.0",
+  "bin": {
+    "adap-policy": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && node scripts/verify-built-policy.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:pbt": "vitest run src/property.test.ts",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "pnpm build",
+    "lint": "echo Skipping lint"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "fast-check": "^4.9.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hardalion/agent-delegated-authority.git",
+    "directory": "packages/policy-engine"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "agent-delegated-authority",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent Delegated Authority Protocol (ADAP), an open protocol and reference implementation (Apache 2.0)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hardalion/agent-delegated-authority.git"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap build",
+    "test": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap test",
+    "test:coverage": "pnpm --filter adap-policy test:coverage",
+    "typecheck": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap typecheck",
+    "demo": "pnpm --filter adap demo",
+    "attacks": "pnpm --filter adap attacks",
+    "smoke": "node -e \"require('child_process').execSync(process.platform==='win32'?'powershell -File examples/demo.ps1':'bash examples/demo.sh',{stdio:'inherit'})\""
+  },
+  "devDependencies": {
+    "vite": "^6.4.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid@<4": "3.3.18",
+      "nanoid@>=4": "5.1.16",
+      "postcss": "8.5.28",
+      "source-map-js": "1.2.2"
+    }
+  }
+}

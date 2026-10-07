@@ -1,0 +1,21 @@
+{
+  "delegation_id": "del_raised",
+  "issuer": "agt_a",
+  "subject": "agt_b",
+  "capabilities": [
+    {
+      "action": "search",
+      "target": "airline/example"
+    }
+  ],
+  "constraints": {
+    "max_amount": 1200,
+    "currency": "EUR",
+    "purpose": "book_flight",
+    "route": "ATH-LON"
+  },
+  "issued_at": "2026-10-06T18:00:00.000Z",
+  "expires_at": "2026-10-06T18:10:00.000Z",
+  "parent_delegation_id": "del_root",
+  "signature": "oTqVWD3jKMLaS-DiGiJpBuqGRvbfJW_A0jfpJsdiz0ma4Rviijc-CLFWkCy3KKZAc2gj260kObIKHfbX6D08AA"
+}

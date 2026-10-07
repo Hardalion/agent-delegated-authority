@@ -1,0 +1,18 @@
+ATTACK #01
+OVER-DELEGATION
+
+Parent authority: €500
+Agent B requests: €1,200
+
+EXPECTED
+The child grant is rejected. The executor is not called.
+
+ADAP DECISION
+BLOCK
+reason: child raises max_amount
+
+EXECUTION
+NOT CALLED
+
+RECEIPT
+VERIFIED

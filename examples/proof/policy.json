@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "policyName": "book-flight",
+  "description": "Synthetic. purchase waits for a person. Search is allowed. The bound is the delegation.",
+  "targetAgents": [
+    "*"
+  ],
+  "defaultAction": "BLOCK",
+  "rules": [
+    {
+      "ruleId": "block_over_cap",
+      "action": "BLOCK",
+      "condition": "tool.name == 'purchase' && args.amount > 500",
+      "alertSeverity": "CRITICAL"
+    },
+    {
+      "ruleId": "purchase_needs_human",
+      "action": "REQUIRE_HUMAN",
+      "condition": "tool.name == 'purchase'",
+      "alertSeverity": "MEDIUM"
+    },
+    {
+      "ruleId": "search_allow",
+      "action": "ALLOW",
+      "condition": "tool.name == 'search'",
+      "alertSeverity": "LOW"
+    }
+  ]
+}

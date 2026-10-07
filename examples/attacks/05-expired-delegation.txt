@@ -1,0 +1,17 @@
+ATTACK #05
+EXPIRED DELEGATION
+
+The same grant is presented after expires_at.
+
+EXPECTED
+Expired authority is rejected. The executor is not called.
+
+ADAP DECISION
+BLOCK
+reason: expired or not-yet-valid authority
+
+EXECUTION
+NOT CALLED
+
+RECEIPT
+VERIFIED
