@@ -457,6 +457,61 @@ export function verifyAuthorizationReceipt(receipt: unknown): VerifyAuthorizatio
   }
 }
 
+export interface VerifyReceiptChainResult {
+  readonly valid: boolean
+  readonly errors: readonly string[]
+}
+
+/**
+ * Walk an ordered receipt log. Each receipt must verify on its own, carry `sequence`
+ * and `prevReceiptHash`, come from the same issuer, increase `sequence` by one, and
+ * name the previous receipt's `integrity.contentHash`.
+ *
+ * Detects omission, insertion, and reordering inside the presented segment.
+ * It cannot detect a dropped tail: the verifier needs the expected head from elsewhere.
+ * Signatures are checked only when `publicKeySpki` is supplied.
+ */
+export function verifyReceiptChain(
+  receipts: readonly AuthorizationReceiptV1[],
+  options?: {
+    /** Content hash the first receipt must link to. Default `null` (start of log). */
+    readonly prevReceiptHash?: string | null
+    readonly publicKeySpki?: string
+  }
+): VerifyReceiptChainResult {
+  const errors: string[] = []
+  if (receipts.length === 0) return { valid: false, errors: ['chain is empty'] }
+
+  let expectedPrev: string | null = options?.prevReceiptHash ?? null
+  let expectedSequence: number | undefined
+  const issuer = receipts[0]?.issuerKeyId
+
+  receipts.forEach((receipt, index) => {
+    const single = verifyAuthorizationReceipt(receipt)
+    if (!single.valid) errors.push(`receipt[${index}]: ${single.errors.join('; ')}`)
+    if (options?.publicKeySpki && !verifyReceiptSignature(receipt, options.publicKeySpki)) {
+      errors.push(`receipt[${index}]: ed25519 signature invalid`)
+    }
+    if (receipt.issuerKeyId !== issuer) errors.push(`receipt[${index}]: issuerKeyId differs from chain issuer`)
+    if (typeof receipt.sequence !== 'number') {
+      errors.push(`receipt[${index}]: sequence missing`)
+    } else {
+      if (expectedSequence !== undefined && receipt.sequence !== expectedSequence) {
+        errors.push(`receipt[${index}]: sequence ${receipt.sequence}, expected ${expectedSequence}`)
+      }
+      expectedSequence = receipt.sequence + 1
+    }
+    if (receipt.prevReceiptHash === undefined) {
+      errors.push(`receipt[${index}]: prevReceiptHash missing`)
+    } else if (receipt.prevReceiptHash !== expectedPrev) {
+      errors.push(`receipt[${index}]: prevReceiptHash does not link to the previous receipt`)
+    }
+    expectedPrev = receipt.integrity.contentHash
+  })
+
+  return { valid: errors.length === 0, errors }
+}
+
 /** Map a decision verb and enforcement flags to a receipt outcome. */
 export function normalizeAuthorizationOutcome(
   action: AuthorizationReceiptAction

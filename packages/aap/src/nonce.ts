@@ -8,8 +8,9 @@ import { AuthorityError } from './errors.js'
  * - `failed` — executor threw; nonce is spent and cannot be retried with the same intent
  *
  * Claiming for execution is synchronous and exclusive. A second caller that sees
- * `pending` (including an in-flight claim) is `BLOCK` with `nonce_in_flight_or_used`.
- * Durable multi-process stores must preserve the same exclusive claim semantics.
+ * an in-flight claim is `BLOCK` with `nonce_in_flight_or_used`.
+ * In memory: exclusive within one process only, and lost on restart. A multi-process
+ * deployment needs the same claim as an atomic insert in a shared store.
  */
 export type NonceStatus = 'pending' | 'consumed' | 'failed'
 

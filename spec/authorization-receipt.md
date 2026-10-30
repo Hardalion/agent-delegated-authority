@@ -205,7 +205,9 @@ Conforming runtimes do not perform a consequential side effect unless the govern
 
 A receipt is verified on its own. This draft does not define a store, an index, or a telemetry pipeline.
 
-When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier that holds an ordered set can detect omission or reordering by walking `prevReceiptHash`. Standalone receipts without those fields remain conforming; they do not, by themselves, prove that none were omitted.
+When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier walks the ordered set: `sequence` increases by one, each `prevReceiptHash` names the previous receipt, and every receipt is from the same issuer key. That detects omission, insertion, and reordering inside the set. It does not detect a dropped tail. The verifier needs the expected latest receipt from somewhere the emitter does not control. Reference: `verifyReceiptChain` in `packages/audit-verify`.
+
+Standalone receipts without those fields remain conforming. They do not, by themselves, prove that none were omitted.
 
 ---
 
