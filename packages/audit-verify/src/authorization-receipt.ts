@@ -123,6 +123,13 @@ export interface AuthorizationReceiptV1 {
   readonly signature: string
   readonly execution?: ExecutionBinding
   readonly human?: HumanAttestation
+  /**
+   * Optional hash-chain fields. When present, `prevReceiptHash` is the SHA-256
+   * content hash of the prior receipt in the issuer's log (`null` for the first).
+   * Covered by `integrity.contentHash` and `signature`.
+   */
+  readonly sequence?: number
+  readonly prevReceiptHash?: string | null
   /** Implementation-specific metadata. Not interpreted by a conforming verifier. */
   readonly extensions?: Readonly<Record<string, unknown>>
 }
@@ -388,6 +395,17 @@ function validateStructure(receipt: unknown): string[] {
     if (typeof human.required !== 'boolean') errors.push('human.required must be boolean')
     if (!HUMAN_STATUS.has(human.status as HumanAttestationStatus)) {
       errors.push('human.status invalid')
+    }
+  }
+
+  if (r.sequence != null) {
+    if (typeof r.sequence !== 'number' || !Number.isInteger(r.sequence) || r.sequence < 0) {
+      errors.push('sequence must be a non-negative integer')
+    }
+  }
+  if (r.prevReceiptHash != null) {
+    if (typeof r.prevReceiptHash !== 'string' || !HEX64.test(r.prevReceiptHash)) {
+      errors.push('prevReceiptHash must be 64 hex chars or null')
     }
   }
 

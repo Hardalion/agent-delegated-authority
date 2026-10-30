@@ -108,3 +108,83 @@ describe('authority then policy', () => {
     expect(blocked.receipt.execution?.executed).toBe(false)
   })
 })
+
+describe('exclusive nonce claim before execution', () => {
+  it('lets only one concurrent ALLOW with the same signed intent reach the executor', async () => {
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_reader')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*' }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal
+    )
+    const intent = signIntent(
+      {
+        intent_id: 'int_concurrent',
+        actor: agent.id,
+        delegation_chain: [root.delegation_id],
+        action: 'read',
+        target: 'resource/example',
+        parameters: {},
+        nonce: 'nonce-concurrent',
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      agent
+    )
+    const ledger = new NonceLedger()
+    let releaseFirst!: () => void
+    const hold = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let signalClaimed!: () => void
+    const claimed = new Promise<void>((resolve) => {
+      signalClaimed = resolve
+    })
+    let executions = 0
+
+    const run = () =>
+      runAuthorityPath({
+        chain: [root],
+        intent,
+        directory,
+        policy: BASIC_AGENT_AUTHORITY,
+        policyUri: BASIC_AGENT_AUTHORITY_URI,
+        now: NOW,
+        ledger,
+        signer,
+        execute: async () => {
+          executions += 1
+          // claimForExecution already ran; now it is safe to start the racing caller.
+          signalClaimed()
+          await hold
+          return { ok: true }
+        },
+      })
+
+    const firstPromise = run()
+    await claimed
+    const second = await run()
+    releaseFirst()
+    const first = await firstPromise
+
+    expect(first.decision).toBe('ALLOW')
+    expect(first.executed).toBe(true)
+    expect(second.decision).toBe('BLOCK')
+    expect(second.reason).toBe('nonce_in_flight_or_used')
+    expect(second.executed).toBe(false)
+    expect(executions).toBe(1)
+  })
+})

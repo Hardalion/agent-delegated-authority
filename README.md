@@ -263,15 +263,32 @@ The cells below describe this draft's reference path, and the job of the other l
 
 ## Threat model
 
-The reference path refuses over-delegation, re-delegation of a non-delegable capability, a sub-agent acting outside its grant, replay, execution after `BLOCK` or `REQUIRE_HUMAN`, and instruction text that tries to raise a bound.
+The reference path refuses over-delegation, re-delegation of a non-delegable capability, a sub-agent acting outside its grant, replay (including concurrent in-flight reuse), execution after `BLOCK` or `REQUIRE_HUMAN`, and instruction text that tries to raise a bound.
 
-ADAP authorization correctness is not complete agent security. A stolen key, a runtime that skips the path, a verifier that ignores a failure, and a resource server that acts without a receipt are outside this draft. What the draft guarantees, and what it does not: [THREAT_MODEL.md](./THREAT_MODEL.md).
+ADAP authorization correctness is not complete agent security. A stolen key, a runtime that skips the path when the agent holds rail credentials, a verifier that ignores a failure, and a resource server that acts without a receipt are outside this draft. Production credential isolation uses an out-of-process proxy. What the draft guarantees, and what it does not: [THREAT_MODEL.md](./THREAT_MODEL.md).
 
 ## Boundary
 
 The repository contains the open protocol and reference implementations. Production deployment, identity infrastructure, connectors, hosted services and other implementation-specific components are outside the scope of this repository.
 
 The protocol does not require the reference packages.
+
+### Open protocol vs enforcement gateway
+
+ADAP is the authority semantics. It does not, by itself, stop an agent that already holds the rail credential from calling the API. The in-process `execute` callback in this repo is for local testing.
+
+Production deployments put ADAP in an **out-of-process proxy** (sidecar, MCP server gateway, or a commercial product such as Hardalion Nexus). The agent signs intents; the gateway holds credentials and only POSTs when the check is `ALLOW`.
+
+```
+Agent (signing key only)
+        │ signed intent
+        ▼
+ADAP gateway / sidecar ──ALLOW──► vault / write URL
+        │
+        └── BLOCK / REQUIRE_HUMAN → no side effect
+```
+
+`max_amount` is a per-intent ceiling on the terminal grant. It is not cumulative spend across the life of a delegation. Optional receipt fields `sequence` and `prevReceiptHash` let emitters form a hash-chained evidence log; standalone receipts without those fields remain valid individually.
 
 The example policy `basic-agent-authority` is synthetic. Identifiers such as `prn_example`, `agt_a`, and `resource/example` are not organizations.
 

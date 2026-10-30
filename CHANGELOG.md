@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Exclusive nonce claim before execution (`pending` → `consumed` | `failed`). Concurrent reuse is `BLOCK` (`nonce_in_flight_or_used`). Optional receipt fields `sequence` and `prevReceiptHash` for hash-chained evidence. Docs clarify `max_amount` is per-intent (not cumulative) and the out-of-process proxy deployment boundary for credentials.
+
 The front of the README is a public draft, not a claim to be a standard. It states the question the draft answers, and what it does not replace: identity, authentication, OAuth, agent communication, and execution runtimes.
 
 The receipt binds `policy.contentHash`, the canonical hash of the policy document that was loaded, and `execution.intentHash`, the intent presented at the execution boundary. `pnpm attacks` runs six refusals: over-delegation, privilege escalation, prompt injection, replay, expiry, and a mutated intent after approval.

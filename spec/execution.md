@@ -24,8 +24,9 @@ A conforming runtime:
 4. Does not execute an intent that changed after that approval.
 5. Records `execution.intentHash` on the receipt. A verifier that holds the unsigned intent checks that its reference-profile hash equals that field.
 6. Sets `execution.executed` from what the runtime reported. `executed: true` is not an independent proof that an external system performed the action.
+7. Claims the intent nonce exclusively in a durable store before calling the executor (`pending` → `consumed` | `failed`). A second concurrent claim with the same nonce is `BLOCK` (`nonce_in_flight_or_used`). Checking usability without claiming is not enough.
 
-The reference path recomputes the intent hash immediately before the executor and refuses the call if it differs from the authorized hash.
+The reference path recomputes the intent hash immediately before the executor and refuses the call if it differs from the authorized hash. It claims the nonce synchronously before `await execution()`.
 
 ## Reference
 

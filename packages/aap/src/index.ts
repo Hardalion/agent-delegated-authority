@@ -1,5 +1,5 @@
 export { AuthorityError } from './errors.js'
-export { NonceLedger } from './nonce.js'
+export { NonceLedger, type NonceStatus } from './nonce.js'
 export {
   canonicalJson,
   sha256,

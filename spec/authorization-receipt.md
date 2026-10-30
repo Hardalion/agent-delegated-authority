@@ -63,6 +63,8 @@ The reference profile in §5 fixes one way to hash and sign. Package names in th
 | `human` | `HumanAttestation` | no | Required when a person had to approve before `ALLOW` |
 | `execution` | `ExecutionBinding` | no | Whether anything executed, and the target label |
 | `integrity` | `ReceiptIntegrity` | yes | Content hash of the unsigned body |
+| `sequence` | number | no | Non-negative integer position in an issuer receipt log. When present with `prevReceiptHash`, receipts form a verifiable hash chain |
+| `prevReceiptHash` | string \| null | no | SHA-256 `integrity.contentHash` of the previous receipt in that log, or `null` for the first. Covered by this receipt's content hash and signature |
 | `extensions` | object | no | Implementation-specific metadata. Not required to verify the receipt |
 | `signature` | string | yes | Signature over the unsigned body. Reference profile: 64-byte Ed25519, hex |
 
@@ -202,6 +204,8 @@ Conforming runtimes do not perform a consequential side effect unless the govern
 ## 7. Verification scope
 
 A receipt is verified on its own. This draft does not define a store, an index, or a telemetry pipeline.
+
+When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier that holds an ordered set can detect omission or reordering by walking `prevReceiptHash`. Standalone receipts without those fields remain conforming; they do not, by themselves, prove that none were omitted.
 
 ---
 

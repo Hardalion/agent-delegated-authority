@@ -11,6 +11,10 @@ A delegation is a signed grant from an issuer to a subject.
 | `issued_at`, `expires_at` | Lifetime |
 | `parent_delegation_id` | Present when this grant narrows a parent |
 
+## `max_amount`
+
+`max_amount` is a **per-intent** ceiling: each signed intent's amount is checked against the terminal grant's `max_amount`. It is not a cumulative spend ledger across a delegation. This draft does not track total spending over the life of a grant. Implementations that need cumulative limits must add that outside this schema (for example in a commercial gateway) and state the semantics separately.
+
 ## Narrowing
 
 A child cannot:

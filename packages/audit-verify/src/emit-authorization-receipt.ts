@@ -45,6 +45,10 @@ export type EmitAuthorizationReceiptInput = {
   readonly execution?: ExecutionBinding
   readonly human?: HumanAttestation
   readonly failureMode?: 'NONE' | 'RULE_VIOLATION' | 'MAPPING_FAILED' | 'SYSTEM_ERROR'
+  /** Optional position in an issuer receipt log. Covered by the content hash. */
+  readonly sequence?: number
+  /** SHA-256 content hash of the previous receipt, or null for the first in a chain. */
+  readonly prevReceiptHash?: string | null
   /** When set, used as signature (must be 128 hex chars). Default: demo placeholder. */
   readonly signatureHex?: string
 }
@@ -140,6 +144,8 @@ export function emitAuthorizationReceipt(
     integrity: {
       contentHash: '',
     },
+    ...(input.sequence != null ? { sequence: input.sequence } : {}),
+    ...(input.prevReceiptHash !== undefined ? { prevReceiptHash: input.prevReceiptHash } : {}),
   })
 
   return {
@@ -172,6 +178,8 @@ export function emitAuthorizationReceiptFromDecision(input: {
   readonly issuerKeyId?: string
   readonly execution?: ExecutionBinding
   readonly human?: HumanAttestation
+  readonly sequence?: number
+  readonly prevReceiptHash?: string | null
 }): AuthorizationReceiptV1 {
   return emitAuthorizationReceipt({
     agentId: input.agentId,
@@ -193,5 +201,7 @@ export function emitAuthorizationReceiptFromDecision(input: {
     issuerKeyId: input.issuerKeyId,
     execution: input.execution,
     human: input.human,
+    sequence: input.sequence,
+    prevReceiptHash: input.prevReceiptHash,
   })
 }

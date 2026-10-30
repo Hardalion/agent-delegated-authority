@@ -47,6 +47,10 @@ export interface RunAuthorityPathInput {
   readonly signer: Identity
   readonly approval?: HumanApproval
   readonly execute?: (ctx: ExecutionContext) => unknown
+  /** Optional position in an issuer receipt log (hash-chained evidence). */
+  readonly receiptSequence?: number
+  /** Content hash of the previous receipt, or null for the first in a chain. */
+  readonly prevReceiptHash?: string | null
 }
 
 const NONE_EXEC = 'none'
@@ -207,6 +211,25 @@ async function executeBound(
     })
   }
 
+  // Exclusive claim before await. Concurrent callers with the same nonce cannot both reach the executor.
+  try {
+    input.ledger.claimForExecution(input.intent.nonce, bound.intentHash)
+  } catch (error) {
+    if (error instanceof AuthorityError && error.code === 'replay') {
+      return seal(input, {
+        ...bound,
+        decision: 'BLOCK',
+        ruleId: 'replay',
+        reason: error.message,
+        alertSeverity: 'CRITICAL',
+        matched: false,
+        executed: false,
+        failureMode: 'RULE_VIOLATION',
+      })
+    }
+    throw error
+  }
+
   const ctx: ExecutionContext = {
     action: input.intent.action,
     target: input.intent.target,
@@ -242,7 +265,7 @@ async function executeBound(
         : undefined,
     })
   } catch {
-    input.ledger.consume(input.intent.nonce, bound.intentHash)
+    input.ledger.fail(input.intent.nonce, bound.intentHash)
     return seal(input, {
       decision: 'BLOCK',
       ruleId: 'execution',
@@ -317,6 +340,8 @@ function seal(
     },
     human: fields.human,
     failureMode: fields.failureMode,
+    sequence: input.receiptSequence,
+    prevReceiptHash: input.prevReceiptHash,
     signatureHex: 'ab'.repeat(64),
   })
   const receipt = signReceipt(drafted, input.signer.privateKey)

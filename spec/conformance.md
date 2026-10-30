@@ -21,7 +21,7 @@ Principal
 | Reject re-delegation of a capability with `delegable: false`, and not call the executor | `packages/aap/src/attacks.ts` (`02-privilege-escalation`) |
 | Reject an intent outside the terminal delegation, including an amount above `max_amount`, and not treat free text as a constraint | `packages/aap/src/attacks.ts` (`03-prompt-injection`), `packages/aap/src/validate.test.ts` |
 | Reject an expired delegation or intent, and not call the executor | `packages/aap/src/attacks.ts` (`05-expired-delegation`) |
-| Reject a consumed nonce, and not call the executor for that attempt | `packages/aap/src/attacks.ts` (`04-replay`) |
+| Reject a consumed, failed, or in-flight nonce, and not call the executor for that attempt | `packages/aap/src/attacks.ts` (`04-replay`), `packages/aap/src/nonce.test.ts`, `packages/aap/src/path.test.ts` |
 | Not call the executor on `BLOCK`, or on `REQUIRE_HUMAN` without an approval bound to the same intent hash | `packages/aap/src/attacks.ts` (`06-post-approval-mutation`), `packages/aap/src/path.ts` |
 | Pass only the verified intent to the executor | `packages/aap/src/path.ts`, `spec/execution.md` |
 | Bind the receipt to each presented delegation by hash, to the intent hash, to the policy pin, the rule id, and the policy content hash, and to the reported execution | `packages/aap/src/verify-published-proof.ts`, `packages/audit-verify/src/authorization-receipt.test.ts` |
