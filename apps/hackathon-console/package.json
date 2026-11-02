@@ -1,0 +1,32 @@
+{
+  "name": "adap-hackathon-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local hackathon console for the ADAP reference implementation. Simulated payment rail. Not a production deployment.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prestart": "tsc",
+    "start": "node dist/main.js",
+    "prereset": "tsc",
+    "reset": "node dist/reset-cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "adap": "workspace:*",
+    "adap-gateway": "workspace:*",
+    "adap-policy": "workspace:*",
+    "adap-receipt": "workspace:*",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12"
+  }
+}

@@ -9,12 +9,15 @@
     "url": "https://github.com/hardalion/agent-delegated-authority.git"
   },
   "scripts": {
-    "build": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway build",
-    "test": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-gateway test",
+    "build": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway --filter adap-hackathon-console build",
+    "test": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-gateway --filter adap-hackathon-console test",
     "test:security": "pnpm --filter adap-policy exec vitest run src/fail-closed.test.ts && pnpm --filter adap exec vitest run src/security-adversarial.test.ts src/rt-remediation.test.ts src/final-hardening.test.ts src/adversarial-final.test.ts src/production-adversarial.test.ts && pnpm --filter adap-receipt exec vitest run src/security-semantics.test.ts && pnpm --filter adap-gateway test",
     "test:integration:postgres": "pnpm --filter adap-store-postgres test",
     "test:coverage": "pnpm --filter adap-policy test:coverage",
-    "typecheck": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway typecheck",
+    "typecheck": "pnpm -r --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway --filter adap-hackathon-console typecheck",
+    "demo:up": "pnpm --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway --filter adap-hackathon-console build && pnpm --filter adap-hackathon-console exec node dist/main.js",
+    "demo:reset": "pnpm --filter adap-hackathon-console reset",
+    "demo:test": "pnpm --filter adap-hackathon-console test",
     "bench": "node scripts/benchmark-adap.mjs",
     "demo": "pnpm --filter adap demo",
     "attacks": "pnpm --filter adap attacks",

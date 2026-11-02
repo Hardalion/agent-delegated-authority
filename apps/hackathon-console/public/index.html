@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ADAP Authority Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Hackathon demonstration</p>
+      <h1>ADAP Authority Console</h1>
+      <p class="lede">An agent may propose an action. It can execute a consequential operation only when ADAP grants the authority.</p>
+    </div>
+    <div class="flags" aria-label="Environment">
+      <span class="flag">DEMO ENVIRONMENT</span>
+      <span class="flag flag-sim">SIMULATED PAYMENT RAIL</span>
+      <span id="health-flag" class="flag">Checking</span>
+    </div>
+  </header>
+  <p class="banner">Simulated payment rail. This console is not connected to a bank. Decisions come from the ADAP gateway.</p>
+  <p id="error" class="error" role="alert"></p>
+  <section id="metrics" class="metrics" aria-live="polite"></section>
+  <div class="layout" id="main">
+    <section class="panel">
+      <h2>Scenarios</h2>
+      <p class="hint">Each button asks the treasury agent to sign an intent. The gateway decides.</p>
+      <button type="button" data-action="run" data-scenario="status">Scenario A · Status read</button>
+      <button type="button" data-action="run" data-scenario="payment">Scenario B · Payment above limit</button>
+      <button type="button" data-action="run" data-scenario="beneficiary">Scenario C · Change beneficiary</button>
+      <button type="button" class="quiet" data-action="run" data-scenario="hard-cap">Hard-cap payment</button>
+      <button type="button" class="quiet" data-action="present">Presentation mode</button>
+      <section id="guide" hidden>
+        <p id="guide-kicker" class="eyebrow"></p>
+        <h3 id="guide-title"></h3>
+        <p id="guide-body"></p>
+        <p id="guide-check"></p>
+        <div class="row">
+          <button type="button" id="guide-next">Continue</button>
+          <button type="button" class="quiet" id="guide-stop">Exit</button>
+        </div>
+      </section>
+      <h2>Approver</h2>
+      <label for="passphrase">Demo approver passphrase</label>
+      <input id="passphrase" type="text" value="treasury-demo" autocomplete="off" spellcheck="false">
+      <p class="hint">Checked on the server. The browser does not sign the approval.</p>
+    </section>
+    <section class="panel">
+      <h2>Live execution</h2>
+      <p id="outcome" class="outcome">No decision yet.</p>
+      <ol id="flow" class="flow"></ol>
+    </section>
+    <section class="panel">
+      <h2>Authorization inspector</h2>
+      <dl id="inspector" class="inspector"></dl>
+    </section>
+  </div>
+  <div class="layout lower">
+    <section class="panel">
+      <h2>Human approval inbox</h2>
+      <div id="inbox"></div>
+    </section>
+    <section class="panel">
+      <h2>Simulated payments</h2>
+      <p id="effects" class="hint"></p>
+      <div id="payments"></div>
+    </section>
+    <section class="panel">
+      <h2>Event timeline</h2>
+      <div id="timeline"></div>
+    </section>
+  </div>
+  <section class="panel wide">
+    <h2>Execution history</h2>
+    <div id="history"></div>
+  </section>
+  <section class="panel wide">
+    <div class="row spread">
+      <h2>Receipt verification</h2>
+      <div class="row">
+        <button type="button" class="quiet" data-action="verify">Verify selected receipt</button>
+        <button type="button" class="quiet" data-action="export">Export evidence</button>
+        <button type="button" class="quiet" data-action="reset">Reset demo</button>
+      </div>
+    </div>
+    <p id="verify-result" class="hint"></p>
+    <pre id="receipt" class="receipt">No receipt selected.</pre>
+  </section>
+  <footer>
+    <p>Protocol: ADAP. This process is the reference implementation on a simulated rail. A deployment guarantee belongs to the network around the gateway, not to this console.</p>
+    <p id="timings"></p>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
