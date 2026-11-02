@@ -10,7 +10,7 @@ Principal → Agent A → Agent B → Authorized action → Receipt
 
 `runAuthorityPath` verifies the delegation chain and the signed intent against a trusted clock, evaluates a policy pinned in an operator-owned resolver, and emits an Authorization Receipt. `BLOCK` does not call the executor. On the `ALLOW` path the nonce is claimed exclusively (`claimForExecution`) before `await execution()`, then marked `consumed` or `failed`.
 
-`NonceLedger` is in memory: the claim is exclusive within one process and is lost on restart. Cross-process exclusion needs a shared store that implements `AsyncAtomicNonceBackend`, wrapped in `SharedNonceLedger`. This package does not ship that store.
+`NonceLedger` is in memory: the claim is exclusive within one process and is lost on restart. Cross-process exclusion needs a shared store that implements `AsyncAtomicNonceBackend`, wrapped in `SharedNonceLedger`. This package does not ship that store. The reference store is `adap-store-postgres`.
 
 Caller-supplied `now` is rejected. Tests inject `FixedClock`. Production uses the process clock unless the operator supplies a clock it controls.
 

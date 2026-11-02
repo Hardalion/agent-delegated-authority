@@ -21,9 +21,14 @@ This repository contains the open specification and its reference implementation
 ```bash
 pnpm install
 pnpm test
+pnpm test:security
+pnpm typecheck
 pnpm build
 pnpm demo
+pnpm attacks
 ```
+
+Packages: `adap-policy`, `adap-receipt`, `adap`, `adap-store-postgres`, `adap-gateway`. Postgres integration tests run only with `ADAP_PG_URL` or `ADAP_PG_FORCE=1`.
 
 ```bash
 cd packages/policy-engine
