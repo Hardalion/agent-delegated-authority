@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.env
+staging/.secrets
+staging/.evidence
+.git
+*.md

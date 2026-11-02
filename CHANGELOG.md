@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security remediation (ADAP-001 … ADAP-011)
+
+Runtime fail-closed fixes for human-approval policy substitution, object nonce replay, non-finite amounts, prototype/canonicalization mismatch, inherited constraint gaps, empty identity / `targetAgents` bypass, strict intent schema validation, trusted clock separation, amount/target domain norms, and receipt semantic invariants. A policy comparison that sees `NaN` or an infinity returns `BLOCK` (`amount_not_finite`) instead of falling through to `ALLOW`. A malformed intent is rejected inside `runAuthorityPath` before the executor. Caller-supplied `now` is rejected. Breaking: human approval payloads now bind `agent_id`, `delegation_chain_hash`, and `policy_content_hash`. `REQUIRE_HUMAN` requires a `PendingAuthorizationStore`. Permanent suite: `pnpm test:security`.
+
 Exclusive nonce claim before execution (`pending` → `consumed` | `failed`). Concurrent reuse is `BLOCK` (`nonce_in_flight_or_used`). The reference ledger is in memory; the spec states the shared-store requirement and at-most-once behavior after a crash. Optional receipt fields `sequence` and `prevReceiptHash`, checked by `verifyReceiptChain`, which detects gaps and reordering but not a dropped tail. Docs clarify `max_amount` is per-intent (not cumulative) and that keeping credentials out of the agent process is a deployment property.
 
 Dependencies: `vitest` 4.1.12, `vite` 6.4.4, `zod` 4.6.6 or later, for published advisories.
