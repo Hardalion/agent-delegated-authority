@@ -23,6 +23,7 @@ export class ToolGate {
       policy: this.policy,
       toolName,
       toolArgs,
+      agentRole: 'agt_reader',
     })
 
     if (decision.action === 'BLOCK') {

@@ -6,12 +6,12 @@ Do not open a public issue that includes a secret, a private key, or customer da
 
 ## Remediation baseline
 
-Security remediation for findings ADAP-001 through ADAP-011 is documented in:
+Current status, and what is not claimed, is in [docs/security/status.md](docs/security/status.md).
 
-- [SECURITY-REMEDIATION.md](SECURITY-REMEDIATION.md)
-- [SECURITY-VERIFICATION.md](SECURITY-VERIFICATION.md)
-- [SECURITY-REGRESSION-MATRIX.md](SECURITY-REGRESSION-MATRIX.md)
-- [THREAT_MODEL.md](THREAT_MODEL.md)
+- [docs/security/regression-matrix.md](docs/security/regression-matrix.md) maps ADAP-001 through ADAP-011 to tests
+- [docs/security/residual-risks.md](docs/security/residual-risks.md) lists remaining limits
+- [THREAT_MODEL.md](THREAT_MODEL.md) is the draft threat model
+- [docs/security/historical/](docs/security/historical/) keeps earlier audit notes. Those notes are not the current `main`
 
 Run `pnpm test` and `pnpm test:security` before merging authority-path changes.
 

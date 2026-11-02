@@ -10,7 +10,7 @@ The package is not currently published to npm. From a clone of this repository, 
 
 ```bash
 node packages/policy-engine/dist/cli.js --help
-node packages/policy-engine/dist/cli.js --tool apply --args "{\"amount\":800}" --json
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args "{\"amount\":800}" --json
 node packages/policy-engine/dist/cli.js --policy-file ./policy.yaml --tool read
 ```
 
@@ -25,6 +25,7 @@ const decision = evaluateToolCall({
   policy: 'basic-agent-authority',
   toolName: 'apply',
   toolArgs: { amount: 800 },
+  agentRole: 'agt_reader',
 })
 ```
 
