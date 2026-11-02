@@ -24,8 +24,9 @@ On the reference path:
 
 - `BLOCK` and an unresolved `REQUIRE_HUMAN` do not call the executor.
 - `executed: true` means the executor callback returned. It is not an independent observation of the external system.
-- If the callback throws, the reference path records `executed: false` and marks the nonce `failed`. That receipt does not prove the callback did nothing before it threw. See [THREAT_MODEL.md](../../THREAT_MODEL.md).
-- The reference gateway's `executionState: unknown` is a gateway field. The callback returned, so the authority result is `executed: true` and the nonce is consumed. Reconciliation is a later read. See [outcome unknown](../operations/outcome-unknown.md).
+- If the callback throws after it may have dispatched, the reference path keeps the decision at `ALLOW`, records `executed: false` and `outcome: unknown`, and does not leave the nonce reusable. That receipt does not prove the callback did nothing before it threw. See [THREAT_MODEL.md](../../THREAT_MODEL.md).
+- The reference gateway's `executionState: unknown` means the downstream call left the process and the result was not observed. The executor throws, so the authority result is `executed: false` with `outcome: unknown`. Reconciliation is a later read. See [outcome unknown](../operations/outcome-unknown.md).
+- If the Postgres server has no ordinary connection slot left, the gateway returns HTTP 503 with `executionState: not_dispatched` and does not call `executeAuthorized`.
 
 The Postgres adapter gives one claim per nonce in that database. It does not promise exactly-once delivery across the external system. The external system needs its own idempotency.
 

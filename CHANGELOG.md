@@ -4,7 +4,7 @@
 
 ### Reference gateway and store
 
-`adap-gateway` and `adap-store-postgres` are reference packages in this repository. They are not a protocol requirement and not a production deployment. The gateway's `executionState: unknown` means the downstream result was not observed. The authority path still reports `executed: true` because the executor callback returned, and the nonce is consumed. That boolean is not confirmation that an external system committed. Local Compose validation is documented in `docs/operations/local-staging.md`. Vault in that drill is dev mode.
+`adap-gateway` and `adap-store-postgres` are reference packages in this repository. They are not a protocol requirement and not a production deployment. On this branch, a downstream `unknown` throws after the call has left the process. The authority path reports `ALLOW`, `executed: false`, and `outcome: unknown`, and the same nonce is not dispatched again. That is not confirmation that an external system committed, and it is not confirmation that it did not. When the database cannot take another connection, the gateway returns HTTP 503 with `executed: false` and `executionState: not_dispatched` before `executeAuthorized`. Local Compose validation is documented in `docs/operations/local-staging.md`. Vault in that drill is dev mode.
 
 ### Security remediation (ADAP-001 … ADAP-011)
 

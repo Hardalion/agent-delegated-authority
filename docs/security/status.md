@@ -1,6 +1,6 @@
 # Security status
 
-**Tree:** `main` at `2ce1e2f35cbc5d4d472e992de545c8bef2857ab3` (2026-11-02).
+**Tree:** `security/execution-semantics`, including the documentation layout from `main` at `bc5ae766e509aa32ff7b9c29ed4198e651b88177`.
 **This is not a certification.** No SOC 2, ISO 27001, or independent retest is claimed.
 
 ## What the tests in this repository cover
@@ -15,7 +15,7 @@ A signed receipt proves the issuer attested that body. `executed: true` means th
 
 ## Local staging is not production
 
-`node staging/scripts/run-validation.mjs` is a Docker Compose drill on one machine. The 2026-11-02 run recorded 37 checks and exit 0. That drill used Vault in dev mode and one Postgres primary. Connection exhaustion in that drill still returned `executed: true` from a gateway that already held a database connection. The record is [the 2026-11-02 readiness snapshot](../operations/historical/PRODUCTION-READINESS-MATRIX.md).
+`node staging/scripts/run-validation.mjs` is a Docker Compose drill on one machine. The 2026-11-02 run on `main` at `2ce1e2f` recorded 37 checks and exit 0. That drill used Vault in dev mode and one Postgres primary. Connection exhaustion in that drill still returned `executed: true` from a gateway that already held a database connection. The record is [the 2026-11-02 readiness snapshot](../operations/historical/PRODUCTION-READINESS-MATRIX.md). On this branch the gateway checks capacity first and, when no ordinary connection slot remains, returns HTTP 503 with `executed: false` and `executionState: not_dispatched` without calling the executor. A downstream `unknown` is `executed: false` and `outcome: unknown`.
 
 ## Reporting
 

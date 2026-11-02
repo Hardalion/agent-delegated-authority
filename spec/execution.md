@@ -33,4 +33,4 @@ The reference path recomputes the intent hash immediately before the executor an
 
 `packages/aap/src/path.ts` and `packages/aap/src/attacks.ts` (`06-post-approval-mutation`).
 
-The reference gateway in `packages/adap-gateway` is not required by this section. When its downstream call ends as `unknown`, the executor callback returns, the path reports `executed: true`, and the nonce is consumed. `executed: true` in that case is still the callback report, not proof the external system committed. See [docs/operations/outcome-unknown.md](../docs/operations/outcome-unknown.md).
+The reference gateway in `packages/adap-gateway` is not required by this section. When its downstream call ends as `unknown`, the executor throws after the call has left the process. The path reports `ALLOW`, `executed: false`, and `outcome: unknown`, and the nonce is not reusable. That receipt does not prove the external system committed, and it does not prove it did not. See [docs/operations/outcome-unknown.md](../docs/operations/outcome-unknown.md).
