@@ -87,7 +87,7 @@ A deployment that needs the boundary to hold runs the check **out of process**: 
                                        └─────────────────────────┘
 ```
 
-The property holds only when the operator's network gives the agent no other route to that endpoint or credential. ADAP defines the authority semantics. This repository does not ship the gateway or the network policy.
+The property holds only when the operator's network gives the agent no other route to that endpoint or credential. ADAP defines the authority semantics. `packages/adap-gateway` is a reference process for that boundary. This repository does not ship the operator's network policy, and the gateway does not enforce it by itself.
 
 ## Trust assumptions
 

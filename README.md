@@ -206,7 +206,7 @@ The same path refuses six further cases. `pnpm attacks` prints them. Each refusa
 
 Every consequential agent action can leave a portable, independently verifiable proof of authority.
 
-Not a log. A cryptographically verifiable authorization receipt. The signature does not, by itself, prove that an external system performed the action. `executed: true` means the runtime reported a side effect.
+Not a log. A cryptographically verifiable authorization receipt. The signature does not, by itself, prove that an external system performed the action. `executed: true` means the reference runtime's executor callback returned. It is not an independent observation of that system.
 
 ```
 AUTHORIZATION RECEIPT
@@ -288,7 +288,7 @@ ADAP gateway / sidecar ──ALLOW──► operator write endpoint (credential 
         └── BLOCK / REQUIRE_HUMAN → no side effect
 ```
 
-That holds only when the operator's network gives the agent no other route to the endpoint or the credential. This repository does not ship the gateway.
+That holds only when the operator's network gives the agent no other route to the endpoint or the credential. `packages/adap-gateway` is a reference process for this boundary. It does not supply the operator's network policy. The protocol does not require that package.
 
 `max_amount` is a per-intent ceiling on the terminal grant. It is not cumulative spend across the life of a delegation. Optional receipt fields `sequence` and `prevReceiptHash` form a hash chain that `verifyReceiptChain` checks for gaps and reordering. Standalone receipts without those fields remain valid individually.
 
@@ -319,31 +319,16 @@ rules:
 ```
 agent-delegated-authority/
 ├── spec/
-│   ├── authority.md
-│   ├── delegation.md
-│   ├── intent.md
-│   ├── policy-decision.md
-│   ├── human-approval.md
-│   ├── authorization-receipt.md
-│   ├── execution.md
-│   ├── threat-model.md
-│   ├── conformance.md
-│   ├── policy-schema.md
-│   ├── deterministic-evaluation.md
-│   └── policy-federation.md
 ├── packages/
-│   ├── aap/
-│   ├── policy-engine/
-│   └── audit-verify/
+│   ├── aap/                  adap
+│   ├── policy-engine/        adap-policy
+│   ├── audit-verify/         adap-receipt
+│   ├── adap-gateway/
+│   └── adap-store-postgres/
 ├── examples/
-│   ├── delegation.json
-│   ├── intent.json
-│   ├── receipt.json
-│   ├── attacks/
-│   ├── policies/
-│   │   └── basic-agent-authority.yaml
-│   └── agent-to-agent/
 ├── integrations/
+├── staging/                  local Compose drill
+├── docs/
 ├── tests/
 ├── README.md
 ├── THREAT_MODEL.md
@@ -354,12 +339,16 @@ agent-delegated-authority/
 
 | Path | Role |
 | --- | --- |
-| [spec/](./spec/) | Normative specification |
+| [spec/](./spec/) | Protocol requirements |
 | `adap-policy` | Reference evaluator, CLI `adap-policy` |
 | `adap-receipt` | Offline Authorization Receipt verification |
-| `adap` | Reference implementation in `packages/aap`. Not normative. The caller supplies the execution callback. |
+| `adap` | Reference authority path in `packages/aap`. Not normative. The caller supplies the execution callback. |
+| `adap-store-postgres` | Reference PostgreSQL nonce, pending, policy, and execution-log adapters. Not a hosted database. |
+| `adap-gateway` | Reference process that runs the authority path and a credential broker. Not required by the protocol. |
 | [examples/](./examples/) | Illustrations, plus `examples/proof/` which verifies offline |
 | [integrations/](./integrations/) | One hook before a tool runs |
+| [docs/](./docs/) | Architecture, security status, and local operations |
+| [staging/](./staging/) | Local Compose drill. Not a production deployment |
 | [THREAT_MODEL.md](./THREAT_MODEL.md) | What this draft guarantees, and what it does not |
 | [SECURITY.md](./SECURITY.md) | How to report a vulnerability |
 
@@ -396,7 +385,7 @@ pnpm install && pnpm test && pnpm build && pnpm demo && pnpm attacks
 ```
 
 ```bash
-node packages/policy-engine/dist/cli.js --tool apply --args "{\"amount\":800}" --json
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args "{\"amount\":800}" --json
 node packages/audit-verify/dist/cli.js examples/receipt.json --public-key examples/issuer-public-key.txt
 ```
 
@@ -407,13 +396,16 @@ const decision = evaluateToolCall({
   policy: 'basic-agent-authority',
   toolName: 'apply',
   toolArgs: { amount: 800 },
+  agentRole: 'agt_reader',
 })
 
 console.log(decision.action) // BLOCK
 console.log(decision.ruleId)
 ```
 
-Framework hooks: [integrations/README.md](./integrations/README.md). Authority: [spec/authority.md](./spec/authority.md). Conformance: [spec/conformance.md](./spec/conformance.md).
+Framework hooks: [integrations/README.md](./integrations/README.md). Authority: [spec/authority.md](./spec/authority.md). Conformance: [spec/conformance.md](./spec/conformance.md). Reference packages and local staging: [docs/README.md](./docs/README.md).
+
+An omitted `--agent` is out of scope for `basic-agent-authority`. The commands above pass `agt_reader`. `amount: 800` is `BLOCK` (`block_over_cap`). A `read` with that role is `ALLOW`.
 
 ## License
 
