@@ -1,4 +1,11 @@
-export { createPool, type CreatePoolOptions, type Pool, type PoolClient } from './pool.js'
+export {
+  createPool,
+  dispatchAllowed,
+  serverHasDispatchCapacity,
+  type CreatePoolOptions,
+  type Pool,
+  type PoolClient,
+} from './pool.js'
 export { applyMigrations, rollbackMigrations } from './migrate.js'
 export { PostgresAtomicNonceBackend, type PostgresNonceBackendOptions } from './nonce-backend.js'
 export { PostgresPendingStore, type PostgresPendingStoreOptions } from './pending-store.js'

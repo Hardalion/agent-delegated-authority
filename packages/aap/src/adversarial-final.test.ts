@@ -18,6 +18,7 @@ import { PendingAuthorizationStore } from './pending.js'
 import { ImmutablePolicyResolver } from './policy-resolver.js'
 import {
   authenticatedReceipt,
+  ExecutionNotDispatchedError,
   runAuthorityPath,
   verifyProtocolReceipt,
 } from './path.js'
@@ -155,8 +156,11 @@ describe('executor boundary', () => {
         throw new Error('downstream failed after a partial write')
       },
     })
-    expect(failed.decision).toBe('BLOCK')
+    expect(failed.decision).toBe('ALLOW')
     expect(failed.executed).toBe(false)
+    expect(failed.executionKnowledge).toBe('unknown')
+    expect(failed.receipt?.execution?.outcome).toBe('unknown')
+    expect(failed.reason).not.toMatch(/nothing is recorded/)
     expect(failed.ruleId).toBe('execution')
     expect(await ledger.statusOf(signed.nonce)).toBe('failed')
     const retry = await runAuthorityPath({
@@ -174,9 +178,168 @@ describe('executor boundary', () => {
         return { ok: true }
       },
     })
+    expect(retry.decision).toBe('BLOCK')
+    expect(retry.executionKnowledge).toBe('not_dispatched')
     expect(retry.ruleId).toBe('replay')
     expect(retry.executed).toBe(false)
+    expect(retry.receipt?.execution?.outcome).toBe('not_dispatched')
     expect(calls).toBe(1)
+  })
+
+  it('records unknown after a side effect followed by timeout or cancellation', async () => {
+    const env = world()
+    const ledger = new SharedNonceLedger(new SharedMemoryBackend())
+    const signed = intent(env.agent, env.root, 'exec-timeout')
+    const effects: string[] = []
+    const failed = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      policyResolver: env.policyResolver,
+      signer: env.signer,
+      execute: async () => {
+        effects.push('posted')
+        throw new DOMException('The operation was aborted', 'AbortError')
+      },
+    })
+    expect(effects).toEqual(['posted'])
+    expect(failed.decision).toBe('ALLOW')
+    expect(failed.executed).toBe(false)
+    expect(failed.executionKnowledge).toBe('unknown')
+    expect(failed.receipt?.decision.action).toBe('ALLOW')
+    expect(failed.receipt?.execution?.outcome).toBe('unknown')
+    expect(failed.receipt?.execution?.executed).not.toBe(true)
+  })
+
+  it('keeps unknown when the nonce terminal write fails after dispatch', async () => {
+    const env = world()
+    const inner = new SharedNonceLedger(new SharedMemoryBackend())
+    const ledger = {
+      assertUsable: (nonce: unknown, intentHash: string) => inner.assertUsable(nonce, intentHash),
+      reserve: (nonce: unknown, intentHash: string) => inner.reserve(nonce, intentHash),
+      claimForExecution: (nonce: unknown, intentHash: string) => inner.claimForExecution(nonce, intentHash),
+      consume: (nonce: unknown, intentHash: string) => inner.consume(nonce, intentHash),
+      fail: () => {
+        throw new Error('store outage')
+      },
+    }
+    const signed = intent(env.agent, env.root, 'exec-fail-store')
+    const failed = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      policyResolver: env.policyResolver,
+      signer: env.signer,
+      execute: () => {
+        throw new Error('timed out after post')
+      },
+    })
+    expect(failed.executionKnowledge).toBe('unknown')
+    expect(failed.decision).toBe('ALLOW')
+    expect(failed.executed).toBe(false)
+    expect(failed.receipt?.execution?.outcome).toBe('unknown')
+    expect(await inner.statusOf(signed.nonce)).toBe('pending')
+    let retryCalls = 0
+    const retry = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger: inner,
+      policyResolver: env.policyResolver,
+      signer: env.signer,
+      execute: () => {
+        retryCalls += 1
+        return { ok: true }
+      },
+    })
+    expect(retry.decision).toBe('BLOCK')
+    expect(retry.ruleId).toBe('replay')
+    expect(retry.executed).toBe(false)
+    expect(retry.executionKnowledge).toBe('not_dispatched')
+    expect(retryCalls).toBe(0)
+  })
+
+  it('keeps unknown when receipt signing fails after a side effect', async () => {
+    const env = world()
+    const ledger = new SharedNonceLedger(new SharedMemoryBackend())
+    const signed = intent(env.agent, env.root, 'exec-seal-fail')
+    const effects: string[] = []
+    const failed = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      policyResolver: env.policyResolver,
+      signer: { ...env.signer, privateKey: {} as never },
+      execute: () => {
+        effects.push('posted')
+        throw new Error('timed out after post')
+      },
+    })
+    expect(effects).toEqual(['posted'])
+    expect(failed.decision).toBe('ALLOW')
+    expect(failed.executed).toBe(false)
+    expect(failed.executionKnowledge).toBe('unknown')
+    expect(failed.receipt).toBeUndefined()
+    expect(await ledger.statusOf(signed.nonce)).toBe('failed')
+    let retryCalls = 0
+    const retry = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      policyResolver: env.policyResolver,
+      signer: env.signer,
+      execute: () => {
+        retryCalls += 1
+        return { ok: true }
+      },
+    })
+    expect(retry.decision).toBe('BLOCK')
+    expect(retry.executed).toBe(false)
+    expect(retryCalls).toBe(0)
+  })
+
+  it('records not_dispatched when the callback stops before the external call', async () => {
+    const env = world()
+    const ledger = new SharedNonceLedger(new SharedMemoryBackend())
+    const signed = intent(env.agent, env.root, 'exec-not-dispatched')
+    const failed = await runAuthorityPath({
+      chain: [env.root],
+      intent: signed,
+      directory: env.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      policyResolver: env.policyResolver,
+      signer: env.signer,
+      execute: () => {
+        throw new ExecutionNotDispatchedError('credential broker rejected the route')
+      },
+    })
+    expect(failed.decision).toBe('ALLOW')
+    expect(failed.executed).toBe(false)
+    expect(failed.executionKnowledge).toBe('not_dispatched')
+    expect(failed.receipt?.execution?.outcome).toBe('not_dispatched')
+    expect(await ledger.statusOf(signed.nonce)).toBe('failed')
   })
 
   it('keeps executed true when the callback returned and seal later fails to hash the result', async () => {

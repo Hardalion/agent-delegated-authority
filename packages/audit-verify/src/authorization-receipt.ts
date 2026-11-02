@@ -86,10 +86,18 @@ export interface AuthorizationDecision {
   readonly failureMode?: AuthorizationFailureMode
 }
 
+export type ExecutionOutcome = 'not_dispatched' | 'returned' | 'unknown'
+
 export interface ExecutionBinding {
   readonly targetSystem?: string
   readonly executed?: boolean
   readonly executedAt?: string
+  /**
+   * What this runtime knows. `unknown` means the executor was entered and did not
+   * return. `executed: false` in that case is not a claim that no side effect occurred.
+   * Absent on receipts issued before this field existed.
+   */
+  readonly outcome?: ExecutionOutcome
   /** Hash of the unsigned intent presented at the execution boundary. */
   readonly intentHash: string
 }
@@ -484,6 +492,23 @@ function validateSemanticInvariants(r: Record<string, unknown>): string[] {
 
   if (execution != null && typeof execution.executedAt === 'string' && execution.executed !== true) {
     errors.push('execution.executedAt requires execution.executed=true')
+  }
+
+  const knowledge = execution?.outcome
+  if (knowledge != null && knowledge !== 'not_dispatched' && knowledge !== 'returned' && knowledge !== 'unknown') {
+    errors.push('execution.outcome is invalid')
+  }
+  if (knowledge === 'unknown') {
+    if (executed) errors.push('execution.outcome=unknown must not claim executed=true')
+    if (action !== 'ALLOW') {
+      errors.push('execution.outcome=unknown is only valid after an authorized dispatch')
+    }
+  }
+  if (knowledge === 'not_dispatched' && executed) {
+    errors.push('execution.outcome=not_dispatched must not claim executed=true')
+  }
+  if (knowledge === 'returned' && !executed) {
+    errors.push('execution.outcome=returned requires executed=true')
   }
 
   return errors

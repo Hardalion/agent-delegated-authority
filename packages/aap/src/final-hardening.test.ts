@@ -482,8 +482,11 @@ describe('nonce adapter', () => {
         throw new Error('downstream write failed after a side effect')
       },
     })
-    expect(failed.decision).toBe('BLOCK')
+    expect(failed.decision).toBe('ALLOW')
     expect(failed.executed).toBe(false)
+    expect(failed.executionKnowledge).toBe('unknown')
+    expect(failed.receipt?.execution?.outcome).toBe('unknown')
+    expect(failed.reason).not.toMatch(/nothing is recorded/)
     expect(failed.ruleId).toBe('execution')
     expect(calls).toBe(1)
     expect(ledger.statusOf(intent.nonce)).toBe('failed')

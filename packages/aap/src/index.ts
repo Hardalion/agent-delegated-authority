@@ -69,6 +69,7 @@ export {
 } from './protocol.js'
 export { validateDelegationNarrowing, verifyAuthority, verifyHumanApproval } from './validate.js'
 export {
+  ExecutionNotDispatchedError,
   runAuthorityPath,
   verifyProtocolReceipt,
   type ExecutionContext,

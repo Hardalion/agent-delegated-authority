@@ -10,6 +10,7 @@ import {
 import {
   applyMigrations,
   createPool,
+  serverHasDispatchCapacity,
   PostgresAtomicNonceBackend,
   PostgresExecutionLog,
   PostgresPendingStore,
@@ -248,6 +249,22 @@ export async function startGateway(): Promise<void> {
         res.end(JSON.stringify({ error: { code: 'schema', message: 'request rejected' } }))
         return
       }
+      const canDispatch = await serverHasDispatchCapacity(pool)
+      if (!canDispatch) {
+        events.emit({
+          type: 'storage.failure',
+          timestamp: new Date().toISOString(),
+          correlationId: `authorize_${replica}`,
+          reason: 'postgres connection capacity exhausted; execution was not dispatched',
+        })
+        res.writeHead(503, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({
+          error: { code: 'storage_exhausted', message: 'database connections exhausted; execution was not dispatched' },
+          executed: false,
+          executionState: 'not_dispatched',
+        }))
+        return
+      }
       const pin = registry.resolveByUri(policyUri)
       if (!pin) {
         res.writeHead(503, { 'content-type': 'application/json' })
@@ -301,6 +318,7 @@ export async function startGateway(): Promise<void> {
           policyHash: result.policyHash,
           executionHash: result.executionHash,
           executed: result.executed,
+          executionKnowledge: result.executionKnowledge ?? null,
           authenticated: result.authenticated,
           correlationId: result.correlationId,
           executionState: result.executionState,

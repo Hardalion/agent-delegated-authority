@@ -42,6 +42,52 @@ export function createPool(options: CreatePoolOptions): Pool {
   return pool
 }
 
+/**
+ * Whether a new dispatch may start. `reserve` non-superuser slots must remain
+ * free. `superuserReserved` is Postgres `superuser_reserved_connections`:
+ * ordinary roles are already refused once `used` reaches `max - superuserReserved`.
+ * A server at that ceiling refuses dispatch even when this process already holds
+ * a pooled connection and can still run a query.
+ */
+export function dispatchAllowed(
+  used: number,
+  maxConnections: number,
+  reserve = 2,
+  superuserReserved = 0,
+): boolean {
+  if (!Number.isInteger(used) || !Number.isInteger(maxConnections) || !Number.isInteger(superuserReserved)) {
+    return false
+  }
+  if (used < 0 || superuserReserved < 0 || reserve < 1) return false
+  const ordinarySlots = maxConnections - superuserReserved
+  if (ordinarySlots < reserve + 1) return false
+  return used + reserve <= ordinarySlots
+}
+
+export async function serverHasDispatchCapacity(pool: Pool, reserve = 2): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT count(*)::int AS used,
+              current_setting('max_connections')::int AS max_connections,
+              current_setting('superuser_reserved_connections')::int AS superuser_reserved
+         FROM pg_stat_activity`,
+    )
+    const row = result.rows[0] as {
+      used?: unknown
+      max_connections?: unknown
+      superuser_reserved?: unknown
+    } | undefined
+    return dispatchAllowed(
+      Number(row?.used),
+      Number(row?.max_connections),
+      reserve,
+      Number(row?.superuser_reserved),
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Apply statement_timeout at connect time so it cannot race a later query. */
 function appendStatementTimeout(connectionString: string, timeoutMs: number): string {
   const ms = Math.floor(timeoutMs)

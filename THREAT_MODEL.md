@@ -107,7 +107,8 @@ The property holds only when the operator's network gives the agent no other rou
 - Compromised private keys.
 - Identity provisioning and key rotation ceremonies (implementation-defined).
 - Availability / DoS.
-- Executor that returns after a partial external write and then throws: the path records `executed: false` and spends the nonce. Operators must make the write idempotent or reconcilable.
+- Executor that performs a side effect and then throws, times out, or is cancelled: the receipt is `ALLOW` with `executed: false` and `outcome: unknown`. The nonce is `failed` or left in flight, so the same intent is not dispatched again. That is not proof the external system did nothing, and it is not exactly-once across that system. The provider must be idempotent or reconcilable.
+- Process death after dispatch leaves the nonce in flight and produces no receipt. A later attempt of the same intent is `not_dispatched` for that attempt.
 - Executor that returns a value that cannot be hashed: the path still reports `executed: true` with `executionHash: unhashable` and no receipt body. The nonce is spent.
 
 ## Out of scope

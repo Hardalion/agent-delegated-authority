@@ -143,6 +143,9 @@ Present when the runtime presented a delegation chain. The signature covers thes
 - `REQUIRE_HUMAN` receipts must include `human` with `required=true`
 - `ALLOW` must not claim `human.status=pending`
 - `execution.executedAt` requires `execution.executed=true`
+- `execution.outcome=unknown` requires `decision.action=ALLOW` and `executed` not `true`
+- `execution.outcome=returned` requires `executed=true`
+- `execution.outcome=not_dispatched` requires `executed` not `true`
 
 A structurally valid receipt with a valid issuer signature means the issuer attested that body. It is not independent proof that a downstream system performed a side effect unless `execution.executed` is true and consistent with the decision.
 
@@ -152,8 +155,9 @@ A structurally valid receipt with a valid issuer signature means the issuer atte
 |-------|------|----------|-------------|
 | `targetSystem` | string | no | Downstream label. `resource/example` in the synthetic example |
 | `intentHash` | string | yes, when `execution` is present | Reference-profile hash of the unsigned intent presented at the execution boundary. SHA-256 over canonical JSON, 64 hex chars |
-| `executed` | boolean | no | Whether the governing runtime reported a side effect. Not an independent observation of an external system |
-| `executedAt` | ISO-8601 | no | Execution timestamp if committed |
+| `executed` | boolean | no | Whether the executor callback returned. Not an independent observation of an external system. `false` with `outcome: unknown` does not mean no side effect occurred |
+| `outcome` | `not_dispatched` \| `returned` \| `unknown` | no | What this runtime knows about dispatch. Absent on older receipts. `unknown` is valid only with `decision.action=ALLOW` and `executed` not `true` |
+| `executedAt` | ISO-8601 | no | Execution timestamp if the callback returned |
 
 ### 4.7 `HumanAttestation`
 
@@ -204,11 +208,11 @@ The reference profile implemented by `packages/audit-verify` is:
 | Gate `BLOCK` | Yes | `false` |
 | Gate `REQUIRE_HUMAN` (pause) | Yes | `false` |
 | Gate `DEFER` | Yes | `false` |
-| Gate `ALLOW`, then execution | Yes | `true` after execution |
-| Human approve, then execution | Yes. A new receipt with `human.status` approved | `true` |
+| Gate `ALLOW`, then execution | Yes | `true` only when `outcome` is `returned`. `false` with `outcome: unknown` when the callback did not return |
+| Human approve, then execution | Yes. A new receipt with `human.status` approved | `true` when the callback returned |
 | `SIMULATE` | Yes | `false` |
 
-Conforming runtimes do not perform a consequential side effect unless the governing receipt is `ALLOW` with `executed: true`.
+A conforming runtime does not dispatch when the decision is `BLOCK`, or an unresolved `REQUIRE_HUMAN` or `DEFER`. `executed: true` means the executor callback returned. `outcome: unknown` means a side effect may already have happened and the runtime does not know whether the external system committed it.
 
 ---
 

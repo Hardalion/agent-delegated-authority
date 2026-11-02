@@ -74,6 +74,39 @@ describe('ADAP-011 receipt semantic invariants', () => {
     expect(result.errors.join(' ')).toMatch(/executed/)
   })
 
+  it('accepts an authorized dispatch whose executor did not return', () => {
+    const unsigned = buildUnsignedAuthorizationReceipt(
+      base({
+        execution: { intentHash: 'd'.repeat(64), executed: false, outcome: 'unknown' },
+      }) as never
+    )
+    const result = verifyAuthorizationReceipt({ ...unsigned, signature: DUMMY_SIG })
+    expect(result.errors.join(' ')).not.toMatch(/unknown/)
+    expect(result.structureOk).toBe(true)
+  })
+
+  it('rejects unknown outcome that claims executed=true or a BLOCK decision', () => {
+    const claimed = buildUnsignedAuthorizationReceipt(
+      base({
+        execution: { intentHash: 'd'.repeat(64), executed: true, outcome: 'unknown' },
+      }) as never
+    )
+    expect(verifyAuthorizationReceipt({ ...claimed, signature: DUMMY_SIG }).structureOk).toBe(false)
+    const blocked = buildUnsignedAuthorizationReceipt(
+      base({
+        decision: {
+          action: 'BLOCK',
+          outcome: 'rejected',
+          reason: 'no',
+          alertSeverity: 'CRITICAL',
+          matched: false,
+        },
+        execution: { intentHash: 'd'.repeat(64), executed: false, outcome: 'unknown' },
+      }) as never
+    )
+    expect(verifyAuthorizationReceipt({ ...blocked, signature: DUMMY_SIG }).structureOk).toBe(false)
+  })
+
   it('rejects ALLOW with human.status=pending', () => {
     const unsigned = buildUnsignedAuthorizationReceipt(
       base({

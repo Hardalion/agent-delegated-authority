@@ -112,7 +112,9 @@ Principal (Ed25519 key in caller directory)
 | DB unavailable / CAS error | No execute; structured `BLOCK` / thrown store error treated as fail-closed |
 | Concurrent claim | One winner; loser `nonce_in_flight_or_used` |
 | Process crash after claim, before consume | Nonce remains in-flight/failed; retry needs new intent |
-| Executor throw | `executed: false`; nonce `failed` |
+| Executor throw, timeout, or cancel after dispatch | Decision stays `ALLOW`; `executed: false`; `outcome: unknown`; nonce `failed` or left in flight. Not a claim that no side effect occurred |
+| Connection capacity exhausted | HTTP 503 before `executeAuthorized`; `executed: false`; `executionState: not_dispatched` |
+| Process crash after dispatch | No receipt; nonce stays in flight; a retry of the same intent does not dispatch |
 | Executor return then seal failure | `executed: true`; `executionHash: unhashable` possible; nonce consumed |
 | Policy URI unknown | `BLOCK` |
 | Caller `now` | Rejected |

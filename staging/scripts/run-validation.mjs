@@ -251,9 +251,10 @@ async function main() {
   await compose(['exec', '-T', 'downstream', 'node', '-e', "fetch('http://127.0.0.1:8080/control/drop-next',{method:'POST'}).then(r=>process.stdout.write(String(r.status)))"])
   const unknownNonce = 'nonce-unknown'
   const unknown = await authorize(8443, unknownNonce, 'staging-allow@1')
-  check('outcome-unknown', unknown.json?.executionState === 'unknown' && unknown.json?.executed === true, {
+  check('outcome-unknown', unknown.json?.executionState === 'unknown' && unknown.json?.executed === false && unknown.json?.executionKnowledge === 'unknown', {
     executionState: unknown.json?.executionState ?? null,
     executed: unknown.json?.executed ?? null,
+    executionKnowledge: unknown.json?.executionKnowledge ?? null,
   })
   const retry = await authorize(8444, unknownNonce, 'staging-allow@1')
   check('unknown-retry-blocked', retry.json?.executed !== true, { decision: retry.json?.decision ?? null, status: retry.status })
@@ -301,16 +302,20 @@ async function main() {
   } catch (error) {
     duringPause = { status: 0, json: null, error: error instanceof Error ? error.message : 'timeout' }
   }
-  check('postgres-pause-fails-closed', duringPause.json?.executed !== true, {
+  const pauseNotDispatched = duringPause.status === 503
+    && duringPause.json?.executed === false
+    && duringPause.json?.executionState === 'not_dispatched'
+  check('postgres-pause-not-dispatched', pauseNotDispatched, {
     status: duringPause.status,
-    decision: duringPause.json?.decision ?? null,
+    executed: duringPause.json?.executed ?? null,
+    executionState: duringPause.json?.executionState ?? null,
     error: duringPause.error ?? null,
   })
   await compose(['unpause', 'postgres'])
   check('gateways-ready-after-unpause', await waitReady(), {})
   const retryPaused = await authorize(8444, 'nonce-paused', 'staging-allow@1')
   const pausedNonce = await psql("SELECT status FROM adap_nonces WHERE nonce = 'nonce-paused'")
-  check('paused-timeout-does-not-authorize-retry', retryPaused.json?.executed !== true, {
+  check('not-dispatched-pause-runs-once-after-recovery', pauseNotDispatched && retryPaused.json?.executed === true && pausedNonce.stdout.includes('consumed'), {
     retryStatus: retryPaused.status,
     retryExecuted: retryPaused.json?.executed ?? null,
     retryDecision: retryPaused.json?.decision ?? null,
@@ -406,10 +411,11 @@ async function main() {
     exhaustionError = error instanceof Error ? error.message : 'error'
   }
   const duringExhaustion = await authorize(8443, 'nonce-exhaust', 'staging-allow@1')
-  check('connection-exhaustion-not-allow', duringExhaustion.json?.executed !== true || exhaustionError != null, {
+  check('connection-exhaustion-not-dispatched', duringExhaustion.json?.executed !== true && duringExhaustion.json?.executionState === 'not_dispatched', {
     exhaustionError,
     status: duringExhaustion.status,
     executed: duringExhaustion.json?.executed ?? null,
+    executionState: duringExhaustion.json?.executionState ?? null,
   })
   for (const client of held) client.release()
   await exhaust.end()

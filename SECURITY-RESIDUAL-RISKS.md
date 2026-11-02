@@ -16,7 +16,7 @@ What remains after the final hardening pass. Ordered by severity for operators.
 | Item | Severity | Detail |
 | --- | --- | --- |
 | Receipt ≠ external observation | Medium | `executed: true` means the callback returned. It is not proof of an external system commit. |
-| Executor throw after partial write | Medium | Path records `executed: false` and spends the nonce. Downstream writes must be idempotent or reconcilable. |
+| Executor throw, timeout, or cancel after dispatch | Medium | Receipt is `ALLOW`, `executed: false`, `outcome: unknown`. The nonce is not reusable. This does not prove the external write did not commit. Provider idempotency is still required. |
 | Unhashable executor result | Low | Path reports `executed: true`, `executionHash: unhashable`, no receipt body; nonce consumed. |
 | Receipt chain truncation | Low | A withheld tail is still undetectable by a verifier that only sees the presented suffix. |
 | Cumulative spend | Low | `max_amount` is per intent. |

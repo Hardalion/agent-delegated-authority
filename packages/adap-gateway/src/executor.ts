@@ -1,4 +1,5 @@
 import {
+  ExecutionNotDispatchedError,
   runAuthorityPath,
   type ExecutionContext,
   type ProtocolResult,
@@ -50,10 +51,26 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
       const action = canonicalizeAction(ctx.action)
       const target = canonicalizeTarget(ctx.target)
       if (action !== canonicalizeAction(ctx.action) || target !== ctx.target) {
-        throw new Error('canonicalization mismatch')
+        throw new ExecutionNotDispatchedError('canonicalization mismatch')
       }
       // Reject confused-deputy: parameters frozen from authorized snapshot only
       const parameters = freezeAuthorizedParameters(ctx.parameters)
+      let handle: string
+      try {
+        handle = await input.broker.resolveHandle(action, target)
+      } catch {
+        events?.emit({
+          type: 'credential.broker_failure',
+          timestamp: new Date().toISOString(),
+          correlationId: corr,
+          tenantId: input.tenantId,
+          intentHash: ctx.intentHash,
+          reason: 'credential broker rejected the route',
+        })
+        throw new ExecutionNotDispatchedError('credential broker rejected the route')
+      }
+      // `started` means the broker call is about to leave this process.
+      // A failure before this point is not_dispatched, not an in-flight dispatch.
       events?.emit({
         type: 'execution.started',
         timestamp: new Date().toISOString(),
@@ -66,20 +83,6 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
         correlationId: corr,
       })
       executionState = 'started'
-      let handle: string
-      try {
-        handle = await input.broker.resolveHandle(action, target)
-      } catch (error) {
-        events?.emit({
-          type: 'credential.broker_failure',
-          timestamp: new Date().toISOString(),
-          correlationId: corr,
-          tenantId: input.tenantId,
-          intentHash: ctx.intentHash,
-          reason: 'credential broker rejected the route',
-        })
-        throw error
-      }
       downstream = await input.broker.execute(handle, {
         action,
         target,
@@ -122,13 +125,9 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
           intentHash: ctx.intentHash,
           reason: downstream.error,
         })
-        // Return, do not throw. The nonce is consumed so the same intent cannot be
-        // retried. The result states that the downstream outcome is unknown.
-        return {
-          executionState: 'unknown',
-          correlationId: corr,
-          error: downstream.error,
-        }
+        // The broker already left this process. Throwing records outcome unknown
+        // and fails the nonce. Returning would seal executed=true.
+        throw new Error('downstream_outcome_unknown')
       }
       events?.emit({
         type: downstream.status === 'accepted' ? 'execution.completed' : 'execution.completed',
@@ -144,8 +143,23 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
     },
   })
 
+  if (result.executionKnowledge === 'not_dispatched' && downstream == null) {
+    executionState = 'not_started'
+  }
+
+  if (result.executionKnowledge === 'unknown' && downstream?.status !== 'unknown') {
+    events?.emit({
+      type: 'execution.outcome_unknown',
+      timestamp: new Date().toISOString(),
+      correlationId: corr,
+      intentHash: result.intentHash,
+      reason: result.reason,
+    })
+    executionState = 'unknown'
+  }
+
   if (downstream?.status === 'unknown') {
-    // outcome_unknown already emitted
+    executionState = 'unknown'
   } else if (result.decision === 'ALLOW' && result.executed) {
     events?.emit({
       type: 'authorization.allow',

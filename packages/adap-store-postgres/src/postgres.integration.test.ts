@@ -18,7 +18,7 @@ import {
   sha256,
 } from 'adap'
 import type { Policy } from 'adap-policy'
-import { createPool } from './pool.js'
+import { createPool, serverHasDispatchCapacity } from './pool.js'
 import { applyMigrations } from './migrate.js'
 import { PostgresAtomicNonceBackend } from './nonce-backend.js'
 import { PostgresPendingStore } from './pending-store.js'
@@ -51,6 +51,15 @@ async function freshPool() {
 }
 
 describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
+  it('allows dispatch when the server is not at max_connections', async () => {
+    const pool = await freshPool()
+    try {
+      expect(await serverHasDispatchCapacity(pool)).toBe(true)
+    } finally {
+      await pool.end()
+    }
+  })
+
   it('CAS insert: only one of two concurrent creators wins', async () => {
     const pool = await freshPool()
     try {

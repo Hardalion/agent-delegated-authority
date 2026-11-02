@@ -21,6 +21,18 @@ import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
 import { authorizePresented, presentAuthority, verifyHumanApproval } from './validate.js'
 
+/**
+ * Thrown from an executor callback that has not called the external system.
+ * Any other exception after the callback starts is `unknown`: the runtime
+ * cannot prove that a side effect did not already happen.
+ */
+export class ExecutionNotDispatchedError extends Error {
+  constructor(message = 'execution was not dispatched') {
+    super(message)
+    this.name = 'ExecutionNotDispatchedError'
+  }
+}
+
 export interface ExecutionContext {
   readonly action: string
   readonly target: string
@@ -39,6 +51,13 @@ export interface ProtocolResult {
   readonly policyHash: string
   readonly executionHash: string
   readonly executed: boolean
+  /**
+   * Separate from `decision`. `not_dispatched` means this call did not make the external call.
+   * `returned` means the callback returned. `unknown` means the callback was entered and
+   * did not return; a side effect may already have happened. `executed: false` with
+   * `unknown` is not a claim that nothing happened.
+   */
+  readonly executionKnowledge?: 'not_dispatched' | 'returned' | 'unknown'
   /** False when the signature was not verified. Those results have no receipt. */
   readonly authenticated: boolean
   readonly result?: unknown
@@ -439,7 +458,8 @@ function sealOrClosed(
       delegationHash: fields.delegationHash,
       policyHash: fields.policyHash,
       executionHash: NONE_EXEC,
-      executed: false,
+      executed: fields.executed,
+      executionKnowledge: fields.executionKnowledge ?? (fields.executed ? 'returned' : 'not_dispatched'),
       authenticated: true,
     }
   }
@@ -541,21 +561,46 @@ async function executeBound(
   let result: unknown
   try {
     result = await input.execute(ctx)
-  } catch {
-    await input.ledger.fail(input.intent.nonce, bound.intentHash)
-    return seal(input, {
-      decision: 'BLOCK',
-      ruleId: 'execution',
-      reason: 'executor failed; nothing is recorded as executed',
-      alertSeverity: 'CRITICAL',
-      matched: false,
-      intentHash: bound.intentHash,
-      delegationHash: bound.delegationHash,
-      policyHash: bound.policyHash,
-      executed: false,
-      failureMode: 'SYSTEM_ERROR',
-      principalId: bound.principalId,
-    })
+  } catch (error) {
+    const knowledge = error instanceof ExecutionNotDispatchedError ? 'not_dispatched' : 'unknown'
+    try {
+      await input.ledger.fail(input.intent.nonce, bound.intentHash)
+    } catch {
+      // The claim already excludes a second dispatch. A failed terminal write
+      // leaves the nonce in flight, which also blocks a retry.
+    }
+    const reason = knowledge === 'not_dispatched'
+      ? 'executor stopped before the external call'
+      : 'executor did not return; an external side effect may already have occurred'
+    try {
+      return seal(input, {
+        decision: 'ALLOW',
+        ruleId: 'execution',
+        reason,
+        alertSeverity: 'CRITICAL',
+        matched: bound.decision.matched,
+        intentHash: bound.intentHash,
+        delegationHash: bound.delegationHash,
+        policyHash: bound.policyHash,
+        executed: false,
+        executionKnowledge: knowledge,
+        failureMode: 'SYSTEM_ERROR',
+        principalId: bound.principalId,
+      })
+    } catch {
+      return {
+        decision: 'ALLOW',
+        ruleId: 'execution',
+        reason,
+        intentHash: bound.intentHash,
+        delegationHash: bound.delegationHash,
+        policyHash: bound.policyHash,
+        executionHash: NONE_EXEC,
+        executed: false,
+        executionKnowledge: knowledge,
+        authenticated: true,
+      }
+    }
   }
 
   // The callback returned. A later store or seal failure does not rewrite that as
@@ -584,6 +629,7 @@ async function executeBound(
       delegationHash: bound.delegationHash,
       policyHash: bound.policyHash,
       executed: true,
+      executionKnowledge: 'returned',
       result,
       failureMode: 'NONE',
       principalId: bound.principalId,
@@ -608,6 +654,7 @@ async function executeBound(
       policyHash: bound.policyHash,
       executionHash: UNHASHABLE_EXEC,
       executed: true,
+      executionKnowledge: 'returned',
       authenticated: true,
       result,
     }
@@ -626,6 +673,7 @@ function seal(
     readonly delegationHash: string
     readonly policyHash: string
     readonly executed: boolean
+    readonly executionKnowledge?: 'not_dispatched' | 'returned' | 'unknown'
     readonly result?: unknown
     readonly failureMode: 'NONE' | 'RULE_VIOLATION' | 'SYSTEM_ERROR'
     readonly principalId?: string
@@ -634,6 +682,7 @@ function seal(
 ): ProtocolResult {
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
   const policy = input.policy
+  const executionKnowledge = fields.executionKnowledge ?? (fields.executed ? 'returned' : 'not_dispatched')
   const executionHash = fields.executed ? sha256(fields.result ?? null) : NONE_EXEC
   const drafted = emitAuthorizationReceipt({
     agentId: input.intent.actor,
@@ -671,6 +720,7 @@ function seal(
       executed: fields.executed,
       executedAt: fields.executed ? decidedAt : undefined,
       intentHash: fields.intentHash,
+      outcome: executionKnowledge,
     },
     human: fields.human,
     failureMode: fields.failureMode,
@@ -688,6 +738,7 @@ function seal(
     policyHash: fields.policyHash,
     executionHash,
     executed: fields.executed,
+    executionKnowledge,
     authenticated: true,
     result: fields.result,
     receipt,
