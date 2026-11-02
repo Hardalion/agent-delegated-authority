@@ -27,8 +27,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit and integration tests
         run: pnpm test
+
+      - name: Security adversarial regression
+        run: pnpm test:security
 
       - name: Build
         run: pnpm build
@@ -44,3 +47,55 @@ jobs:
 
       - name: Attack suite
         run: pnpm attacks
+
+      - name: Dependency audit
+        # High/critical findings fail the job. No suppressions are registered.
+        # Re-run with `pnpm audit --audit-level high` locally before raising the floor.
+        run: pnpm audit --audit-level high
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for private key material
+        run: |
+          if grep -RInE 'BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY' --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git . ; then
+            echo 'Private key material found'
+            exit 1
+          fi
+          echo 'No private key PEM blocks found'
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: adap
+          POSTGRES_PASSWORD: adap
+          POSTGRES_DB: adap
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U adap"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI fixture only. Not a production credential.
+      ADAP_PG_URL: postgresql://adap:adap@127.0.0.1:5432/adap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build authority packages
+        run: pnpm --filter adap build && pnpm --filter adap-store-postgres build
+      - name: Postgres integration
+        run: pnpm test:integration:postgres

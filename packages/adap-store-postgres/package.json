@@ -1,0 +1,51 @@
+{
+  "name": "adap-store-postgres",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "PostgreSQL atomic nonce and pending-approval adapters for ADAP production deployments",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run src/postgres.integration.test.ts",
+    "migrate": "node dist/migrate-cli.js"
+  },
+  "dependencies": {
+    "adap": "workspace:*",
+    "adap-policy": "workspace:*",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hardalion/agent-delegated-authority.git",
+    "directory": "packages/adap-store-postgres"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "adap-gateway",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Reference ADAP execution gateway with credential isolation boundary",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "adap": "workspace:*",
+    "adap-policy": "workspace:*",
+    "adap-store-postgres": "workspace:*",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hardalion/agent-delegated-authority.git",
+    "directory": "packages/adap-gateway"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,7 +1,13 @@
 node_modules/
 dist/
+.demo/
 coverage/
 *.tsbuildinfo
 .DS_Store
 .vite/
 oss/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
