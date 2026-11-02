@@ -25,10 +25,19 @@ export const PolicySchema = z.object({
   version: z.string().min(1),
   policyName: policyIdSchema,
   description: z.string().optional(),
-  targetAgents: z.array(z.string()).min(1),
+  targetAgents: z
+    .array(
+      z
+        .string()
+        .min(1, 'targetAgents entries must be non-empty')
+        .refine((value) => value.trim() === value && !/\s/.test(value), {
+          message: 'targetAgents entries must not contain whitespace',
+        })
+    )
+    .min(1),
   rules: z.array(ruleSchema).min(1),
-  /** When no rule matches. Omit for ALLOW. Set BLOCK to fail closed. */
-  defaultAction: ruleActionSchema.optional(),
+  /** Required. When no rule matches, this action is the decision. Missing is not ALLOW. */
+  defaultAction: ruleActionSchema,
 })
 
 export type Policy = z.infer<typeof PolicySchema>

@@ -1,5 +1,6 @@
 import type { KeyObject } from 'node:crypto'
 import { exportPublicKey, generateEd25519, signObject } from './crypto.js'
+import { assertValidIdentity } from './runtime-validate.js'
 
 export type Decision = 'ALLOW' | 'REQUIRE_HUMAN' | 'BLOCK'
 
@@ -47,11 +48,19 @@ export interface SignedIntent extends IntentPayload {
   readonly signature: string
 }
 
+/**
+ * Human approval payload. Bound to the exact authorization context that produced
+ * REQUIRE_HUMAN — not merely an intent hash.
+ */
 export interface HumanApprovalPayload {
   readonly intent_hash: string
   readonly approver_id: string
   readonly approved_at: string
   readonly decision: 'APPROVE'
+  readonly agent_id: string
+  readonly delegation_chain_hash: string
+  readonly policy_content_hash: string
+  readonly matched_rule_id?: string
 }
 
 export interface HumanApproval extends HumanApprovalPayload {
@@ -73,6 +82,7 @@ export interface Identity {
 }
 
 export function createIdentity(id: string): Identity {
+  assertValidIdentity(id, 'identity.id')
   const keys = generateEd25519()
   return { id, publicKey: exportPublicKey(keys.publicKey), privateKey: keys.privateKey }
 }

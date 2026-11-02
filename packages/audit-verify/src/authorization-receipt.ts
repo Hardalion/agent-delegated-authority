@@ -175,15 +175,27 @@ export function canonicalReceiptJson(value: unknown): string {
   return JSON.stringify(sortKeys(value))
 }
 
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys)
   if (value != null && typeof value === 'object') {
+    const proto = Object.getPrototypeOf(value)
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error('canonicalReceiptJson rejects objects with a non-plain prototype')
+    }
     const record = value as Record<string, unknown>
-    const sorted: Record<string, unknown> = {}
+    const sorted: Record<string, unknown> = Object.create(null)
     for (const key of Object.keys(record).sort()) {
+      if (DANGEROUS_KEYS.has(key)) {
+        throw new Error(`canonicalReceiptJson rejects dangerous key: ${key}`)
+      }
       sorted[key] = sortKeys(record[key])
     }
-    return sorted
+    return { ...sorted }
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new Error('canonicalReceiptJson rejects non-finite numbers')
   }
   return value
 }
@@ -409,7 +421,91 @@ function validateStructure(receipt: unknown): string[] {
     }
   }
 
+  errors.push(...validateSemanticInvariants(r))
+
   return errors
+}
+
+/**
+ * Cross-field semantic invariants. A structurally well-formed receipt can still be
+ * contradictory (e.g. BLOCK + outcome allowed + executed true).
+ */
+function validateSemanticInvariants(r: Record<string, unknown>): string[] {
+  const errors: string[] = []
+  const decision = r.decision as Record<string, unknown> | undefined
+  const execution = r.execution as Record<string, unknown> | undefined
+  const human = r.human as Record<string, unknown> | undefined
+  if (!decision || typeof decision !== 'object') return errors
+
+  const action = decision.action as AuthorizationReceiptAction
+  const outcome = decision.outcome as AuthorizationReceiptOutcome
+  const expectedOutcome = normalizeAuthorizationOutcomeSafe(action)
+  if (expectedOutcome && outcome !== expectedOutcome) {
+    errors.push(`decision.outcome '${outcome}' is inconsistent with action '${action}'`)
+  }
+
+  const executed = execution?.executed === true
+  if (executed) {
+    if (action !== 'ALLOW') {
+      errors.push('execution.executed=true is only valid with decision.action=ALLOW')
+    }
+    if (outcome === 'rejected' || outcome === 'pending_human' || outcome === 'deferred') {
+      errors.push('execution.executed=true is inconsistent with a non-allowed outcome')
+    }
+    if (action === 'REQUIRE_HUMAN' && human?.status !== 'approved') {
+      errors.push('REQUIRE_HUMAN execution requires human.status=approved')
+    }
+  }
+
+  if (action === 'BLOCK' && executed) {
+    errors.push('BLOCK receipts must not claim execution')
+  }
+  if (action === 'REQUIRE_HUMAN') {
+    if (executed) errors.push('unresolved REQUIRE_HUMAN must not claim execution')
+    if (human != null && human.required !== true) {
+      errors.push('REQUIRE_HUMAN receipts must set human.required=true')
+    }
+    if (human?.status === 'approved' && outcome === 'pending_human' && !executed) {
+      // Approved-but-not-yet-executed pause receipts are unusual; allow pending_human only when not approved.
+    }
+    if (!human) {
+      errors.push('REQUIRE_HUMAN receipts must include human attestation')
+    }
+  }
+  if (action === 'ALLOW' && human?.status === 'pending') {
+    errors.push('ALLOW receipts must not claim human.status=pending')
+  }
+  if (action === 'DEFER' && executed) {
+    errors.push('DEFER receipts must not claim execution')
+  }
+  if (action === 'SIMULATE' && executed) {
+    errors.push('SIMULATE receipts must not claim live execution')
+  }
+
+  if (execution != null && typeof execution.executedAt === 'string' && execution.executed !== true) {
+    errors.push('execution.executedAt requires execution.executed=true')
+  }
+
+  return errors
+}
+
+function normalizeAuthorizationOutcomeSafe(
+  action: AuthorizationReceiptAction
+): AuthorizationReceiptOutcome | undefined {
+  switch (action) {
+    case 'ALLOW':
+      return 'allowed'
+    case 'BLOCK':
+      return 'rejected'
+    case 'REQUIRE_HUMAN':
+      return 'pending_human'
+    case 'DEFER':
+      return 'deferred'
+    case 'SIMULATE':
+      return 'allowed'
+    default:
+      return undefined
+  }
 }
 
 /** Ed25519 check of `signature` over the unsigned receipt. The argument is the issuer SPKI public key, base64url. */

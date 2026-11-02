@@ -18,6 +18,7 @@ describe('adap-policy CLI', () => {
     const decision = await runPolicyEval({
       toolName: 'apply',
       toolArgs: { amount: 800 },
+      agentRole: 'agt_reader',
     })
     expect(decision.action).toBe('BLOCK')
     expect(decision.ruleId).toBe('block_over_cap')
@@ -27,6 +28,7 @@ describe('adap-policy CLI', () => {
     const decision = await runPolicyEval({
       toolName: 'read',
       policyUri: 'basic-agent-authority@1.0.0',
+      agentRole: 'agt_reader',
     })
     expect(decision.action).toBe('ALLOW')
   })

@@ -1,4 +1,8 @@
+import { FixedClock } from './clock.js'
+import { sha256 } from './crypto.js'
 import { NonceLedger } from './nonce.js'
+import { PendingAuthorizationStore } from './pending.js'
+import { ImmutablePolicyResolver } from './policy-resolver.js'
 import { runAuthorityPath, type ExecutionContext, type ProtocolResult } from './path.js'
 import { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-policy.js'
 import {
@@ -6,6 +10,7 @@ import {
   signApproval,
   signDelegation,
   signIntent,
+  unsignedDelegation,
   type Constraints,
   type SignedDelegation,
 } from './protocol.js'
@@ -52,6 +57,9 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
     [principal, agentA, agentB, signer].map((identity) => [identity.id, identity.publicKey])
   )
   const ledger = new NonceLedger()
+  const pendingStore = new PendingAuthorizationStore()
+  const policyResolver = new ImmutablePolicyResolver()
+  policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
   const contexts: ExecutionContext[] = []
   let executionCount = 0
 
@@ -103,8 +111,10 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
     directory,
     policy: BASIC_AGENT_AUTHORITY,
     policyUri: BASIC_AGENT_AUTHORITY_URI,
-    now,
+    clock: new FixedClock(now),
     ledger,
+    pendingStore,
+    policyResolver,
     signer,
     execute: (ctx) => {
       executionCount += 1
@@ -146,8 +156,10 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
     directory,
     policy: BASIC_AGENT_AUTHORITY,
     policyUri: BASIC_AGENT_AUTHORITY_URI,
-    now,
+    clock: new FixedClock(now),
     ledger,
+    pendingStore,
+    policyResolver,
     signer,
     approval: signApproval(
       {
@@ -155,6 +167,10 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
         approver_id: principal.id,
         approved_at: issued,
         decision: 'APPROVE',
+        agent_id: agentA.id,
+        delegation_chain_hash: sha256([unsignedDelegation(root)]),
+        policy_content_hash: applyPending.policyHash,
+        matched_rule_id: applyPending.ruleId,
       },
       principal
     ),
@@ -211,8 +227,10 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
       directory,
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
-      now,
+      clock: new FixedClock(now),
       ledger,
+      pendingStore,
+      policyResolver,
       signer,
     })
   }

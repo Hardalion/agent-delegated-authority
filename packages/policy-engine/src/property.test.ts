@@ -32,6 +32,7 @@ function policyWithRules(
     version: '1.0.0',
     policyName: 'pbt-generated-policy',
     targetAgents: ['*'],
+    defaultAction: 'BLOCK',
     rules: rules.map((r) => ({
       ...r,
       alertSeverity: r.action === 'BLOCK' ? 'CRITICAL' : 'MEDIUM',
@@ -64,11 +65,13 @@ describe('policy property-based CI', () => {
           policy,
           toolName,
           toolArgs: { amount },
+          agentRole: 'agt_pbt',
         })
         const b = evaluateToolCall({
           policy,
           toolName,
           toolArgs: { amount },
+          agentRole: 'agt_pbt',
         })
         expect(a).toEqual(b)
       }),
@@ -90,7 +93,7 @@ describe('policy property-based CI', () => {
               condition: `tool.name == '${toolName}'`,
             }))
           )
-          const decision = evaluateToolCall({ policy, toolName, toolArgs: {} })
+          const decision = evaluateToolCall({ policy, toolName, toolArgs: {}, agentRole: 'agt_pbt' })
           const expected = actions.reduce((best, cur) =>
             PRIORITY[cur] > PRIORITY[best] ? cur : best
           )
@@ -121,6 +124,7 @@ describe('policy property-based CI', () => {
           policy,
           toolName: 'apply',
           toolArgs: { amount },
+          agentRole: 'agt_pbt',
         })
         expect(d.action).toBe('BLOCK')
       }),
@@ -156,6 +160,7 @@ describe('policy property-based CI', () => {
           policy: 'basic-agent-authority',
           toolName: 'apply',
           toolArgs: { amount },
+          agentRole: 'agt_pbt',
         })
         expect(d.action).toBe('BLOCK')
         expect(d.ruleId).toBe('block_over_cap')
@@ -167,6 +172,7 @@ describe('policy property-based CI', () => {
       policy: 'basic-agent-authority',
       toolName: 'read',
       toolArgs: {},
+      agentRole: 'agt_pbt',
     })
     expect(allowed.action).toBe('ALLOW')
     expect(allowed.ruleId).toBe('read_allow')
@@ -177,6 +183,7 @@ describe('policy property-based CI', () => {
       policy: 'basic-agent-authority',
       toolName: 'ping',
       toolArgs: {},
+      agentRole: 'agt_pbt',
     })
     expect(d.action).toBe('BLOCK')
     expect(d.matched).toBe(false)

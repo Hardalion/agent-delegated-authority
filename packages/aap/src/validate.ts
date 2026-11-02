@@ -1,5 +1,16 @@
-import { importPublicKey, verifyObject } from './crypto.js'
+import { canonicalJson, importPublicKey, sha256, verifyObject } from './crypto.js'
 import { AuthorityError } from './errors.js'
+import { assertAmountWithinLimit, assertCanonicalAmount, isMaxAmountKey } from './amount.js'
+import { hasOwn, ownEntries } from './safe-object.js'
+import {
+  assertCanonicalCurrency,
+  assertCanonicalTarget,
+  assertValidIdentity,
+  normalizeConstraints,
+  validateHumanApproval,
+  validateSignedDelegation,
+  validateSignedIntent,
+} from './runtime-validate.js'
 import type {
   Capability,
   Constraints,
@@ -9,6 +20,7 @@ import type {
   SignedIntent,
 } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
+import { cloneSignedDelegation, cloneSignedIntent, deepFreeze } from './snapshot.js'
 
 export function assertNotExpired(issuedAt: string, expiresAt: string, now = new Date()): void {
   const issued = Date.parse(issuedAt)
@@ -23,8 +35,7 @@ export function assertNotExpired(issuedAt: string, expiresAt: string, now = new 
 }
 
 function targetCovered(granted: string | undefined, requested: string | undefined): boolean {
-  if (granted === undefined) return true
-  if (requested === undefined) return false
+  if (granted === undefined || requested === undefined) return false
   if (granted === requested) return true
   if (granted.endsWith('/*')) {
     const prefix = granted.slice(0, -1)
@@ -64,17 +75,22 @@ export function validateDelegationNarrowing(parent: SignedDelegation, child: Sig
     }
   }
 
-  assertConstraintsNarrow(parent.constraints, child.constraints)
+  assertConstraintsNarrow(
+    normalizeConstraints(parent.constraints, 'parent.constraints'),
+    normalizeConstraints(child.constraints, 'child.constraints')
+  )
 }
 
 function assertConstraintsNarrow(parent: Constraints, child: Constraints): void {
-  for (const [key, parentVal] of Object.entries(parent)) {
-    if (!(key in child)) {
+  for (const [key, parentVal] of ownEntries(parent as Record<string, unknown>)) {
+    if (!hasOwn(child, key)) {
       throw new AuthorityError('narrowing', `child drops constraint ${key}`, true)
     }
-    const childVal = child[key]
-    if (typeof parentVal === 'number' && typeof childVal === 'number' && (key === 'max_amount' || key.startsWith('max_'))) {
-      if (childVal > parentVal) {
+    const childVal = (child as Record<string, unknown>)[key]
+    if (typeof parentVal === 'number' && typeof childVal === 'number' && isMaxAmountKey(key)) {
+      const parentAmount = assertCanonicalAmount(parentVal, `parent.${key}`)
+      const childAmount = assertCanonicalAmount(childVal, `child.${key}`)
+      if (childAmount > parentAmount) {
         throw new AuthorityError('narrowing', `child raises ${key}`, true)
       }
       continue
@@ -86,6 +102,8 @@ function assertConstraintsNarrow(parent: Constraints, child: Constraints): void 
 }
 
 export function assertIntentWithinDelegation(intent: IntentPayload, delegation: SignedDelegation): void {
+  assertValidIdentity(intent.actor, 'intent.actor')
+  assertCanonicalTarget(intent.target)
   if (intent.actor !== delegation.subject) {
     throw new AuthorityError('actor', 'intent actor does not match terminal delegate', true)
   }
@@ -100,7 +118,8 @@ export function assertIntentWithinDelegation(intent: IntentPayload, delegation: 
   if (!covered) {
     throw new AuthorityError('capability', `capability not granted: ${intent.action}`, true)
   }
-  assertParametersWithin(intent.action, intent.parameters, delegation.constraints)
+  const constraints = normalizeConstraints(delegation.constraints, 'delegation.constraints')
+  assertParametersWithin(intent.action, intent.parameters, constraints)
 }
 
 function assertParametersWithin(
@@ -108,19 +127,28 @@ function assertParametersWithin(
   parameters: Readonly<Record<string, unknown>>,
   constraints: Constraints
 ): void {
-  for (const [key, bound] of Object.entries(constraints)) {
+  for (const [key, bound] of ownEntries(constraints as Record<string, unknown>)) {
     if (key === 'max_amount') {
-      const amount = parameters.amount
+      const amount = hasOwn(parameters, 'amount') ? parameters.amount : undefined
       if (amount === undefined) {
         if (action === 'read' || action === 'search') continue
         throw new AuthorityError('constraint', 'amount is required', true)
       }
-      if (typeof bound !== 'number' || typeof amount !== 'number' || amount > bound) {
-        throw new AuthorityError('constraint', 'amount exceeds delegated max_amount', true)
+      assertAmountWithinLimit(amount, bound, 'parameters.amount')
+      continue
+    }
+    if (key === 'currency') {
+      const presented = parameters[key]
+      const expected = assertCanonicalCurrency(bound, 'constraints.currency')
+      if (presented === undefined) {
+        throw new AuthorityError('constraint', 'currency is required', true)
+      }
+      if (assertCanonicalCurrency(presented, 'parameters.currency') !== expected) {
+        throw new AuthorityError('constraint', 'parameter currency is outside the delegation', true)
       }
       continue
     }
-    if (parameters[key] !== bound) {
+    if (!hasOwn(parameters, key) || parameters[key] !== bound) {
       throw new AuthorityError('constraint', `parameter ${key} is outside the delegation`, true)
     }
   }
@@ -146,6 +174,14 @@ function assertDelegationShape(chain: readonly SignedDelegation[], intent: Signe
   }
 }
 
+function assertCanonicalForm(value: unknown, path: string): void {
+  try {
+    canonicalJson(value)
+  } catch {
+    throw new AuthorityError('canonicalization', `${path} could not be canonicalized`, false)
+  }
+}
+
 function verifySignatures(
   chain: readonly SignedDelegation[],
   intent: SignedIntent,
@@ -166,26 +202,74 @@ function verifySignatures(
   }
 }
 
-export function verifyAuthority(input: {
+/**
+ * Clone the presented chain and intent, then verify signatures.
+ * Failures here are unauthenticated: the nonce must not be consumed.
+ * Semantic amount and delegation checks are `authorizePresented`.
+ */
+export function presentAuthority(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
   readonly directory: ReadonlyMap<string, string>
+}): { readonly chain: SignedDelegation[]; readonly intent: SignedIntent } {
+  if (!Array.isArray(input.chain)) {
+    throw new AuthorityError('schema', 'delegation chain must be an array', false)
+  }
+  const chain = input.chain.map((delegation, index) =>
+    cloneSignedDelegation(delegation, `chain[${index}]`)
+  )
+  const intent = cloneSignedIntent(input.intent)
+  assertDelegationShape(chain, intent)
+  chain.forEach((delegation, index) => {
+    assertCanonicalForm(unsignedDelegation(delegation), `chain[${index}]`)
+  })
+  assertCanonicalForm(unsignedIntent(intent), 'intent')
+  verifySignatures(chain, intent, input.directory)
+  return { chain, intent }
+}
+
+/** Semantic checks for an already-authenticated presentation. Failures are authenticated. */
+export function authorizePresented(input: {
+  readonly chain: readonly SignedDelegation[]
+  readonly intent: SignedIntent
   readonly now: Date
 }): VerifiedAuthority {
-  const { chain, intent, directory, now } = input
-  assertDelegationShape(chain, intent)
-  verifySignatures(chain, intent, directory)
-
+  const { chain, intent, now } = input
   try {
-    verifyAuthenticated(chain, intent, now)
+    const validatedIntent = validateSignedIntent(intent)
+    const validatedChain = chain.map((delegation, index) =>
+      validateSignedDelegation(delegation, `chain[${index}]`)
+    )
+    if (sha256(unsignedIntent(validatedIntent)) !== sha256(unsignedIntent(intent))) {
+      throw new AuthorityError('intent', 'normalized intent diverges from the signed payload', true)
+    }
+    if (sha256(validatedChain.map(unsignedDelegation)) !== sha256(chain.map(unsignedDelegation))) {
+      throw new AuthorityError('chain', 'normalized delegation diverges from the signed payload', true)
+    }
+    verifyAuthenticated(validatedChain, validatedIntent, now)
+    deepFreeze(validatedIntent)
+    deepFreeze(validatedChain)
+    return {
+      chain: validatedChain,
+      intent: validatedIntent,
+      intentPayload: unsignedIntent(validatedIntent),
+    }
   } catch (error) {
     if (error instanceof AuthorityError && !error.authenticated) {
       throw new AuthorityError(error.code, error.message, true)
     }
     throw error
   }
+}
 
-  return { chain, intent, intentPayload: unsignedIntent(intent) }
+export function verifyAuthority(input: {
+  readonly chain: readonly SignedDelegation[]
+  readonly intent: SignedIntent
+  readonly directory: ReadonlyMap<string, string>
+  readonly now: Date
+}): VerifiedAuthority {
+  const presented = presentAuthority(input)
+  return authorizePresented({ chain: presented.chain, intent: presented.intent, now: input.now })
 }
 
 function verifyAuthenticated(chain: readonly SignedDelegation[], intent: SignedIntent, now: Date): void {
@@ -214,11 +298,30 @@ export function verifyHumanApproval(input: {
   readonly approval: HumanApproval
   readonly intentHash: string
   readonly principalId: string
+  readonly agentId: string
+  readonly delegationChainHash: string
+  readonly policyContentHash: string
+  readonly matchedRuleId?: string
   readonly intent: IntentPayload
   readonly directory: ReadonlyMap<string, string>
   readonly now: Date
+  /** When set, duplicate approval of the same binding is rejected. */
+  readonly seenApprovalKeys?: Set<string>
 }): void {
-  const { approval, intentHash, principalId, intent, directory, now } = input
+  const approval = validateHumanApproval(input.approval)
+  const {
+    intentHash,
+    principalId,
+    agentId,
+    delegationChainHash,
+    policyContentHash,
+    matchedRuleId,
+    intent,
+    directory,
+    now,
+    seenApprovalKeys,
+  } = input
+
   if (approval.decision !== 'APPROVE') {
     throw new AuthorityError('approval', 'approval decision is not APPROVE', true)
   }
@@ -228,6 +331,36 @@ export function verifyHumanApproval(input: {
   if (approval.intent_hash !== intentHash) {
     throw new AuthorityError('approval', 'approval is not bound to this intent', true)
   }
+  if (approval.agent_id !== agentId) {
+    throw new AuthorityError('approval', 'approval is not bound to this agent', true)
+  }
+  if (approval.delegation_chain_hash !== delegationChainHash) {
+    throw new AuthorityError('approval', 'approval is not bound to this delegation chain', true)
+  }
+  if (approval.policy_content_hash !== policyContentHash) {
+    throw new AuthorityError('approval', 'approval is not bound to this policy', true)
+  }
+  if (
+    matchedRuleId != null &&
+    approval.matched_rule_id != null &&
+    approval.matched_rule_id !== matchedRuleId
+  ) {
+    throw new AuthorityError('approval', 'approval is not bound to this policy rule', true)
+  }
+
+  const approvalKey = [
+    approval.intent_hash,
+    approval.approver_id,
+    approval.agent_id,
+    approval.delegation_chain_hash,
+    approval.policy_content_hash,
+    approval.approved_at,
+    approval.signature,
+  ].join('|')
+  if (seenApprovalKeys?.has(approvalKey)) {
+    throw new AuthorityError('approval', 'duplicate approval rejected', true)
+  }
+
   const approverKey = directory.get(approval.approver_id)
   const { signature, ...payload } = approval
   if (!approverKey || !verifyObject(payload, signature, importPublicKey(approverKey))) {
@@ -239,4 +372,7 @@ export function verifyHumanApproval(input: {
   if (!Number.isFinite(approvedAt) || approvedAt > now.getTime() || approvedAt < issued || approvedAt >= expires) {
     throw new AuthorityError('approval', 'approval is outside the intent lifetime', true)
   }
+  // Record only after the signature and lifetime checks. A forged approval must
+  // not reserve the slot of a later valid approval with the same binding fields.
+  seenApprovalKeys?.add(approvalKey)
 }

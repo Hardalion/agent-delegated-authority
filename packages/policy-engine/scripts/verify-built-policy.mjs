@@ -8,6 +8,7 @@ const readCall = evaluateToolCall({
   policy: CANONICAL_BASIC_AGENT_AUTHORITY,
   toolName: 'read',
   toolArgs: {},
+  agentRole: 'agt_reader',
 })
 
 if (readCall.action !== 'ALLOW' || readCall.ruleId !== 'read_allow') {

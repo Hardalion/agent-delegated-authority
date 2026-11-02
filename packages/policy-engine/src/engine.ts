@@ -4,6 +4,7 @@ import { PolicySchema, type Policy, type PolicyRule } from './schema.js'
 import {
   buildEvaluationContext,
   evaluateCondition,
+  NonFiniteComparisonError,
   type EvaluationContext,
 } from './evaluator.js'
 import { BUNDLED_POLICIES, normalizePolicyReference } from './policies/bundled.js'
@@ -65,9 +66,23 @@ export function listBundledPolicyNames(): string[] {
   return Object.keys(getBundledPolicies())
 }
 
-function agentMatchesPolicy(policy: Policy, agentRole?: string): boolean {
+const AGENT_ROLE_PATTERN = /^[A-Za-z0-9:_./@-]{1,128}$/
+const POLICY_ACTIONS = new Set(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN', 'DEFER', 'SIMULATE'])
+
+/** A present identity. Omitted, empty, whitespace, and malformed values are not in scope. */
+export function isWellFormedAgentRole(agentRole: unknown): agentRole is string {
+  return (
+    typeof agentRole === 'string' &&
+    AGENT_ROLE_PATTERN.test(agentRole) &&
+    agentRole.trim() === agentRole &&
+    !/\s/.test(agentRole)
+  )
+}
+
+function agentMatchesPolicy(policy: Policy, agentRole: unknown): boolean {
+  if (!isWellFormedAgentRole(agentRole)) return false
+  if (policy.targetAgents.some((entry) => entry.length === 0 || /\s/.test(entry))) return false
   if (policy.targetAgents.includes('*')) return true
-  if (!agentRole) return true
   return policy.targetAgents.includes(agentRole)
 }
 
@@ -96,7 +111,22 @@ export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
   const matches: PolicyDecision[] = []
 
   for (const rule of policy.rules) {
-    if (evaluateCondition(rule.condition, input.context)) {
+    let matched = false
+    try {
+      matched = evaluateCondition(rule.condition, input.context)
+    } catch (error) {
+      if (error instanceof NonFiniteComparisonError) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'amount_not_finite',
+          reason: 'non-finite amount cannot bypass a numeric comparison',
+          alertSeverity: 'CRITICAL',
+        }
+      }
+      throw error
+    }
+    if (matched) {
       matches.push({
         matched: true,
         action: rule.action,
@@ -108,7 +138,16 @@ export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
   }
 
   if (matches.length === 0) {
-    const action = policy.defaultAction ?? 'ALLOW'
+    const action = policy.defaultAction
+    if (typeof action !== 'string' || !POLICY_ACTIONS.has(action)) {
+      return {
+        matched: false,
+        action: 'BLOCK',
+        ruleId: 'default_action_required',
+        reason: 'policy defaultAction is missing or invalid',
+        alertSeverity: 'CRITICAL',
+      }
+    }
     return {
       matched: false,
       action,

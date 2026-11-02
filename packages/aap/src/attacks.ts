@@ -1,13 +1,22 @@
 import type { Policy } from 'adap-policy'
+import { FixedClock } from './clock.js'
 import { sha256, importPublicKey } from './crypto.js'
 import { INJECTION_NOTE } from './launch-proof.js'
 import { NonceLedger } from './nonce.js'
-import { verifyProtocolReceipt, runAuthorityPath, type ProtocolResult } from './path.js'
+import { PendingAuthorizationStore } from './pending.js'
+import { ImmutablePolicyResolver } from './policy-resolver.js'
+import {
+  authenticatedReceipt,
+  verifyProtocolReceipt,
+  runAuthorityPath,
+  type ProtocolResult,
+} from './path.js'
 import {
   createIdentity,
   signApproval,
   signDelegation,
   signIntent,
+  unsignedDelegation,
   type Identity,
   type SignedDelegation,
   type SignedIntent,
@@ -193,18 +202,24 @@ async function executeCase(input: {
   readonly intent: SignedIntent
   readonly now?: Date
   readonly ledger?: NonceLedger
+  readonly pendingStore?: PendingAuthorizationStore
+  readonly policyResolver?: ImmutablePolicyResolver
   readonly approval?: ReturnType<typeof signApproval>
   readonly execute: () => unknown
 }): Promise<{ readonly result: ProtocolResult; readonly calls: number }> {
   let calls = 0
+  const policyResolver = input.policyResolver ?? new ImmutablePolicyResolver()
+  policyResolver.register(POLICY, POLICY_URI)
   const result = await runAuthorityPath({
     chain: input.chain,
     intent: input.intent,
     directory: input.actors.directory,
     policy: POLICY,
     policyUri: POLICY_URI,
-    now: input.now ?? DEMO_NOW,
+    clock: new FixedClock(input.now ?? DEMO_NOW),
     ledger: input.ledger ?? new NonceLedger(),
+    pendingStore: input.pendingStore ?? new PendingAuthorizationStore(),
+    policyResolver,
     signer: input.actors.signer,
     approval: input.approval,
     execute: () => {
@@ -227,7 +242,8 @@ function settle(
   intent: SignedIntent,
   closing?: string
 ): AttackCase {
-  const verified = verifyProtocolReceipt(result.receipt, importPublicKey(actors.signer.publicKey)).valid
+  const receipt = authenticatedReceipt(result)
+  const verified = verifyProtocolReceipt(receipt, importPublicKey(actors.signer.publicKey)).valid
   return {
     id,
     number,
@@ -239,8 +255,8 @@ function settle(
     executed: result.executed,
     receiptVerified: verified,
     executorCalls,
-    policyHashMatches: result.receipt.policy.contentHash === sha256(POLICY),
-    intentHashMatches: result.receipt.execution?.intentHash === sha256(unsignedIntentOf(intent)),
+    policyHashMatches: receipt.policy.contentHash === sha256(POLICY),
+    intentHashMatches: receipt.execution?.intentHash === sha256(unsignedIntentOf(intent)),
     closing,
   }
 }
@@ -469,10 +485,17 @@ async function postApprovalMutation(): Promise<AttackCase> {
     actors.parentExpiry,
     actors.issued
   )
+  const ledger = new NonceLedger()
+  const pendingStore = new PendingAuthorizationStore()
+  const policyResolver = new ImmutablePolicyResolver()
+  policyResolver.register(POLICY, POLICY_URI)
   const pending = await executeCase({
     actors,
     chain: [root],
     intent: original,
+    ledger,
+    pendingStore,
+    policyResolver,
     execute: () => ({ unexpected: true }),
   })
   const approval = signApproval(
@@ -481,6 +504,10 @@ async function postApprovalMutation(): Promise<AttackCase> {
       approver_id: actors.principal.id,
       approved_at: actors.issued,
       decision: 'APPROVE',
+      agent_id: actors.agentA.id,
+      delegation_chain_hash: sha256([unsignedDelegation(root)]),
+      policy_content_hash: pending.result.policyHash,
+      matched_rule_id: pending.result.ruleId,
     },
     actors.principal
   )
@@ -497,6 +524,9 @@ async function postApprovalMutation(): Promise<AttackCase> {
     actors,
     chain: [root],
     intent: mutated,
+    ledger,
+    pendingStore,
+    policyResolver,
     approval,
     execute: () => ({ unexpected: true }),
   })

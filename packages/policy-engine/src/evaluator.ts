@@ -125,19 +125,26 @@ function tokenize(input: string): Token[] {
   return tokens
 }
 
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function resolvePath(ctx: EvaluationContext, path: string): unknown {
   const parts = path.split('.')
   let current: unknown = ctx
   for (const part of parts) {
     if (current == null || typeof current !== 'object') return undefined
+    if (!hasOwn(current, part)) return undefined
     current = (current as Record<string, unknown>)[part]
   }
   if (path.startsWith('args.') && current === undefined && ctx.args) {
-    return ctx.args[path.slice('args.'.length)]
+    const key = path.slice('args.'.length)
+    return hasOwn(ctx.args, key) ? ctx.args[key] : undefined
   }
   if (path === 'tool.name' && ctx.tool?.name) return ctx.tool.name
   if (path.startsWith('tool.args.') && ctx.tool?.args) {
-    return ctx.tool.args[path.slice('tool.args.'.length)]
+    const key = path.slice('tool.args.'.length)
+    return hasOwn(ctx.tool.args, key) ? ctx.tool.args[key] : undefined
   }
   return current
 }
@@ -273,13 +280,26 @@ class Parser {
   }
 }
 
+/** Ordered or equality comparison saw NaN or an infinity. Callers must fail closed. */
+export class NonFiniteComparisonError extends Error {
+  constructor() {
+    super('non-finite values cannot satisfy a numeric comparison')
+    this.name = 'NonFiniteComparisonError'
+  }
+}
+
 function compare(operator: string, left: unknown, right: unknown): boolean {
+  const nonFiniteNumber =
+    (typeof left === 'number' && !Number.isFinite(left)) ||
+    (typeof right === 'number' && !Number.isFinite(right))
+  if (nonFiniteNumber) throw new NonFiniteComparisonError()
+
   if (operator === '==') return left === right
   if (operator === '!=') return left !== right
 
   const ln = typeof left === 'number' ? left : Number(left)
   const rn = typeof right === 'number' ? right : Number(right)
-  if (Number.isNaN(ln) || Number.isNaN(rn)) return false
+  if (!Number.isFinite(ln) || !Number.isFinite(rn)) return false
 
   if (operator === '>') return ln > rn
   if (operator === '<') return ln < rn

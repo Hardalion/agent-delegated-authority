@@ -20,6 +20,7 @@ describe('policy engine coverage', () => {
         version: '1.0',
         policyName: 'inline-test',
         targetAgents: ['*'],
+        defaultAction: 'BLOCK',
         rules: [
           {
             ruleId: 'r1',
@@ -39,6 +40,7 @@ describe('policy engine coverage', () => {
 version: "1.0"
 policyName: simulate-only
 targetAgents: ["*"]
+defaultAction: BLOCK
 rules:
   - ruleId: sim_probe
     action: SIMULATE
@@ -46,6 +48,7 @@ rules:
     alertSeverity: LOW
 `),
       toolName: 'probe',
+      agentRole: 'agt_reader',
     })
     expect(decision.action).toBe('SIMULATE')
     expect(decision.matched).toBe(true)
@@ -57,6 +60,7 @@ rules:
 version: "1.0"
 policyName: role-scoped
 targetAgents: ["risk_manager"]
+defaultAction: BLOCK
 rules:
   - ruleId: block_all
     action: BLOCK

@@ -135,6 +135,17 @@ Present when the runtime presented a delegation chain. The signature covers thes
 | `DEFER` | `DEFER` | `deferred` |
 | `SIMULATE` | `SIMULATE` | `allowed` |
 
+**Semantic invariants (verifier must reject):**
+
+- `decision.outcome` must equal the normalized outcome for `decision.action`
+- `execution.executed=true` only with `action=ALLOW` (and not with rejected/pending/deferred outcomes)
+- `BLOCK`, unresolved `REQUIRE_HUMAN`, `DEFER`, and `SIMULATE` must not claim live execution
+- `REQUIRE_HUMAN` receipts must include `human` with `required=true`
+- `ALLOW` must not claim `human.status=pending`
+- `execution.executedAt` requires `execution.executed=true`
+
+A structurally valid receipt with a valid issuer signature means the issuer attested that body. It is not independent proof that a downstream system performed a side effect unless `execution.executed` is true and consistent with the decision.
+
 ### 4.6 `ExecutionBinding`
 
 | Field | Type | Required | Description |

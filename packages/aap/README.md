@@ -8,9 +8,11 @@ Delegation says who may act. An intent says what the agent is attempting. Policy
 Principal → Agent A → Agent B → Authorized action → Receipt
 ```
 
-`runAuthorityPath` verifies the delegation chain and the signed intent, evaluates the policy, and emits an Authorization Receipt. `BLOCK` does not call the executor. On the `ALLOW` path the nonce is claimed exclusively (`claimForExecution`) before `await execution()`, then marked `consumed` or `failed`.
+`runAuthorityPath` verifies the delegation chain and the signed intent against a trusted clock, evaluates a policy pinned in an operator-owned resolver, and emits an Authorization Receipt. `BLOCK` does not call the executor. On the `ALLOW` path the nonce is claimed exclusively (`claimForExecution`) before `await execution()`, then marked `consumed` or `failed`.
 
-`NonceLedger` is in memory: the claim is exclusive within one process and is lost on restart. Several processes need the same claim in a shared atomic store.
+`NonceLedger` is in memory: the claim is exclusive within one process and is lost on restart. Cross-process exclusion needs a shared store that implements `AsyncAtomicNonceBackend`, wrapped in `SharedNonceLedger`. This package does not ship that store.
+
+Caller-supplied `now` is rejected. Tests inject `FixedClock`. Production uses the process clock unless the operator supplies a clock it controls.
 
 The caller-supplied `execute` callback is for local testing. If the agent process holds the API credential, it can skip this path. Keeping the credential out of the agent process is a deployment property; see [THREAT_MODEL.md](../../THREAT_MODEL.md).
 

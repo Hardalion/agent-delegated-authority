@@ -23,6 +23,7 @@ describe('policy edge cases', () => {
       `version: "1.0"
 policyName: file-policy
 targetAgents: ["*"]
+defaultAction: BLOCK
 rules:
   - ruleId: allow_all
     action: ALLOW
@@ -42,6 +43,7 @@ rules:
     const decision = evaluateInvocation({
       policy: CANONICAL_BASIC_AGENT_AUTHORITY,
       args: [{ name: 'apply', args: { amount: 100 } }],
+      agentRole: 'agt_reader',
     })
     expect(decision.action).toBe('REQUIRE_HUMAN')
   })

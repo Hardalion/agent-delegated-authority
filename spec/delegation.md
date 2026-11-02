@@ -23,11 +23,14 @@ A child cannot:
 - start earlier than the parent
 - expire later than the parent
 - widen a target
-- raise `max_amount`
+- raise `max_amount` (canonical safe-integer minor units; see [amounts-and-targets.md](amounts-and-targets.md))
 - pass on a capability marked `delegable: false`
+- drop a parent constraint, including by relying on inherited / prototype properties
+
+Constraints are normalized to own-property data-only objects before narrowing and before terminal enforcement. Prototype-bearing constraint objects are rejected. Missing own constraints are not treated as unlimited authority.
 
 A target `resource/*` covers `resource/example`. It does not cover a deeper path.
 
 ## Reference
 
-`packages/aap/src/validate.ts` and `packages/aap/src/validate.test.ts`.
+`packages/aap/src/validate.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/validate.test.ts`, `packages/aap/src/security-adversarial.test.ts`.

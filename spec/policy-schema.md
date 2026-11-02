@@ -12,8 +12,8 @@ Policies are JSON objects (YAML is a serialization). Conforming documents MUST v
 | `version` | string | yes | Policy document semver (`major.minor.patch`) |
 | `policyName` | string | yes | Stable id, **kebab-case** (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
 | `description` | string | no | Human-readable summary |
-| `targetAgents` | string[] | yes | Agent roles governed, or `["*"]` for all |
-| `defaultAction` | enum | no | Used when no rule matches. `ALLOW` \| `BLOCK` \| `REQUIRE_HUMAN` \| `DEFER` \| `SIMULATE`. Absent means `ALLOW` |
+| `targetAgents` | string[] | yes | Agent roles governed, or `["*"]` for all. Entries are non-empty and must not contain whitespace |
+| `defaultAction` | enum | yes | Used when no rule matches. `ALLOW` \| `BLOCK` \| `REQUIRE_HUMAN` \| `DEFER` \| `SIMULATE`. Missing or invalid is `BLOCK` with `ruleId: default_action_required` |
 | `rules` | Rule[] | yes | Non-empty ordered rule list |
 
 ## Rule object
@@ -27,9 +27,9 @@ Policies are JSON objects (YAML is a serialization). Conforming documents MUST v
 
 ## Evaluation semantics
 
-1. If `agentRole` is provided and not in `targetAgents` (and `targetAgents` does not include `*`): return `BLOCK` with `ruleId: agent_not_in_scope` without evaluating rules. An agent outside the policy is not authorized.
+1. `agentRole` is required for evaluation. Omitted, empty, whitespace-only, null, or otherwise malformed identities return `BLOCK` with `ruleId: agent_not_in_scope` without evaluating rules. A well-formed role that is not in `targetAgents` (and `targetAgents` does not include `*`) also returns that `BLOCK`.
 2. Evaluate every rule whose condition matches. The highest-priority action wins: `BLOCK`, then `REQUIRE_HUMAN`, then `DEFER`, then `SIMULATE`, then `ALLOW`. Document order breaks ties.
-3. If no rule matches: return `defaultAction`, or `ALLOW` when `defaultAction` is absent. The rule id is `default_allow` when that action is `ALLOW`. Otherwise it is `default_` plus the action in lower case, for example `default_block`.
+3. If no rule matches: return `defaultAction`. Missing or invalid `defaultAction` is `BLOCK` with `ruleId: default_action_required`. The rule id is `default_allow` when that action is `ALLOW`. Otherwise it is `default_` plus the action in lower case, for example `default_block`.
 
 ## Decision output
 

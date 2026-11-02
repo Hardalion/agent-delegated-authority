@@ -4,18 +4,24 @@ An intent is a signed attempt by an agent.
 
 | Field | Meaning |
 | --- | --- |
-| `actor` | Agent id. Opaque. Implementation-defined |
-| `delegation_chain` | Grants this attempt relies on |
+| `intent_id` | Intent identifier (non-empty string) |
+| `actor` | Agent id. Opaque non-empty string. Empty and whitespace-only ids are rejected |
+| `delegation_chain` | Grants this attempt relies on (non-empty) |
 | `action` | What is attempted |
-| `target` | Where it is attempted |
-| `parameters` | Arguments for the action |
-| `nonce` | One-time binding against replay |
-| `issued_at`, `expires_at` | Lifetime |
+| `target` | Where it is attempted (see [amounts-and-targets.md](amounts-and-targets.md)) |
+| `parameters` | Arguments for the action (plain data object; dangerous keys rejected) |
+| `nonce` | One-time binding against replay. Non-empty string matching `[A-Za-z0-9._~-]{1,128}`. Objects, arrays, numbers, booleans, and null are rejected |
+| `issued_at`, `expires_at` | Lifetime (ISO-8601 UTC) |
+| `signature` | Signature over the unsigned intent |
 
-The signature covers the unsigned intent. Verification of the chain and the intent happens before a nonce is consumed. An unauthenticated failure does not consume the nonce.
+The signature covers the unsigned intent. Runtime schema validation runs before authorization. Malformed intents must never reach the executor.
 
-A repeated nonce after an authenticated decision is a replay and does not execute.
+Verification of the chain and the intent happens before a nonce is consumed. An unauthenticated failure does not consume the nonce.
+
+A repeated nonce after an authenticated decision is a replay and does not execute. The reference nonce ledger is process-local unless a shared atomic store is configured by the deployment.
+
+Trusted evaluation time comes from the runtime clock (or a test `FixedClock`). Intent timestamps are untrusted request data checked against that trusted now. Callers must not feed agent-controlled request fields into the trusted clock.
 
 ## Reference
 
-`packages/aap/src/protocol.ts`, `packages/aap/src/path.ts`, `packages/aap/src/agents.test.ts`.
+`packages/aap/src/protocol.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/path.ts`, `packages/aap/src/security-adversarial.test.ts`.

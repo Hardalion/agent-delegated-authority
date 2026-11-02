@@ -1,6 +1,9 @@
-import { importPublicKey } from './crypto.js'
+import { FixedClock } from './clock.js'
+import { importPublicKey, sha256 } from './crypto.js'
 import { NonceLedger } from './nonce.js'
-import { runAuthorityPath, verifyProtocolReceipt, type ProtocolResult } from './path.js'
+import { PendingAuthorizationStore } from './pending.js'
+import { ImmutablePolicyResolver } from './policy-resolver.js'
+import { authenticatedReceipt, runAuthorityPath, verifyProtocolReceipt, type ProtocolResult } from './path.js'
 import type { AuthorizationReceiptV1 } from 'adap-receipt'
 import type { Policy } from 'adap-policy'
 import {
@@ -8,6 +11,7 @@ import {
   signApproval,
   signDelegation,
   signIntent,
+  unsignedDelegation,
   type Identity,
   type SignedDelegation,
   type SignedIntent,
@@ -117,6 +121,9 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     [principal, agentA, agentB, signer].map((identity) => [identity.id, identity.publicKey])
   )
   let executorCalls = 0
+  const pendingStore = new PendingAuthorizationStore()
+  const policyResolver = new ImmutablePolicyResolver()
+  policyResolver.register(BOOK_FLIGHT, BOOK_FLIGHT_URI)
 
   const root = signDelegation(
     {
@@ -182,8 +189,10 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     directory,
     policy: BOOK_FLIGHT,
     policyUri: BOOK_FLIGHT_URI,
-    now,
+    clock: new FixedClock(now),
     ledger: legitLedger,
+    pendingStore,
+    policyResolver,
     signer,
     execute: () => {
       executorCalls += 1
@@ -196,8 +205,10 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     directory,
     policy: BOOK_FLIGHT,
     policyUri: BOOK_FLIGHT_URI,
-    now,
+    clock: new FixedClock(now),
     ledger: legitLedger,
+    pendingStore,
+    policyResolver,
     signer,
     approval: signApproval(
       {
@@ -205,6 +216,10 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
         approver_id: principal.id,
         approved_at: issued,
         decision: 'APPROVE',
+        agent_id: agentA.id,
+        delegation_chain_hash: sha256([unsignedDelegation(root)]),
+        policy_content_hash: legitPending.policyHash,
+        matched_rule_id: legitPending.ruleId,
       },
       principal
     ),
@@ -239,9 +254,9 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     overDelegation,
     injection,
     executorCalls,
-    legitReceiptVerified: verifyProtocolReceipt(legit.receipt, publicKey).valid,
-    overDelegationReceiptVerified: verifyProtocolReceipt(overDelegation.receipt, publicKey).valid,
-    injectionReceiptVerified: verifyProtocolReceipt(injection.receipt, publicKey).valid,
+    legitReceiptVerified: verifyProtocolReceipt(authenticatedReceipt(legit), publicKey).valid,
+    overDelegationReceiptVerified: verifyProtocolReceipt(authenticatedReceipt(overDelegation), publicKey).valid,
+    injectionReceiptVerified: verifyProtocolReceipt(authenticatedReceipt(injection), publicKey).valid,
     published: {
       policy: BOOK_FLIGHT,
       keys: {
@@ -253,9 +268,9 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
       root,
       raised,
       overIntent,
-      overReceipt: overDelegation.receipt,
+      overReceipt: authenticatedReceipt(overDelegation),
       injectionIntent,
-      injectionReceipt: injection.receipt,
+      injectionReceipt: authenticatedReceipt(injection),
     },
   }
 
@@ -291,8 +306,10 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
       directory,
       policy: BOOK_FLIGHT,
       policyUri: BOOK_FLIGHT_URI,
-      now,
+      clock: new FixedClock(now),
       ledger: new NonceLedger(),
+      pendingStore,
+      policyResolver,
       signer,
       execute: () => {
         executorCalls += 1

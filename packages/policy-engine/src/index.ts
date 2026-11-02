@@ -29,6 +29,7 @@ export {
   evaluateToolCall,
   evaluateInvocation,
   evaluateExecutionPayload,
+  isWellFormedAgentRole,
   listBundledPolicyNames,
   resetBundledPoliciesForTests,
   type PolicyDecision,

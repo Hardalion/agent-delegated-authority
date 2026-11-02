@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { FixedClock } from './clock.js'
+import { sha256 } from './crypto.js'
 import { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-policy.js'
 import { NonceLedger } from './nonce.js'
+import { PendingAuthorizationStore } from './pending.js'
+import { ImmutablePolicyResolver } from './policy-resolver.js'
 import { runAuthorityPath, type ExecutionContext } from './path.js'
 import {
   createIdentity,
   signApproval,
   signDelegation,
   signIntent,
+  unsignedDelegation,
   type SignedIntent,
 } from './protocol.js'
 
@@ -36,6 +41,9 @@ function harness(maxAmount: number) {
   )
   let executions = 0
   const contexts: ExecutionContext[] = []
+  const pendingStore = new PendingAuthorizationStore()
+  const policyResolver = new ImmutablePolicyResolver()
+  policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
 
   async function apply(amount: number, nonce: string, approval = false) {
     const intent: SignedIntent = signIntent(
@@ -52,14 +60,17 @@ function harness(maxAmount: number) {
       },
       personal
     )
+    const ledger = new NonceLedger()
     const pending = await runAuthorityPath({
       chain: [root],
       intent,
       directory,
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
-      now: NOW,
-      ledger: new NonceLedger(),
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
       signer,
       execute: (ctx) => {
         executions += 1
@@ -67,15 +78,17 @@ function harness(maxAmount: number) {
         return { ok: true }
       },
     })
-    if (!approval) return pending
+    if (!approval || pending.decision !== 'REQUIRE_HUMAN') return pending
     return runAuthorityPath({
       chain: [root],
       intent,
       directory,
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
-      now: NOW,
-      ledger: new NonceLedger(),
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
       signer,
       approval: signApproval(
         {
@@ -83,6 +96,10 @@ function harness(maxAmount: number) {
           approver_id: principal.id,
           approved_at: ISSUED,
           decision: 'APPROVE',
+          agent_id: personal.id,
+          delegation_chain_hash: sha256([unsignedDelegation(root)]),
+          policy_content_hash: pending.policyHash,
+          matched_rule_id: pending.ruleId,
         },
         principal
       ),
@@ -145,6 +162,9 @@ describe('exclusive nonce claim before execution', () => {
       agent
     )
     const ledger = new NonceLedger()
+    const pendingStore = new PendingAuthorizationStore()
+    const policyResolver = new ImmutablePolicyResolver()
+    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
     let releaseFirst!: () => void
     const hold = new Promise<void>((resolve) => {
       releaseFirst = resolve
@@ -162,12 +182,13 @@ describe('exclusive nonce claim before execution', () => {
         directory,
         policy: BASIC_AGENT_AUTHORITY,
         policyUri: BASIC_AGENT_AUTHORITY_URI,
-        now: NOW,
+        clock: new FixedClock(NOW),
         ledger,
+        pendingStore,
+        policyResolver,
         signer,
         execute: async () => {
           executions += 1
-          // claimForExecution already ran; now it is safe to start the racing caller.
           signalClaimed()
           await hold
           return { ok: true }
