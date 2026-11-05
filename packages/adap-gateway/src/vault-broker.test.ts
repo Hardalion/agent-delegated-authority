@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { VaultCredentialBroker } from './vault-broker.js'
 
-const VAULT_URL = 'https://vault.internal/v1/secret/data/adap/rail'
 const WRITE_PREFIX = 'https://payments.internal/api/write'
 const RAIL_TOKEN = 'test-rail-token-123456'
 
