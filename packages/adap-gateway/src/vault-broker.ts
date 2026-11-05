@@ -137,7 +137,7 @@ function isAllowedDownstreamUrl(writeUrl: string, configuredPrefix: string): boo
       return false
     }
 
-    const allowedPath = allowed.pathname.replace(/\\/+$/, '') || '/'
+    const allowedPath = allowed.pathname.endsWith('/') ? allowed.pathname.replace(/\/+$/, '') || '/' : allowed.pathname
     const destinationPath = destination.pathname
     return allowedPath === '/'
       ? destinationPath.startsWith('/')
