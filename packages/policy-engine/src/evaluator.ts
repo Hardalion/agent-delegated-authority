@@ -18,6 +18,8 @@ type Token =
   | { type: 'ident'; value: string }
   | { type: 'string'; value: string }
   | { type: 'number'; value: number }
+  | { type: 'boolean'; value: boolean }
+  | { type: 'null'; value: null }
   | { type: 'op'; value: string }
   | { type: 'lparen' }
   | { type: 'rparen' }
@@ -100,6 +102,12 @@ function tokenize(input: string): Token[] {
       }
       if (ident === 'in') {
         tokens.push({ type: 'op', value: ident })
+      } else if (ident === 'true') {
+        tokens.push({ type: 'boolean', value: true })
+      } else if (ident === 'false') {
+        tokens.push({ type: 'boolean', value: false })
+      } else if (ident === 'null') {
+        tokens.push({ type: 'null', value: null })
       } else {
         tokens.push({ type: 'ident', value: ident })
       }
@@ -233,36 +241,40 @@ class Parser {
       return token.value
     }
 
+    if (token.type === 'boolean' || token.type === 'null') {
+      this.consume()
+      return token.value
+    }
+
     if (token.type === 'ident') {
       this.consume()
-      const base = token.value
+      let path = token.value
+      let current: unknown = resolvePath(this.ctx, path)
 
-      if (this.peek().type === 'dot') {
+      while (this.peek().type === 'dot') {
         this.consume()
-        const method = this.consume()
-        const methodName =
-          method.type === 'ident' || method.type === 'op' ? method.value : undefined
-        if (!methodName) throw new Error('Expected method name after dot')
+        const member = this.consume()
+        const memberName =
+          member.type === 'ident' || member.type === 'op' ? member.value : undefined
+        if (!memberName) throw new Error('Expected member name after dot')
 
-        if (methodName === 'contains' && this.peek().type === 'lparen') {
+        if (memberName === 'contains' && this.peek().type === 'lparen') {
           this.consume()
           const arg = this.parsePrimary()
           if (this.peek().type === 'rparen') this.consume()
-          const haystack = String(resolvePath(this.ctx, base) ?? '')
+          if (Array.isArray(current)) {
+            const search = String(arg).toLowerCase()
+            return current.some((item) => String(item).toLowerCase() === search)
+          }
+          const haystack = String(current ?? '')
           return haystack.toLowerCase().includes(String(arg).toLowerCase())
         }
 
-        const path = `${base}.${methodName}`
-        if (this.peek().type === 'dot') {
-          this.consume()
-          const tail = this.consume()
-          if (tail.type !== 'ident') throw new Error('Expected identifier')
-          return resolvePath(this.ctx, `${path}.${tail.value}`)
-        }
-        return resolvePath(this.ctx, path)
+        path = `${path}.${memberName}`
+        current = resolvePath(this.ctx, path)
       }
 
-      return resolvePath(this.ctx, base)
+      return current
     }
 
     if (token.type === 'lbracket') {

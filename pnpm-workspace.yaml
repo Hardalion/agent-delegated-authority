@@ -1,2 +1,8 @@
 packages:
   - 'packages/*'
+
+overrides:
+  nanoid@<4: 3.3.18
+  nanoid@>=4: 5.1.16
+  postcss: 8.5.28
+  source-map-js: 1.2.2
