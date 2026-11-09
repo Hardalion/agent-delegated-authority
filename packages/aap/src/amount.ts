@@ -47,13 +47,36 @@ export function assertCanonicalAmount(value: unknown, path: string): number {
 }
 
 export function assertAmountWithinLimit(amount: unknown, limit: unknown, path = 'amount'): void {
-  const a = assertCanonicalAmount(amount, path)
-  const bound = assertCanonicalAmount(limit, 'max_amount')
-  if (a > bound) {
-    throw new AuthorityError('constraint', 'amount exceeds delegated max_amount', true)
-  }
+  assertWithinCeiling(amount, limit, 'amount', 'max_amount', path)
+}
+
+/**
+ * `max_<field>` governs `parameters.<field>`.
+ * `max_amount` → `amount`, `max_quantity` → `quantity`, `max_records` → `records`.
+ * The field name is a letter followed by letters, digits, or underscores.
+ */
+export function ceilingField(constraintKey: string): string | undefined {
+  if (!constraintKey.startsWith('max_')) return undefined
+  const field = constraintKey.slice(4)
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field)) return undefined
+  return field
 }
 
 export function isMaxAmountKey(key: string): boolean {
-  return key === 'max_amount' || (key.startsWith('max_') && key !== 'max_')
+  return ceilingField(key) !== undefined
+}
+
+/** Fail closed when a presented value is above a canonical numeric ceiling. */
+export function assertWithinCeiling(
+  presented: unknown,
+  limit: unknown,
+  field: string,
+  constraintKey: string,
+  presentedPath = `parameters.${field}`,
+): void {
+  const value = assertCanonicalAmount(presented, presentedPath)
+  const bound = assertCanonicalAmount(limit, constraintKey)
+  if (value > bound) {
+    throw new AuthorityError('constraint', `${field} exceeds delegated ${constraintKey}`, true)
+  }
 }

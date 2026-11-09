@@ -90,6 +90,9 @@ export function normalizeConstraints(raw: unknown, path = 'constraints'): Constr
   for (const key of Object.keys(record)) {
     assertSafeKey(key, path)
     const value = record[key]
+    if (key.startsWith('max_') && !isMaxAmountKey(key)) {
+      throw new AuthorityError('schema', `${path}.${key} is not a canonical max_<field> ceiling`, true)
+    }
     if (isMaxAmountKey(key)) {
       out[key] = assertCanonicalAmount(value, `${path}.${key}`)
       continue

@@ -6,6 +6,7 @@
 import { createPublicKey, verify as verifyEd25519 } from 'node:crypto'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
+import { canonicalJson } from './canonical-json.js'
 
 export const AUTHORIZATION_RECEIPT_FORMAT_VERSION = 1 as const
 export const AUTHORIZATION_RECEIPT_KIND = 'adap.receipt' as const
@@ -170,34 +171,12 @@ const HUMAN_STATUS = new Set<HumanAttestationStatus>([
   'escalated',
 ])
 
-/** Stable canonical JSON (sorted object keys, recursively). */
+/**
+ * Canonical JSON for receipt content hashes and signatures.
+ * Delegates to the single reference-profile serializer.
+ */
 export function canonicalReceiptJson(value: unknown): string {
-  return JSON.stringify(sortKeys(value))
-}
-
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys)
-  if (value != null && typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) {
-      throw new Error('canonicalReceiptJson rejects objects with a non-plain prototype')
-    }
-    const record = value as Record<string, unknown>
-    const sorted: Record<string, unknown> = Object.create(null)
-    for (const key of Object.keys(record).sort()) {
-      if (DANGEROUS_KEYS.has(key)) {
-        throw new Error(`canonicalReceiptJson rejects dangerous key: ${key}`)
-      }
-      sorted[key] = sortKeys(record[key])
-    }
-    return { ...sorted }
-  }
-  if (typeof value === 'number' && !Number.isFinite(value)) {
-    throw new Error('canonicalReceiptJson rejects non-finite numbers')
-  }
-  return value
+  return canonicalJson(value)
 }
 
 function sha256Hex(utf8: string): string {

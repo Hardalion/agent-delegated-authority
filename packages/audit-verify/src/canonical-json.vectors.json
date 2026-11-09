@@ -1,0 +1,64 @@
+{
+  "profile": "RFC8785",
+  "ordering": "UTF-16 code units",
+  "numbers": "ECMAScript Number-to-String, matching JSON.stringify for finite numbers. Negative zero is 0.",
+  "accept": [
+    {
+      "name": "integer-like-keys",
+      "value": {
+        "2": 0,
+        "9": 2,
+        "10": 1,
+        "a": 3
+      },
+      "canonical": "{\"10\":1,\"2\":0,\"9\":2,\"a\":3}"
+    },
+    {
+      "name": "nested-integer-like-keys",
+      "value": {
+        "m": 1,
+        "z": {
+          "2": 1,
+          "10": 2,
+          "b": "x"
+        }
+      },
+      "canonical": "{\"m\":1,\"z\":{\"10\":2,\"2\":1,\"b\":\"x\"}}"
+    },
+    {
+      "name": "mixed-keys",
+      "value": {
+        "9": 4,
+        "10": 2,
+        "b": 1,
+        "a": 3
+      },
+      "canonical": "{\"10\":2,\"9\":4,\"a\":3,\"b\":1}"
+    },
+    {
+      "name": "non-bmp-keys",
+      "value": {
+        "𐀀": 1,
+        "": 2
+      },
+      "canonical": "{\"𐀀\":1,\"\":2}"
+    },
+    {
+      "name": "ecmascript-numbers",
+      "value": {
+        "n": 500,
+        "e": 1e-7,
+        "f": 500,
+        "neg": -12.5
+      },
+      "canonical": "{\"e\":1e-7,\"f\":500,\"n\":500,\"neg\":-12.5}"
+    },
+    {
+      "name": "string-escaping",
+      "value": {
+        "s": "a\"b\\c\n\u0001"
+      },
+      "canonical": "{\"s\":\"a\\\"b\\\\c\\n\\u0001\"}"
+    }
+  ]
+}

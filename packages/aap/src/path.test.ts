@@ -5,6 +5,7 @@ import { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-poli
 import { NonceLedger } from './nonce.js'
 import { PendingAuthorizationStore } from './pending.js'
 import { ImmutablePolicyResolver } from './policy-resolver.js'
+import { PolicySchema, evaluateToolCall, type Policy } from 'adap-policy'
 import { runAuthorityPath, type ExecutionContext } from './path.js'
 import {
   createIdentity,
@@ -206,6 +207,134 @@ describe('exclusive nonce claim before execution', () => {
     expect(second.decision).toBe('BLOCK')
     expect(second.reason).toBe('nonce_in_flight_or_used')
     expect(second.executed).toBe(false)
+    expect(executions).toBe(1)
+  })
+})
+
+describe('unsupported policy actions', () => {
+  it('rejects DEFER and SIMULATE before any executor and executes only ALLOW', async () => {
+    expect(() =>
+      PolicySchema.parse({
+        version: '1.0.0',
+        policyName: 'defer-doc',
+        targetAgents: ['*'],
+        defaultAction: 'BLOCK',
+        rules: [
+          { ruleId: 'd', action: 'DEFER', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+        ],
+      }),
+    ).toThrow()
+
+    const bypass = {
+      version: '1.0.0',
+      policyName: 'defer-doc',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        { ruleId: 'd', action: 'DEFER', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+      ],
+    } as unknown as Policy
+    expect(evaluateToolCall({ policy: bypass, toolName: 'read', agentRole: 'agt_reader' }).action).toBe(
+      'BLOCK',
+    )
+    expect(() => new ImmutablePolicyResolver().register(bypass, 'defer-doc@1')).toThrow()
+
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_reader')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*' }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal,
+    )
+    const intent = signIntent(
+      {
+        intent_id: 'int_actions',
+        actor: agent.id,
+        delegation_chain: [root.delegation_id],
+        action: 'read',
+        target: 'resource/example',
+        parameters: {},
+        nonce: 'nonce-actions',
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      agent,
+    )
+    let executions = 0
+    const blocked = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory,
+      policy: bypass,
+      policyUri: 'defer-doc@1',
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver: new ImmutablePolicyResolver(),
+      signer,
+      execute: () => {
+        executions += 1
+        return { ok: true }
+      },
+    })
+    expect(blocked.decision).toBe('BLOCK')
+    expect(blocked.executed).toBe(false)
+    expect(executions).toBe(0)
+
+    const allowPolicy: Policy = {
+      version: '1.0.0',
+      policyName: 'allow-read-only',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        { ruleId: 'allow_read', action: 'ALLOW', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+      ],
+    }
+    const resolver = new ImmutablePolicyResolver()
+    resolver.register(allowPolicy, 'allow-read-only@1')
+    const allowed = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_allow',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-allow-only',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      policy: allowPolicy,
+      policyUri: 'allow-read-only@1',
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver: resolver,
+      signer,
+      execute: () => {
+        executions += 1
+        return { ok: true }
+      },
+    })
+    expect(allowed.decision).toBe('ALLOW')
+    expect(allowed.executed).toBe(true)
     expect(executions).toBe(1)
   })
 })

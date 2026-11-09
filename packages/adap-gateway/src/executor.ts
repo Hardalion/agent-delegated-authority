@@ -23,17 +23,28 @@ export interface GatewayExecuteInput extends Omit<RunAuthorityPathInput, 'execut
   ) => Promise<void>
 }
 
+/**
+ * Whether the execution-state callback confirmed the write.
+ * `not_configured` means `onExecutionState` was omitted.
+ * `confirmed` means every callback that ran succeeded.
+ * `failed` means a callback threw. A failure before the downstream call
+ * prevents that call. A failure after it does not hide the downstream result
+ * and does not repeat the call.
+ */
+export type ExecutionStatePersistence = 'not_configured' | 'confirmed' | 'failed'
+
 export interface GatewayExecuteResult extends ProtocolResult {
   readonly correlationId: string
   readonly downstream?: DownstreamOutcome
   readonly executionState: ExecutionKnowledge | 'not_started'
+  readonly executionStatePersistence: ExecutionStatePersistence
 }
 
 /**
  * Trusted execution boundary:
  * 1. Run the ADAP authority path.
  * 2. On ALLOW, resolve a credential handle inside the broker.
- * 3. Re-validate canonical action/target against the authorized context.
+ * 3. Refuse the call unless the authorized action and target are already canonical.
  * 4. POST only through the broker — agents never see rail credentials.
  */
 export async function executeAuthorized(input: GatewayExecuteInput): Promise<GatewayExecuteResult> {
@@ -41,15 +52,53 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
   const events = input.events
   let downstream: DownstreamOutcome | undefined
   let executionState: ExecutionKnowledge | 'not_started' = 'not_started'
+  let executionStatePersistence: ExecutionStatePersistence = input.onExecutionState
+    ? 'confirmed'
+    : 'not_configured'
   let authorizedCtx: ExecutionContext | undefined
+
+  const persistExecutionState = async (
+    state: ExecutionKnowledge,
+    info: { readonly intentHash: string; readonly correlationId: string; readonly detail?: string },
+    phase: 'before' | 'after',
+  ): Promise<void> => {
+    if (!input.onExecutionState) return
+    try {
+      await input.onExecutionState(state, info)
+    } catch {
+      executionStatePersistence = 'failed'
+      events?.emit({
+        type: 'storage.failure',
+        timestamp: new Date().toISOString(),
+        correlationId: corr,
+        tenantId: input.tenantId,
+        intentHash: info.intentHash,
+        reason:
+          phase === 'before'
+            ? 'execution log update failed before the downstream call'
+            : 'execution log update failed after the downstream call',
+      })
+      if (phase === 'before') {
+        throw new Error('execution state persistence failed before the downstream call')
+      }
+    }
+  }
 
   const result = await runAuthorityPath({
     ...input,
     execute: async (ctx) => {
       authorizedCtx = ctx
-      const action = canonicalizeAction(ctx.action)
-      const target = canonicalizeTarget(ctx.target)
-      if (action !== canonicalizeAction(ctx.action) || target !== ctx.target) {
+      let action: string
+      let target: string
+      try {
+        action = canonicalizeAction(ctx.action)
+        target = canonicalizeTarget(ctx.target)
+      } catch {
+        throw new Error('canonicalization mismatch')
+      }
+      // The authorized action is executed as signed. Folding case or trimming
+      // would run a different action than the one the authority path allowed.
+      if (ctx.action !== action || ctx.target !== target) {
         throw new Error('canonicalization mismatch')
       }
       // Reject confused-deputy: parameters frozen from authorized snapshot only
@@ -61,10 +110,14 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
         tenantId: input.tenantId,
         intentHash: ctx.intentHash,
       })
-      await input.onExecutionState?.('started', {
-        intentHash: ctx.intentHash,
-        correlationId: corr,
-      })
+      await persistExecutionState(
+        'started',
+        {
+          intentHash: ctx.intentHash,
+          correlationId: corr,
+        },
+        'before',
+      )
       executionState = 'started'
       let handle: string
       try {
@@ -88,22 +141,15 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
         correlationId: corr,
       })
       executionState = downstream.status
-      try {
-        await input.onExecutionState?.(downstream.status, {
+      await persistExecutionState(
+        downstream.status,
+        {
           intentHash: ctx.intentHash,
           correlationId: corr,
           detail: 'error' in downstream ? downstream.error : undefined,
-        })
-      } catch {
-        events?.emit({
-          type: 'storage.failure',
-          timestamp: new Date().toISOString(),
-          correlationId: corr,
-          tenantId: input.tenantId,
-          intentHash: ctx.intentHash,
-          reason: 'execution log update failed after the downstream call',
-        })
-      }
+        },
+        'after',
+      )
       if (downstream.status === 'failed') {
         events?.emit({
           type: 'execution.failed',
@@ -184,7 +230,7 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
     Object.freeze(authorizedCtx)
   }
 
-  return { ...result, correlationId: corr, downstream, executionState }
+  return { ...result, correlationId: corr, downstream, executionState, executionStatePersistence }
 }
 
 /**

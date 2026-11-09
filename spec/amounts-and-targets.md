@@ -14,7 +14,7 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Non-finite | `NaN`, `+Infinity`, `-Infinity` are rejected before authorization. |
 | Zero | Allowed for both amounts and `max_*` caps. |
 | Comparison | Deterministic numeric compare on canonical values only. |
-| Scope | `max_amount` (and `max_*` keys) are **per-intent** ceilings, not cumulative spend. |
+| Scope | Every `max_<field>` key is a **per-intent** ceiling on `parameters.<field>`, not cumulative spend. `max_amount` bounds `amount`. `max_quantity` bounds `quantity`. A key that starts with `max_` but is not `max_<field>` is rejected. |
 
 Policy evaluation and terminal constraint enforcement must use the same normalized representation.
 

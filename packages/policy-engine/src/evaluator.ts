@@ -18,6 +18,8 @@ type Token =
   | { type: 'ident'; value: string }
   | { type: 'string'; value: string }
   | { type: 'number'; value: number }
+  | { type: 'boolean'; value: boolean }
+  | { type: 'null' }
   | { type: 'op'; value: string }
   | { type: 'lparen' }
   | { type: 'rparen' }
@@ -100,6 +102,12 @@ function tokenize(input: string): Token[] {
       }
       if (ident === 'in') {
         tokens.push({ type: 'op', value: ident })
+      } else if (ident === 'true') {
+        tokens.push({ type: 'boolean', value: true })
+      } else if (ident === 'false') {
+        tokens.push({ type: 'boolean', value: false })
+      } else if (ident === 'null') {
+        tokens.push({ type: 'null' })
       } else {
         tokens.push({ type: 'ident', value: ident })
       }
@@ -125,28 +133,53 @@ function tokenize(input: string): Token[] {
   return tokens
 }
 
+const DANGEROUS_PROPERTY = new Set(['__proto__', 'constructor', 'prototype'])
+
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key)
 }
 
+function isDangerousPath(path: string): boolean {
+  return path.split('.').some((part) => DANGEROUS_PROPERTY.has(part))
+}
+
 function resolvePath(ctx: EvaluationContext, path: string): unknown {
+  if (isDangerousPath(path)) return undefined
   const parts = path.split('.')
   let current: unknown = ctx
   for (const part of parts) {
+    if (DANGEROUS_PROPERTY.has(part)) return undefined
     if (current == null || typeof current !== 'object') return undefined
     if (!hasOwn(current, part)) return undefined
     current = (current as Record<string, unknown>)[part]
   }
-  if (path.startsWith('args.') && current === undefined && ctx.args) {
+  if (current !== undefined) return current
+  // A single argument key that itself contains dots, only when the walk did not resolve.
+  if (path.startsWith('args.') && ctx.args && !isDangerousPath(path)) {
     const key = path.slice('args.'.length)
-    return hasOwn(ctx.args, key) ? ctx.args[key] : undefined
+    if (!isDangerousPath(key) && hasOwn(ctx.args, key)) return ctx.args[key]
   }
   if (path === 'tool.name' && ctx.tool?.name) return ctx.tool.name
-  if (path.startsWith('tool.args.') && ctx.tool?.args) {
+  if (path.startsWith('tool.args.') && ctx.tool?.args && !isDangerousPath(path)) {
     const key = path.slice('tool.args.'.length)
-    return hasOwn(ctx.tool.args, key) ? ctx.tool.args[key] : undefined
+    if (!isDangerousPath(key) && hasOwn(ctx.tool.args, key)) return ctx.tool.args[key]
   }
   return current
+}
+
+function containsValue(current: unknown, arg: unknown): boolean {
+  if (typeof current === 'string') {
+    return current.toLowerCase().includes(String(arg).toLowerCase())
+  }
+  if (Array.isArray(current)) {
+    return current.some((item) => {
+      if (typeof item === 'string' && typeof arg === 'string') {
+        return item.toLowerCase() === arg.toLowerCase()
+      }
+      return item === arg
+    })
+  }
+  return false
 }
 
 class Parser {
@@ -184,8 +217,20 @@ class Parser {
     let next = this.peek()
     while (next.type === 'op' && next.value === '&&') {
       this.consume()
-      const right = this.parseComparison()
-      left = left && right
+      if (!left) {
+        // The conjunction is already false. Still parse the right side so the
+        // token stream stays aligned, but a numeric failure there cannot make
+        // this clause true and must not block an unrelated tool.
+        try {
+          this.parseComparison()
+        } catch (error) {
+          if (!(error instanceof NumericComparisonError) && !(error instanceof NonFiniteComparisonError)) {
+            throw error
+          }
+        }
+      } else {
+        left = this.parseComparison()
+      }
       next = this.peek()
     }
     return left
@@ -233,36 +278,41 @@ class Parser {
       return token.value
     }
 
+    if (token.type === 'boolean' || token.type === 'null') {
+      this.consume()
+      return token.type === 'boolean' ? token.value : null
+    }
+
     if (token.type === 'ident') {
       this.consume()
-      const base = token.value
+      let path = token.value
+      let current: unknown = resolvePath(this.ctx, path)
 
-      if (this.peek().type === 'dot') {
+      while (this.peek().type === 'dot') {
         this.consume()
-        const method = this.consume()
-        const methodName =
-          method.type === 'ident' || method.type === 'op' ? method.value : undefined
-        if (!methodName) throw new Error('Expected method name after dot')
+        const member = this.consume()
+        const memberName =
+          member.type === 'ident' || member.type === 'op' ? member.value : undefined
+        if (!memberName) throw new Error('Expected member name after dot')
 
-        if (methodName === 'contains' && this.peek().type === 'lparen') {
+        if (memberName === 'contains' && this.peek().type === 'lparen') {
           this.consume()
           const arg = this.parsePrimary()
           if (this.peek().type === 'rparen') this.consume()
-          const haystack = String(resolvePath(this.ctx, base) ?? '')
-          return haystack.toLowerCase().includes(String(arg).toLowerCase())
+          return containsValue(current, arg)
         }
 
-        const path = `${base}.${methodName}`
-        if (this.peek().type === 'dot') {
-          this.consume()
-          const tail = this.consume()
-          if (tail.type !== 'ident') throw new Error('Expected identifier')
-          return resolvePath(this.ctx, `${path}.${tail.value}`)
+        if (DANGEROUS_PROPERTY.has(memberName)) {
+          current = undefined
+          path = `${path}.${memberName}`
+          continue
         }
-        return resolvePath(this.ctx, path)
+
+        path = `${path}.${memberName}`
+        current = resolvePath(this.ctx, path)
       }
 
-      return resolvePath(this.ctx, base)
+      return current
     }
 
     if (token.type === 'lbracket') {
@@ -280,7 +330,7 @@ class Parser {
   }
 }
 
-/** Ordered or equality comparison saw NaN or an infinity. Callers must fail closed. */
+/** Ordered comparison saw NaN or an infinity. Callers must fail closed. */
 export class NonFiniteComparisonError extends Error {
   constructor() {
     super('non-finite values cannot satisfy a numeric comparison')
@@ -288,23 +338,29 @@ export class NonFiniteComparisonError extends Error {
   }
 }
 
-function compare(operator: string, left: unknown, right: unknown): boolean {
-  const nonFiniteNumber =
-    (typeof left === 'number' && !Number.isFinite(left)) ||
-    (typeof right === 'number' && !Number.isFinite(right))
-  if (nonFiniteNumber) throw new NonFiniteComparisonError()
+/** Ordered comparison saw a value that is not a finite number. Callers must fail closed. */
+export class NumericComparisonError extends Error {
+  constructor() {
+    super('ordered comparison requires finite numbers')
+    this.name = 'NumericComparisonError'
+  }
+}
 
+function compare(operator: string, left: unknown, right: unknown): boolean {
   if (operator === '==') return left === right
   if (operator === '!=') return left !== right
 
-  const ln = typeof left === 'number' ? left : Number(left)
-  const rn = typeof right === 'number' ? right : Number(right)
-  if (!Number.isFinite(ln) || !Number.isFinite(rn)) return false
+  if (typeof left !== 'number' || typeof right !== 'number') {
+    throw new NumericComparisonError()
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(right)) {
+    throw new NonFiniteComparisonError()
+  }
 
-  if (operator === '>') return ln > rn
-  if (operator === '<') return ln < rn
-  if (operator === '>=') return ln >= rn
-  if (operator === '<=') return ln <= rn
+  if (operator === '>') return left > right
+  if (operator === '<') return left < right
+  if (operator === '>=') return left >= right
+  if (operator === '<=') return left <= right
   return false
 }
 

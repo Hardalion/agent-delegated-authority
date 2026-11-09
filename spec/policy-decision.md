@@ -10,6 +10,8 @@ A conforming evaluator returns one of:
 | `BLOCK` | The policy refuses the attempt. Nothing executes |
 | `REQUIRE_HUMAN` | A person must approve before execution |
 
+`DEFER` and `SIMULATE` are not v0.1 decisions. The schema rejects them. They must not reach an executor. Receipt records may still contain those verbs; a receipt verb is not a policy action. See [policy-schema.md](./policy-schema.md).
+
 The same policy, tool, and arguments yield the same `action` and `ruleId`. See [deterministic-evaluation.md](./deterministic-evaluation.md) and [policy-schema.md](./policy-schema.md).
 
 A policy pin is `{policy-id}@{semver}`. The URI scheme is implementation-defined. See [policy-federation.md](./policy-federation.md).

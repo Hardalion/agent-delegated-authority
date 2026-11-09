@@ -29,6 +29,8 @@ export {
   type VerifyAuthorizationReceiptResult,
 } from './authorization-receipt.js'
 
+export { canonicalJson, CanonicalJsonError } from './canonical-json.js'
+
 export {
   emitAuthorizationReceipt,
   emitAuthorizationReceiptFromDecision,

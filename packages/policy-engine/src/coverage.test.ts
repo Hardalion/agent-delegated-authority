@@ -24,7 +24,7 @@ describe('policy engine coverage', () => {
         rules: [
           {
             ruleId: 'r1',
-            action: 'SIMULATE',
+            action: 'BLOCK',
             condition: "tool.name == 'probe'",
             alertSeverity: 'LOW',
           },
@@ -34,9 +34,9 @@ describe('policy engine coverage', () => {
     expect(policy.policyName).toBe('inline-test')
   })
 
-  it('returns SIMULATE for matched simulate rule', () => {
-    const decision = evaluateToolCall({
-      policy: parsePolicyDocument(`
+  it('rejects a simulate rule instead of treating it as executable', () => {
+    expect(() =>
+      parsePolicyDocument(`
 version: "1.0"
 policyName: simulate-only
 targetAgents: ["*"]
@@ -46,12 +46,30 @@ rules:
     action: SIMULATE
     condition: "tool.name == 'probe'"
     alertSeverity: LOW
-`),
+`)
+    ).toThrow()
+    const bypass = {
+      version: '1.0',
+      policyName: 'simulate-only',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        {
+          ruleId: 'sim_probe',
+          action: 'SIMULATE',
+          condition: "tool.name == 'probe'",
+          alertSeverity: 'LOW',
+        },
+      ],
+    } as unknown as Parameters<typeof evaluateToolCall>[0]['policy']
+    const decision = evaluateToolCall({
+      policy: bypass,
       toolName: 'probe',
       agentRole: 'agt_reader',
     })
-    expect(decision.action).toBe('SIMULATE')
-    expect(decision.matched).toBe(true)
+    expect(decision.action).toBe('BLOCK')
+    expect(decision.ruleId).toBe('unsupported_policy_action')
+    expect(decision.reason).toBe('policy action is not executable in v0.1')
   })
 
   it('scopes policy to target agent roles', () => {
