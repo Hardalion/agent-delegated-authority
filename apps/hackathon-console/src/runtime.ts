@@ -23,6 +23,7 @@ import { verifyReceiptChain, type AuthorizationReceiptV1 } from 'adap-receipt'
 import type { Policy } from 'adap-policy'
 import { executeAuthorized, MemorySecurityEventSink, type SecurityEvent } from 'adap-gateway'
 import { TreasuryAgent } from './agent.js'
+import { HttpSandboxAdapter } from './adapters/http-sandbox.js'
 import { DemoBroker } from './broker.js'
 import { DemoError } from './errors.js'
 import { assertDemoResetAllowed, RESET_CONFIRM, type DemoEnv } from './guard.js'
@@ -34,7 +35,9 @@ import {
   type SimPayment,
 } from './payments.js'
 import { authorityNote, POLICY_URI, PURPOSE, TREASURY_POLICY, AUTONOMOUS_LIMIT_CENTS, HARD_LIMIT_CENTS } from './policy.js'
-import { SCENARIOS, type ScenarioId } from './scenarios.js'
+import { SandboxBroker } from './sandbox-broker.js'
+import { SANDBOX_POLICY, SANDBOX_POLICY_URI, SANDBOX_PURPOSE } from './sandbox-policy.js'
+import { SANDBOX_SCENARIOS, SCENARIOS, isSandboxScenarioId, type ScenarioId } from './scenarios.js'
 import {
   buildStages,
   outcomeLabel,
@@ -51,6 +54,8 @@ export interface RuntimeOptions {
   readonly env?: DemoEnv
   readonly now?: () => Date
   readonly passphrase?: string
+  readonly teamId?: string
+  readonly sandbox?: HttpSandboxAdapter
 }
 
 export interface Verification {
@@ -82,6 +87,9 @@ export interface PublicCase {
   nonceState: string
   receiptId: string | null
   receipt: AuthorizationReceiptV1 | null
+  receiptClaimsExecuted: boolean
+  downstreamResourceId: string | null
+  executionMode: 'simulated' | 'sandbox-api' | 'not_called' | 'unknown' | 'failed'
   verification: Verification | null
   stages: StageView[]
   createdAt: string
@@ -93,7 +101,8 @@ export interface HealthReport {
   readonly ok: boolean
   readonly problems: readonly string[]
   readonly store: 'process-local-memory'
-  readonly simulatedRail: true
+  readonly simulatedRail: boolean
+  readonly rail: 'memory' | 'sandbox'
   readonly demoEnv: string
   readonly postgresAttached: false
   readonly postgresUrlIgnored: boolean
@@ -101,8 +110,11 @@ export interface HealthReport {
 
 export interface PublicState {
   readonly environment: {
-    readonly label: 'HACKATHON DEMO'
-    readonly simulatedRail: true
+    readonly label: 'HACKATHON SANDBOX'
+    readonly simulatedRail: boolean
+    readonly rail: 'memory' | 'sandbox'
+    readonly railLabel: string
+    readonly teamId: string
     readonly store: 'process-local memory'
   }
   readonly health: HealthReport
@@ -130,6 +142,14 @@ export interface PublicState {
   }
   readonly limits: { readonly autonomousCents: number; readonly hardCapCents: number; readonly currency: 'USD' }
   readonly payments: readonly SimPayment[]
+  readonly vendors: readonly { id: string; name: string; iban: string }[]
+  readonly purchases: readonly { id: string; category: string; amount: number; title: string; status: string }[]
+  readonly sandboxCounters: {
+    mutatingRequests: number
+    committedPayments: number
+    committedVendorChanges: number
+    committedPurchases: number
+  } | null
   readonly sideEffects: RailSideEffects
   readonly railCalls: readonly RailCall[]
   readonly cases: readonly PublicCase[]
@@ -150,13 +170,13 @@ export interface PublicState {
     readonly lastVerifyMs: number | null
   }
   readonly receiptChain: { readonly valid: boolean; readonly errors: readonly string[]; readonly verifier: 'adap-receipt.verifyReceiptChain' } | null
-  readonly scenarios: readonly { readonly id: ScenarioId; readonly title: string; readonly action: string }[]
+  readonly scenarios: readonly { readonly id: string; readonly title: string; readonly action: string }[]
 }
 
 export interface EvidenceBundle {
   readonly exportedAt: string
   readonly environment: 'hackathon'
-  readonly simulatedRail: true
+  readonly simulatedRail: boolean
   readonly note: string
   readonly cases: readonly PublicCase[]
   readonly payments: readonly SimPayment[]
@@ -202,10 +222,36 @@ function plainParameters(parameters: Readonly<Record<string, unknown>>): Record<
   return { ...parameters }
 }
 
+function resourceIdFrom(body: unknown): string | null {
+  if (body == null || typeof body !== 'object') return null
+  const record = body as { resourceId?: unknown; paymentId?: unknown; id?: unknown }
+  if (typeof record.resourceId === 'string') return record.resourceId
+  if (typeof record.paymentId === 'string') return record.paymentId
+  if (typeof record.id === 'string') return record.id
+  return null
+}
+
+function executionModeFor(
+  mode: 'memory' | 'sandbox',
+  status: DownstreamStatus,
+  executed: boolean,
+): 'simulated' | 'sandbox-api' | 'not_called' | 'unknown' | 'failed' {
+  if (status === 'unknown') return 'unknown'
+  if (status === 'failed') return 'failed'
+  if (!executed || status === 'not_called') return 'not_called'
+  return mode === 'sandbox' ? 'sandbox-api' : 'simulated'
+}
+
 export class DemoRuntime {
   readonly #env: DemoEnv
   readonly #now: () => Date
   readonly #passphrase: string
+  readonly #teamId: string
+  readonly #railMode: 'memory' | 'sandbox'
+  readonly #policy: Policy
+  readonly #policyUri: string
+  readonly #sandbox: HttpSandboxAdapter | null
+  #sandboxBroker: SandboxBroker | null
   readonly #principal: Identity
   readonly #agentIdentity: Identity
   readonly #outsider: Identity
@@ -215,8 +261,8 @@ export class DemoRuntime {
   readonly #policyHash: string
   readonly #agent: TreasuryAgent
   #delegation: SignedDelegation
-  #payments: SimulatedPaymentSystem
-  #broker: DemoBroker
+  #payments: SimulatedPaymentSystem | null
+  #broker: DemoBroker | SandboxBroker
   #ledger: NonceLedger
   #pending: PendingAuthorizationStore
   #seenApprovals = new Set<string>()
@@ -230,11 +276,18 @@ export class DemoRuntime {
   #lastAuthorizationMs: number | null = null
   #lastApprovalMs: number | null = null
   #lastVerifyMs: number | null = null
+  #counters: PublicState['sandboxCounters'] = null
 
   constructor(options: RuntimeOptions = {}) {
     this.#env = options.env ?? { ADAP_DEMO_ENV: 'hackathon', NODE_ENV: 'demo' }
     this.#now = options.now ?? (() => new Date())
-    this.#passphrase = options.passphrase ?? 'treasury-demo'
+    if (!options.passphrase) throw new DemoError(403, 'config_refused', 'An approver passphrase is required.')
+    this.#passphrase = options.passphrase
+    this.#teamId = options.teamId ?? 'local'
+    this.#sandbox = options.sandbox ?? null
+    this.#railMode = options.sandbox ? 'sandbox' : 'memory'
+    this.#policy = options.sandbox ? SANDBOX_POLICY : TREASURY_POLICY
+    this.#policyUri = options.sandbox ? SANDBOX_POLICY_URI : POLICY_URI
     this.#principal = createIdentity('prn_treasury')
     this.#agentIdentity = createIdentity('agt_treasury')
     this.#outsider = createIdentity('agt_outsider')
@@ -244,12 +297,19 @@ export class DemoRuntime {
       [this.#agentIdentity.id, this.#agentIdentity.publicKey],
       [this.#outsider.id, this.#outsider.publicKey],
     ])
-    this.#policyHash = this.#policyResolver.register(TREASURY_POLICY, POLICY_URI).contentHash
+    this.#policyHash = this.#policyResolver.register(this.#policy, this.#policyUri).contentHash
     this.#agent = new TreasuryAgent(this.#agentIdentity, 'del_treasury_root')
     this.#delegation = this.#signDelegation(this.#now())
-    const rail = createSimulatedRail()
-    this.#payments = rail.payments
-    this.#broker = new DemoBroker(rail.payments, rail.capability)
+    if (options.sandbox) {
+      this.#payments = null
+      this.#sandboxBroker = new SandboxBroker(options.sandbox)
+      this.#broker = this.#sandboxBroker
+    } else {
+      const rail = createSimulatedRail()
+      this.#payments = rail.payments
+      this.#sandboxBroker = null
+      this.#broker = new DemoBroker(rail.payments, rail.capability)
+    }
     this.#ledger = new NonceLedger()
     this.#pending = new PendingAuthorizationStore()
     const health = this.health()
@@ -258,23 +318,28 @@ export class DemoRuntime {
 
   health(): HealthReport {
     const problems: string[] = []
-    const payments = this.#payments.list()
-    const seed = payments.find((payment) => payment.id === 'pay_seed_1001')
-    if (!seed || seed.beneficiary !== 'vendor_northwind') problems.push('seed payment pay_seed_1001 is missing')
-    if (!payments.some((payment) => payment.id === 'pay_seed_1002')) problems.push('seed payment pay_seed_1002 is missing')
-    const pin = this.#policyResolver.resolveByUri(POLICY_URI)
+    if (this.#railMode === 'memory') {
+      const payments = this.#payments?.list() ?? []
+      const seed = payments.find((payment) => payment.id === 'pay_seed_1001')
+      if (!seed || seed.beneficiary !== 'vendor_northwind') problems.push('seed payment pay_seed_1001 is missing')
+      if (!payments.some((payment) => payment.id === 'pay_seed_1002')) problems.push('seed payment pay_seed_1002 is missing')
+      if (this.#broker.listActions().includes('change_beneficiary')) problems.push('beneficiary route must stay unregistered')
+    } else if (!this.#broker.listActions().includes('update_vendor_account')) {
+      problems.push('sandbox vendor route is missing')
+    }
+    const pin = this.#policyResolver.resolveByUri(this.#policyUri)
     if (!pin || pin.contentHash !== this.#policyHash) problems.push('policy pin is missing')
     const actions = this.#broker.listActions()
     if (!actions.includes('get_payment_status') || !actions.includes('create_payment')) {
       problems.push('broker routes are incomplete')
     }
-    if (actions.includes('change_beneficiary')) problems.push('beneficiary route must stay unregistered')
     if (Date.parse(this.#delegation.expires_at) <= this.#now().getTime()) problems.push('delegation is expired')
     return {
       ok: problems.length === 0,
       problems,
       store: 'process-local-memory',
-      simulatedRail: true,
+      simulatedRail: this.#railMode === 'memory',
+      rail: this.#railMode,
       demoEnv: this.#env.ADAP_DEMO_ENV ?? 'unset',
       postgresAttached: false,
       postgresUrlIgnored: Boolean(this.#env.ADAP_DEMO_PG_URL),
@@ -285,9 +350,62 @@ export class DemoRuntime {
     return this.#signer.publicKey
   }
 
-  async runScenario(id: ScenarioId, options?: { readonly nonce?: string }): Promise<PublicState> {
+  async ready(): Promise<{ readonly ready: boolean; readonly rail: 'memory' | 'sandbox' }> {
+    if (this.#sandbox) {
+      const live = await this.#sandbox.healthCheck()
+      if (live.ok) await this.refreshSandbox()
+      return { ready: live.ok && this.health().ok, rail: 'sandbox' }
+    }
+    return { ready: this.health().ok, rail: 'memory' }
+  }
+
+  async submit(input: {
+    readonly agentId: string
+    readonly action: string
+    readonly target: string
+    readonly parameters: Readonly<Record<string, string | number | boolean>>
+  }): Promise<PublicState> {
     return this.#exclusive(async () => {
-      const spec = SCENARIOS[id]
+      if (!/^[A-Za-z0-9:_./@-]{1,128}$/.test(input.agentId)) {
+        throw new DemoError(400, 'malformed_input', 'Agent identity is malformed. Nothing was executed.')
+      }
+      if (input.agentId !== this.#agent.id) {
+        throw new DemoError(403, 'agent_not_in_scope', 'This agent is not registered for this team. Nothing was executed.')
+      }
+      const amount = input.parameters.amount
+      if (amount !== undefined && (typeof amount !== 'number' || !Number.isInteger(amount))) {
+        throw new DemoError(400, 'malformed_input', 'Amount must be an integer number of minor units. Nothing was executed.')
+      }
+      const instant = this.#now()
+      const nonce = `n-req-${randomBytes(8).toString('hex')}`
+      const intent = this.#agent.propose({
+        intentId: `int-${nonce}`,
+        nonce,
+        action: input.action,
+        target: input.target,
+        parameters: input.parameters,
+        issuedAt: new Date(instant.getTime() - 2_000).toISOString(),
+        expiresAt: new Date(instant.getTime() + 20 * 60_000).toISOString(),
+      })
+      await this.#dispatch({
+        scenarioId: 'agent-request',
+        intent,
+        chain: [this.#delegation],
+        instant,
+        measure: 'authorization',
+      })
+      return this.publicState()
+    })
+  }
+
+  hasScenario(id: string): boolean {
+    if (this.#railMode === 'sandbox') return isSandboxScenarioId(id)
+    return Object.prototype.hasOwnProperty.call(SCENARIOS, id)
+  }
+
+  async runScenario(id: string, options?: { readonly nonce?: string }): Promise<PublicState> {
+    return this.#exclusive(async () => {
+      const spec = this.#scenario(id)
       const instant = this.#now()
       const nonce = options?.nonce ?? `n-${id}-${randomBytes(8).toString('hex')}`
       const intent = this.#agent.propose({
@@ -328,6 +446,9 @@ export class DemoRuntime {
         throw new DemoError(404, 'approval_not_found', 'No pending approval matches this nonce.')
       }
       const instant = this.#now()
+      if (Date.parse(open.intent.expires_at) <= instant.getTime()) {
+        throw new DemoError(409, 'approval_expired', 'This approval expired with the intent. No execution was performed.')
+      }
       const approval = signApproval(
         {
           intent_hash: pending.intentHash,
@@ -463,8 +584,11 @@ export class DemoRuntime {
     return {
       exportedAt: new Date().toISOString(),
       environment: 'hackathon',
-      simulatedRail: true,
-      note: 'Simulated payment rail. No production credentials. No private keys.',
+      simulatedRail: this.#railMode === 'memory',
+      note:
+        this.#railMode === 'sandbox'
+          ? 'Local sandbox API. Synthetic records. No production credentials. No private keys.'
+          : 'Process memory. No production credentials. No private keys.',
       cases: state.cases,
       payments: state.payments,
       timeline: state.timeline,
@@ -487,12 +611,17 @@ export class DemoRuntime {
         throw new DemoError(400, 'reset_confirm_required', 'Reset requires the exact confirmation phrase.')
       }
       this.#assertPassphrase(input.passphrase)
+      if (this.#sandbox) await this.#sandbox.reset()
       const evidence = this.exportEvidence()
       const dir = exportDirectory()
       await mkdir(dir, { recursive: true })
       const file = join(dir, `evidence-${Date.now()}.json`)
       await writeFile(file, JSON.stringify(evidence), 'utf8')
       this.#reseed()
+      if (this.#sandbox && this.#sandboxBroker) {
+        await this.#sandboxBroker.refresh()
+        this.#counters = await this.#sandbox.counters()
+      }
       return { evidence, file, state: this.publicState() }
     })
   }
@@ -513,8 +642,14 @@ export class DemoRuntime {
           })
     return {
       environment: {
-        label: 'HACKATHON DEMO',
-        simulatedRail: true,
+        label: 'HACKATHON SANDBOX',
+        simulatedRail: this.#railMode === 'memory',
+        rail: this.#railMode,
+        railLabel:
+          this.#railMode === 'sandbox'
+            ? 'Local sandbox API. Synthetic EUR records. No real money.'
+            : 'Process memory. Simulated rail. No real money.',
+        teamId: this.#teamId,
         store: 'process-local memory',
       },
       health: this.health(),
@@ -546,14 +681,14 @@ export class DemoRuntime {
         expiresAt: this.#delegation.expires_at,
       },
       policy: {
-        uri: POLICY_URI,
-        name: TREASURY_POLICY.policyName,
-        version: TREASURY_POLICY.version,
-        description: TREASURY_POLICY.description,
+        uri: this.#policyUri,
+        name: this.#policy.policyName,
+        version: this.#policy.version,
+        description: this.#policy.description,
         hash: this.#policyHash,
-        defaultAction: TREASURY_POLICY.defaultAction,
-        targetAgents: TREASURY_POLICY.targetAgents,
-        rules: TREASURY_POLICY.rules.map((rule) => ({
+        defaultAction: this.#policy.defaultAction,
+        targetAgents: this.#policy.targetAgents,
+        rules: this.#policy.rules.map((rule) => ({
           ruleId: rule.ruleId,
           action: rule.action,
           condition: rule.condition,
@@ -564,9 +699,12 @@ export class DemoRuntime {
         hardCapCents: HARD_LIMIT_CENTS,
         currency: 'USD',
       },
-      payments: this.#payments.list(),
-      sideEffects: this.#payments.sideEffects(),
-      railCalls: this.#payments.calls(),
+      payments: this.#railList(),
+      vendors: this.#sandboxBroker?.vendors() ?? [],
+      purchases: this.#sandboxBroker?.purchases() ?? [],
+      sandboxCounters: this.#counters,
+      sideEffects: this.#railEffects(),
+      railCalls: this.#railCalls(),
       cases,
       pending,
       timeline: this.#timeline.map((event) => ({ ...event })),
@@ -588,11 +726,7 @@ export class DemoRuntime {
         chain == null
           ? null
           : { valid: chain.valid, errors: [...chain.errors], verifier: 'adap-receipt.verifyReceiptChain' },
-      scenarios: (Object.keys(SCENARIOS) as ScenarioId[]).map((id) => ({
-        id,
-        title: SCENARIOS[id].title,
-        action: SCENARIOS[id].action,
-      })),
+      scenarios: this.#scenarioCatalog(),
     }
   }
 
@@ -789,7 +923,7 @@ export class DemoRuntime {
       },
       this.#principal,
     )
-    const before = this.#payments.sideEffects().paymentsCreated
+    const before = this.#railEffects().paymentsCreated
     const [first, second] = await Promise.all([
       this.#dispatch({
         scenarioId: 'payment',
@@ -809,17 +943,63 @@ export class DemoRuntime {
       }),
     ])
     return {
-      created: this.#payments.sideEffects().paymentsCreated - before,
-      calls: this.#payments.calls().filter((call) => call.action === 'create_payment' && !call.duplicate).length,
+      created: this.#railEffects().paymentsCreated - before,
+      calls: this.#railCalls().filter((call) => call.action === 'create_payment' && !call.duplicate).length,
       decisions: [first.decision, second.decision],
     }
   }
 
   armDownstreamForTests(mode: 'unknown' | 'failed' | null): void {
+    if (!this.#payments) throw new DemoError(409, 'rail_mode', 'The memory rail is not attached.')
     this.#payments.arm(mode)
   }
 
+  armSandboxFault(mode: 'timeout-before' | 'timeout-after' | null): void {
+    if (!this.#sandbox) throw new DemoError(409, 'rail_mode', 'The sandbox rail is not attached.')
+    this.#sandbox.arm(mode)
+  }
+
+  async refreshSandbox(): Promise<void> {
+    if (!this.#sandbox || !this.#sandboxBroker) return
+    await this.#sandboxBroker.refresh()
+    this.#counters = await this.#sandbox.counters()
+  }
+
+  async reconcile(correlationId: string): Promise<PublicState> {
+    return this.#exclusive(async () => {
+      if (!this.#sandbox) throw new DemoError(409, 'rail_mode', 'Reconciliation requires the sandbox rail.')
+      const item = this.#cases.find((entry) => entry.correlationId === correlationId || entry.id === correlationId)
+      if (!item?.intentHash) throw new DemoError(404, 'not_found', 'No case matches that id.')
+      const status = await this.#sandbox.getStatus('reconcile', item.intentHash)
+      const body = status.body as { state?: string; resourceId?: string | null } | undefined
+      if (body?.state === 'committed') {
+        item.downstreamStatus = 'completed'
+        item.downstreamResourceId = body.resourceId ?? item.downstreamResourceId
+        item.executionMode = 'sandbox-api'
+        item.executed = true
+        item.outcomeLabel = 'EXECUTED'
+        item.reason = 'Reconciled from the sandbox record. The original call was not repeated.'
+      } else if (body?.state === 'absent') {
+        item.downstreamStatus = 'unknown'
+        item.executionMode = 'unknown'
+        item.executed = false
+        item.outcomeLabel = 'OUTCOME UNKNOWN'
+        item.reason = 'The sandbox reports no committed record. The original call was not repeated.'
+      } else {
+        item.downstreamStatus = 'unknown'
+        item.executionMode = 'unknown'
+        item.executed = false
+        item.outcomeLabel = 'OUTCOME UNKNOWN'
+        item.reason = 'The sandbox could not confirm the record. The original call was not repeated.'
+      }
+      item.stages = buildStages(this.#viewFromCase(item))
+      await this.refreshSandbox()
+      return this.publicState()
+    })
+  }
+
   attemptUnauthorizedSideEffectForTests(): { readonly status: string; readonly beneficiary: string } {
+    if (!this.#payments) throw new DemoError(409, 'rail_mode', 'The memory rail is not attached.')
     const outcome = this.#payments.rejectUnauthorized({
       action: 'change_beneficiary',
       target: 'payments/pay_seed_1001',
@@ -839,8 +1019,8 @@ export class DemoRuntime {
         chain: input.chain,
         intent: input.intent,
         directory: this.#directory,
-        policy: input.policy ?? TREASURY_POLICY,
-        policyUri: POLICY_URI,
+        policy: input.policy ?? this.#policy,
+        policyUri: this.#policyUri,
         ledger: this.#ledger,
         signer: this.#signer,
         approval: input.approval,
@@ -869,6 +1049,7 @@ export class DemoRuntime {
         authenticated: false,
         correlationId: `corr_fail_${randomBytes(4).toString('hex')}`,
         downstreamStatus: 'unknown',
+        downstreamBody: null,
         approvalState: 'none',
         receipt: null,
         latencyMs: performance.now() - started,
@@ -903,6 +1084,7 @@ export class DemoRuntime {
       authenticated: result.authenticated,
       correlationId: result.correlationId,
       downstreamStatus,
+      downstreamBody: result.downstream && 'body' in result.downstream ? result.downstream.body : null,
       approvalState,
       receipt: result.receipt ?? null,
       latencyMs,
@@ -916,6 +1098,14 @@ export class DemoRuntime {
       })
     }
     this.#timeline.push(...timelineFromAuthority(this.#viewFromCase(created)))
+    if (this.#sandbox) {
+      try {
+        this.#counters = await this.#sandbox.counters()
+        await this.#sandboxBroker?.refresh()
+      } catch {
+        this.#counters = this.#counters
+      }
+    }
     return created
   }
 
@@ -932,19 +1122,23 @@ export class DemoRuntime {
     readonly authenticated: boolean
     readonly correlationId: string
     readonly downstreamStatus: DownstreamStatus
+    readonly downstreamBody: unknown
     readonly approvalState: ApprovalState
     readonly receipt: AuthorizationReceiptV1 | null
     readonly latencyMs: number
     readonly at: string
   }): PublicCase {
     const verification = input.receipt ? this.verifyReceipt(input.receipt) : null
+    const downstreamConfirmed = input.downstreamStatus === 'completed' || input.downstreamStatus === 'accepted'
+    const executed = input.executed && downstreamConfirmed
+    const receiptClaimsExecuted = input.receipt?.execution?.executed === true
     const view: AuthorityView = {
       authenticated: input.authenticated,
       decision: input.decision,
       ruleId: input.ruleId,
       reason: input.reason,
       intentHash: input.intentHash,
-      executed: input.executed,
+      executed,
       downstreamStatus: input.downstreamStatus,
       receiptPresent: input.receipt != null,
       receiptValid: verification ? verification.valid : null,
@@ -965,7 +1159,7 @@ export class DemoRuntime {
       ruleId: input.ruleId,
       reason: input.reason,
       decision: input.decision,
-      executed: input.executed,
+      executed,
       authenticated: input.authenticated,
       correlationId: input.correlationId,
       downstreamStatus: input.downstreamStatus,
@@ -975,6 +1169,9 @@ export class DemoRuntime {
       nonceState: this.#nonceState(input.intent.nonce),
       receiptId: input.receipt?.receiptId ?? null,
       receipt: input.receipt,
+      receiptClaimsExecuted,
+      downstreamResourceId: resourceIdFrom(input.downstreamBody),
+      executionMode: executionModeFor(this.#railMode, input.downstreamStatus, executed),
       verification,
       stages: buildStages(view),
       createdAt: input.at,
@@ -1010,18 +1207,63 @@ export class DemoRuntime {
     }
   }
 
+  #scenario(id: string): { action: string; target: string; parameters: Readonly<Record<string, string | number | boolean>> } {
+    if (this.#railMode === 'sandbox') {
+      if (!isSandboxScenarioId(id)) throw new DemoError(404, 'not_found', 'Unknown scenario.')
+      return SANDBOX_SCENARIOS[id]
+    }
+    if (!Object.prototype.hasOwnProperty.call(SCENARIOS, id)) throw new DemoError(404, 'not_found', 'Unknown scenario.')
+    return SCENARIOS[id as ScenarioId]
+  }
+
+  #scenarioCatalog(): { id: string; title: string; action: string }[] {
+    const source = this.#railMode === 'sandbox' ? SANDBOX_SCENARIOS : SCENARIOS
+    return Object.values(source).map((item) => ({ id: item.id, title: item.title, action: item.action }))
+  }
+
+  #railList(): SimPayment[] {
+    if (this.#sandboxBroker) return this.#sandboxBroker.list()
+    return this.#payments?.list() ?? []
+  }
+
+  #railEffects(): RailSideEffects {
+    if (this.#sandboxBroker) return this.#sandboxBroker.sideEffects()
+    return (
+      this.#payments?.sideEffects() ?? {
+        statusReads: 0,
+        paymentsCreated: 0,
+        beneficiaryChanges: 0,
+        unauthorizedRejections: 0,
+        duplicateSuppressions: 0,
+      }
+    )
+  }
+
+  #railCalls(): RailCall[] {
+    if (this.#sandboxBroker) return this.#sandboxBroker.calls()
+    return this.#payments?.calls() ?? []
+  }
+
   #signDelegation(instant: Date): SignedDelegation {
+    const sandbox = this.#railMode === 'sandbox'
     return signDelegation(
       {
         delegation_id: 'del_treasury_root',
         issuer: this.#principal.id,
         subject: this.#agentIdentity.id,
-        capabilities: [
-          { action: 'get_payment_status', target: 'payments/*', delegable: false },
-          { action: 'create_payment', target: 'payments/*', delegable: false },
-          { action: 'change_beneficiary', target: 'payments/*', delegable: false },
-        ],
-        constraints: { purpose: PURPOSE },
+        capabilities: sandbox
+          ? [
+              { action: 'get_payment_status', target: 'payments/*', delegable: false },
+              { action: 'create_payment', target: 'payments/*', delegable: false },
+              { action: 'update_vendor_account', target: 'vendors/*', delegable: false },
+              { action: 'create_purchase_request', target: 'purchases/*', delegable: false },
+            ]
+          : [
+              { action: 'get_payment_status', target: 'payments/*', delegable: false },
+              { action: 'create_payment', target: 'payments/*', delegable: false },
+              { action: 'change_beneficiary', target: 'payments/*', delegable: false },
+            ],
+        constraints: { purpose: sandbox ? SANDBOX_PURPOSE : PURPOSE },
         issued_at: new Date(instant.getTime() - 2_000).toISOString(),
         expires_at: new Date(instant.getTime() + 12 * 60 * 60 * 1000).toISOString(),
       },
@@ -1031,9 +1273,17 @@ export class DemoRuntime {
 
   #reseed(): void {
     const instant = this.#now()
-    const rail = createSimulatedRail()
-    this.#payments = rail.payments
-    this.#broker = new DemoBroker(rail.payments, rail.capability)
+    if (this.#sandbox) {
+      this.#payments = null
+      this.#sandboxBroker = new SandboxBroker(this.#sandbox)
+      this.#broker = this.#sandboxBroker
+      this.#counters = null
+    } else {
+      const rail = createSimulatedRail()
+      this.#payments = rail.payments
+      this.#sandboxBroker = null
+      this.#broker = new DemoBroker(rail.payments, rail.capability)
+    }
     this.#ledger = new NonceLedger()
     this.#pending = new PendingAuthorizationStore()
     this.#seenApprovals = new Set()

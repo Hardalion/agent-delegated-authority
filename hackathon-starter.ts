@@ -1,50 +1,62 @@
-import { evaluateToolCall } from 'adap-policy'
+import { pathToFileURL } from 'node:url'
+import { evaluateToolCall } from './packages/policy-engine/dist/index.js'
+import { AGENT_ID, POLICY } from './examples/hackathon/participant-policy.mjs'
 
-// 1. Το "επικίνδυνο" function που έχει φτιάξει η ομάδα
-async function executeAgentAction(toolName: string, args: Record<string, unknown>) {
-  console.log(`[EXECUTING] Τρέχει το εργαλείο: ${toolName} με δεδομένα:`, args)
-  // Εδώ θα έμπαινε η πραγματική λογική του εργαλείου τους (π.χ. διαγραφή εγγραφών)
+export { AGENT_ID, POLICY }
+
+/**
+ * Evaluate one proposed tool call.
+ * The agent identity is an explicit argument. The evaluator is not given a hidden default.
+ */
+export function evaluate(agentRole: string | undefined, toolName: string, toolArgs: Record<string, unknown>) {
+  return evaluateToolCall({
+    policy: POLICY,
+    toolName,
+    toolArgs,
+    agentRole,
+  })
 }
 
-// 2. Το ADAP Wrapper
-async function safeExecute(agentIntent: { toolName: string; toolArgs: Record<string, unknown> }) {
-  console.log(`\n--- Έλεγχος Πρόθεσης Agent: ${agentIntent.toolName} ---`)
+async function executeAgentAction(toolName: string, args: Record<string, unknown>) {
+  console.log(`[EXECUTING] Running tool: ${toolName} with data:`, args)
+}
 
-  // Η κλήση προς το ADAP
-  const decision = evaluateToolCall({
-    policy: 'basic-agent-authority', // Σύνδεση με το YAML policy
-    toolName: agentIntent.toolName,
-    toolArgs: agentIntent.toolArgs,
-  })
-
-  console.log(`[ADAP ΑΠΟΦΑΣΗ] Κανόνας: ${decision.ruleId} -> Ενέργεια: ${decision.action}`)
+export async function safeExecute(agentIntent: { toolName: string; toolArgs: Record<string, unknown> }) {
+  console.log(`\n--- Checking agent intent: ${agentIntent.toolName} ---`)
+  const decision = evaluate(AGENT_ID, agentIntent.toolName, agentIntent.toolArgs)
+  console.log(`[ADAP DECISION] Rule: ${decision.ruleId} -> Action: ${decision.action}`)
 
   if (decision.action === 'BLOCK') {
-    console.error('❌ Η ενέργεια απορρίφθηκε από το Policy.')
-    return
+    console.error('BLOCKED. Policy rejected the action.')
+    return decision
   }
-
   if (decision.action === 'REQUIRE_HUMAN') {
-    console.warn('⚠️ Η ενέργεια απαιτεί έγκριση ανθρώπου. Σε αναμονή...')
-    return
+    console.warn('REQUIRE_HUMAN. Waiting for a person. The tool was not called.')
+    return decision
   }
-
   if (decision.action === 'ALLOW') {
-    console.log('✅ Η ενέργεια εγκρίθηκε.')
+    console.log('ALLOW. Running the tool.')
     await executeAgentAction(agentIntent.toolName, agentIntent.toolArgs)
+    return decision
   }
+  console.error('BLOCKED. The decision was not ALLOW.')
+  return decision
 }
 
-// 3. Δοκιμή (Αυτά θα τα δημιουργούσε το LLM τους)
-async function runDemo() {
-  // Παράδειγμα 1: Ενέργεια που επιτρέπεται
+export async function runDemo() {
   await safeExecute({ toolName: 'read', toolArgs: {} })
-
-  // Παράδειγμα 2: Ενέργεια που απαιτεί έγκριση (το basic-agent-authority το θέτει σε REQUIRE_HUMAN)
   await safeExecute({ toolName: 'apply', toolArgs: { amount: 300 } })
-
-  // Παράδειγμα 3: Ενέργεια που μπλοκάρεται λόγω ορίου (π.χ. > 500)
   await safeExecute({ toolName: 'apply', toolArgs: { amount: 800 } })
+  const prohibited = evaluate(AGENT_ID, 'delete_records', {})
+  console.log(`[ADAP DECISION] Rule: ${prohibited.ruleId} -> Action: ${prohibited.action}`)
+  const unknown = evaluate('agt_unknown', 'read', {})
+  console.log(`[ADAP DECISION] Rule: ${unknown.ruleId} -> Action: ${unknown.action}`)
+  const missing = evaluate(undefined, 'read', {})
+  console.log(`[ADAP DECISION] Rule: ${missing.ruleId} -> Action: ${missing.action}`)
+  const malformed = evaluate('bad role', 'read', {})
+  console.log(`[ADAP DECISION] Rule: ${malformed.ruleId} -> Action: ${malformed.action}`)
 }
 
-await runDemo()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await runDemo()
+}

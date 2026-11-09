@@ -35,11 +35,11 @@ export function isSafeDemoDatabaseUrl(value: string): boolean {
  * ADAP_PG_URL is dropped so a reset in this process cannot see the integration or production URL.
  */
 export function demoEnvFromProcess(env: NodeJS.ProcessEnv): DemoEnv {
-  if (env.NODE_ENV === 'production') {
+  if (env.NODE_ENV === 'production' && env.ADAP_DEPLOYMENT !== 'hosted') {
     throw new DemoError(
       403,
       'demo_start_refused',
-      'The hackathon console refuses to start when NODE_ENV is production.',
+      'Local mode refuses to start when NODE_ENV is production. Hosted mode stays a sandbox and still requires its own secrets.',
     )
   }
   const next: DemoEnv = {

@@ -6,6 +6,10 @@ import type { Server } from 'node:http'
 import { RESET_CONFIRM } from './guard.js'
 import { DemoRuntime } from './runtime.js'
 import { createDemoServer, listen } from './server.js'
+import { ConsoleSecurity, type DeploymentConfig } from './security.js'
+
+const TEAM_TOKEN = 'team-test-token-0123456789abcdef'
+const PASSPHRASE = 'approver-test-passphrase'
 
 const FIXED = new Date('2026-11-01T12:00:00.000Z')
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -15,16 +19,47 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
 })
 
-async function boot() {
+function securityConfig(teamId: string, teamToken: string): DeploymentConfig {
+  return {
+    deployment: 'local',
+    teamId,
+    teamToken,
+    approverPassphrase: PASSPHRASE,
+    sessionSecret: `session-secret-${teamId}-0123456789abcdef`,
+    bindHost: '127.0.0.1',
+    port: 0,
+    sandboxUrl: null,
+    sandboxToken: null,
+    generatedSecrets: false,
+    cookieSecure: false,
+    sessionTtlMs: 60_000,
+    rateLimitPerMinute: 1_000,
+  }
+}
+
+async function boot(teamId = 'local', teamToken = TEAM_TOKEN) {
   const runtime = new DemoRuntime({
     now: () => FIXED,
-    passphrase: 'treasury-demo',
+    passphrase: PASSPHRASE,
+    teamId,
     env: { ADAP_DEMO_ENV: 'hackathon', NODE_ENV: 'demo' },
   })
-  const server = createDemoServer(runtime)
+  const server = createDemoServer(runtime, new ConsoleSecurity(securityConfig(teamId, teamToken)))
   servers.push(server)
   const url = await listen(server)
-  return { runtime, url }
+  const login = await fetch(`${url}/api/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: teamToken }),
+  })
+  const cookie = (login.headers.getSetCookie?.() ?? []).map((value) => value.split(';')[0]).join('; ')
+  async function call(path: string, init: RequestInit = {}) {
+    const headers = new Headers(init.headers)
+    headers.set('cookie', cookie)
+    if ((init.method ?? 'GET') !== 'GET') headers.set('x-adap-request', '1')
+    return fetch(`${url}${path}`, { ...init, headers })
+  }
+  return { runtime, url, call, cookie }
 }
 
 describe('console boundary', () => {
@@ -43,7 +78,8 @@ describe('console boundary', () => {
     expect(page).toContain('/api/scenarios/')
     expect(page).toContain('outcomeLabel')
     expect(page).not.toContain('executed = true')
-    expect(html).toContain('SIMULATED PAYMENT RAIL')
+    expect(html).toContain('Rail status loads from the server')
+    expect(html).not.toContain('treasury-demo')
   })
 })
 
@@ -51,40 +87,42 @@ describe('console HTTP', () => {
   it('serves the three scenarios, refresh, a second session, and a restart', async () => {
     const first = await boot()
     const page = await fetch(`${first.url}/`)
-    expect(await page.text()).toContain('SIMULATED PAYMENT RAIL')
+    expect(await page.text()).toContain('Rail status loads from the server')
+    const anonymous = await fetch(`${first.url}/api/state`)
+    expect(anonymous.status).toBe(401)
 
-    const forged = await fetch(`${first.url}/api/scenarios/status`, {
+    const forged = await first.call('/api/scenarios/status', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ decision: 'ALLOW', executed: true }),
     })
     expect(forged.status).toBe(400)
 
-    const missing = await fetch(`${first.url}/api/execute`, { method: 'POST' })
+    const missing = await first.call('/api/execute', { method: 'POST' })
     expect(missing.status).toBe(404)
-    const broker = await fetch(`${first.url}/api/broker/execute`, { method: 'POST' })
+    const broker = await first.call('/api/broker/execute', { method: 'POST' })
     expect(broker.status).toBe(404)
-    const rail = await fetch(`${first.url}/api/payments`, { method: 'POST' })
+    const rail = await first.call('/api/payments', { method: 'POST' })
     expect(rail.status).toBe(404)
 
-    const allow = await fetch(`${first.url}/api/scenarios/status`, { method: 'POST' })
+    const allow = await first.call('/api/scenarios/status', { method: 'POST' })
     expect(allow.status).toBe(200)
     const allowBody = await allow.json()
     expect(allowBody.cases[0].outcomeLabel).toBe('EXECUTED')
     expect(allowBody.cases[0].verification.valid).toBe(true)
 
-    const pendingResponse = await fetch(`${first.url}/api/scenarios/payment`, { method: 'POST' })
+    const pendingResponse = await first.call('/api/scenarios/payment', { method: 'POST' })
     const pendingBody = await pendingResponse.json()
     const nonce = pendingBody.cases[0].nonce as string
     expect(pendingBody.cases[0].outcomeLabel).toBe('NOT EXECUTED · AWAITING APPROVAL')
     expect(pendingBody.sideEffects.paymentsCreated).toBe(0)
 
-    const refreshed = await fetch(`${first.url}/api/state`)
+    const refreshed = await first.call('/api/state')
     const refreshedBody = await refreshed.json()
     expect(refreshedBody.pending).toHaveLength(1)
     expect(refreshedBody.sideEffects.paymentsCreated).toBe(0)
 
-    const wrong = await fetch(`${first.url}/api/approvals/${encodeURIComponent(nonce)}/approve`, {
+    const wrong = await first.call(`/api/approvals/${encodeURIComponent(nonce)}/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ passphrase: 'nope', signature: 'forged' }),
@@ -92,23 +130,23 @@ describe('console HTTP', () => {
     expect(wrong.status).toBe(400)
 
     const [left, right] = await Promise.all([
-      fetch(`${first.url}/api/approvals/${encodeURIComponent(nonce)}/approve`, {
+      first.call(`/api/approvals/${encodeURIComponent(nonce)}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ passphrase: 'treasury-demo' }),
+        body: JSON.stringify({ passphrase: PASSPHRASE }),
       }),
-      fetch(`${first.url}/api/approvals/${encodeURIComponent(nonce)}/approve`, {
+      first.call(`/api/approvals/${encodeURIComponent(nonce)}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ passphrase: 'treasury-demo' }),
+        body: JSON.stringify({ passphrase: PASSPHRASE }),
       }),
     ])
     const statuses = [left.status, right.status].sort()
     expect(statuses).toEqual([200, 409])
-    const after = await (await fetch(`${first.url}/api/state`)).json()
+    const after = await (await first.call('/api/state')).json()
     expect(after.sideEffects.paymentsCreated).toBe(1)
 
-    const blocked = await fetch(`${first.url}/api/scenarios/beneficiary`, { method: 'POST' })
+    const blocked = await first.call('/api/scenarios/beneficiary', { method: 'POST' })
     const blockedBody = await blocked.json()
     expect(blockedBody.cases[0].decision).toBe('BLOCK')
     expect(blockedBody.cases[0].executed).toBe(false)
@@ -117,13 +155,13 @@ describe('console HTTP', () => {
     const receipt = blockedBody.cases.find((item: { receipt?: unknown }) => item.receipt)?.receipt
     const tampered = structuredClone(receipt)
     tampered.signature = 'cd'.repeat(64)
-    const verified = await fetch(`${first.url}/api/receipts/verify`, {
+    const verified = await first.call('/api/receipts/verify', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ receipt: tampered, valid: true }),
     })
     expect(verified.status).toBe(400)
-    const honest = await fetch(`${first.url}/api/receipts/verify`, {
+    const honest = await first.call('/api/receipts/verify', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ receipt: tampered }),
@@ -131,30 +169,36 @@ describe('console HTTP', () => {
     expect((await honest.json()).valid).toBe(false)
 
     const restarted = await boot()
-    const replay = await fetch(`${restarted.url}/api/approvals/${encodeURIComponent(nonce)}/approve`, {
+    const replay = await restarted.call(`/api/approvals/${encodeURIComponent(nonce)}/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'treasury-demo' }),
+      body: JSON.stringify({ passphrase: PASSPHRASE }),
     })
     expect(replay.status).toBe(404)
-    expect((await (await fetch(`${restarted.url}/api/state`)).json()).sideEffects.paymentsCreated).toBe(0)
+    expect((await (await restarted.call('/api/state')).json()).sideEffects.paymentsCreated).toBe(0)
   })
 
   it('refuses an unauthorized reset', async () => {
-    const { url } = await boot()
-    await fetch(`${url}/api/scenarios/status`, { method: 'POST' })
-    const refused = await fetch(`${url}/api/reset`, {
+    const session = await boot()
+    const anonymous = await fetch(`${session.url}/api/reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirm: RESET_CONFIRM, passphrase: PASSPHRASE, acknowledgeExport: true }),
+    })
+    expect(anonymous.status).toBe(401)
+    await session.call('/api/scenarios/status', { method: 'POST' })
+    const refused = await session.call('/api/reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ confirm: RESET_CONFIRM, passphrase: 'wrong', acknowledgeExport: true }),
     })
     expect(refused.status).toBe(401)
-    const state = await (await fetch(`${url}/api/state`)).json()
+    const state = await (await session.call('/api/state')).json()
     expect(state.cases.length).toBeGreaterThan(0)
-    const malformed = await fetch(`${url}/api/reset`, {
+    const malformed = await session.call('/api/reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ passphrase: 'treasury-demo' }),
+      body: JSON.stringify({ passphrase: PASSPHRASE }),
     })
     expect(malformed.status).toBe(400)
   })

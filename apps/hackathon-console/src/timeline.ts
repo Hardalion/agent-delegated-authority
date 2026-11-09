@@ -83,7 +83,7 @@ export function buildStages(view: AuthorityView): StageView[] {
   const executionDetail = unknown
     ? 'OUTCOME UNKNOWN'
     : executionStatus === 'complete'
-      ? 'The gateway called the simulated rail.'
+      ? 'The gateway called the downstream rail and received a completed result.'
       : view.approvalState === 'pending'
         ? 'Not called. Waiting for human approval.'
         : view.approvalState === 'rejected'
@@ -141,7 +141,11 @@ export function buildStages(view: AuthorityView): StageView[] {
       id: 'gateway',
       label: 'Gateway',
       status: 'complete',
-      detail: executionStatus === 'complete' ? 'Executor invoked.' : 'Authority path finished. Executor not invoked.',
+      detail: unknown
+        ? 'Executor was invoked. The downstream outcome is unknown.'
+        : executionStatus === 'complete'
+          ? 'Executor invoked.'
+          : 'Authority path finished. Executor not invoked.',
     },
     {
       id: 'execution',

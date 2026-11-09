@@ -11,6 +11,11 @@ const receiptEl = document.querySelector('#receipt')
 const verifyEl = document.querySelector('#verify-result')
 const outcomeEl = document.querySelector('#outcome')
 const healthFlag = document.querySelector('#health-flag')
+const railFlag = document.querySelector('#rail-flag')
+const teamFlag = document.querySelector('#team-flag')
+const bannerEl = document.querySelector('#banner')
+const loginEl = document.querySelector('#login')
+const scenarioEl = document.querySelector('#scenario-buttons')
 const timingsEl = document.querySelector('#timings')
 const guideEl = document.querySelector('#guide')
 const passphraseEl = document.querySelector('#passphrase')
@@ -62,9 +67,10 @@ function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
 }
 
-function money(cents) {
+function money(cents, currency) {
   if (typeof cents !== 'number') return ''
-  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+  const code = currency === 'EUR' ? 'EUR' : 'USD'
+  return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: code })
 }
 
 function tone(label) {
@@ -84,8 +90,12 @@ function showError(message) {
 }
 
 async function request(path, options) {
-  const response = await fetch(path, { cache: 'no-store', ...options })
+  const headers = { 'x-adap-request': '1', ...(options && options.headers ? options.headers : {}) }
+  const response = await fetch(path, { cache: 'no-store', credentials: 'same-origin', ...options, headers })
   const body = await response.json().catch(() => null)
+  if (response.status === 401) {
+    loginEl.hidden = false
+  }
   if (!response.ok) {
     const message = body && body.error && body.error.message ? body.error.message : `Request failed (${response.status})`
     const error = new Error(message)
@@ -112,6 +122,15 @@ function render() {
   if (key === renderedKey) return
   renderedKey = key
   healthFlag.textContent = state.health.ok ? 'GATEWAY READY' : 'CHECK FAILED'
+  railFlag.textContent = state.environment.railLabel
+  teamFlag.textContent = `Team ${state.environment.teamId}`
+  bannerEl.textContent = state.environment.simulatedRail
+    ? 'Process memory. These records are simulated inside this process. No real money moves.'
+    : 'Connected to the local sandbox API. Records are synthetic and persisted by that API. No real money moves.'
+  loginEl.hidden = true
+  scenarioEl.innerHTML = state.scenarios
+    .map((item) => `<button type="button" data-action="run" data-scenario="${esc(item.id)}">${esc(item.title)}</button>`)
+    .join('')
   const metrics = [
     ['Decisions', state.metrics.decisions],
     ['Pending', state.metrics.pending],
@@ -125,6 +144,9 @@ function render() {
   const item = selected()
   outcomeEl.className = `outcome ${item ? tone(item.outcomeLabel) : ''}`
   outcomeEl.textContent = item ? item.outcomeLabel : 'No decision yet.'
+  if (item && item.outcomeLabel === 'OUTCOME UNKNOWN') {
+    outcomeEl.insertAdjacentHTML('beforeend', ` <button type="button" data-action="reconcile" data-id="${esc(item.correlationId)}">Reconcile</button>`)
+  }
   flowEl.innerHTML = item
     ? item.stages.map((stage) => `<li><b>${esc(stage.label)}</b><span class="status ${esc(stage.status)}">${esc(stage.status)}</span><span>${esc(stage.detail)}</span></li>`).join('')
     : '<li class="empty">Run a scenario to see the authority path.</li>'
@@ -136,8 +158,11 @@ function render() {
         ['Delegation', state.delegation.id],
         ['Action', item.action],
         ['Target', item.target],
-        ['Amount', typeof item.parameters.amount === 'number' ? `${item.parameters.amount} minor units (${money(item.parameters.amount)})` : '—'],
+        ['Amount', typeof item.parameters.amount === 'number' ? `${item.parameters.amount} minor units (${money(item.parameters.amount, item.parameters.currency)})` : '—'],
         ['Currency', item.parameters.currency || '—'],
+        ['Execution', item.executionMode || '—'],
+        ['Downstream id', item.downstreamResourceId || '—'],
+        ['Receipt claim', item.receiptClaimsExecuted ? 'Receipt says executed' : 'Receipt does not say executed'],
         ['Policy', `${state.policy.name} @ ${state.policy.version}`],
         ['Policy hash', item.policyHash || state.policy.hash],
         ['Decision', item.decision],
@@ -166,7 +191,7 @@ function render() {
 
   effectsEl.textContent = `Reads ${state.sideEffects.statusReads} · payments created ${state.sideEffects.paymentsCreated} · beneficiary changes ${state.sideEffects.beneficiaryChanges} · unauthorized calls ${state.sideEffects.unauthorizedRejections}`
   paymentsEl.innerHTML = `<table><thead><tr><th>Id</th><th>Beneficiary</th><th>Amount</th><th>Status</th></tr></thead><tbody>${
-    state.payments.map((payment) => `<tr><td>${esc(payment.id)}</td><td>${esc(payment.beneficiary)}</td><td>${esc(money(payment.amount))}</td><td>${esc(payment.status)}</td></tr>`).join('')
+    state.payments.map((payment) => `<tr><td>${esc(payment.id)}</td><td>${esc(payment.beneficiary)}</td><td>${esc(money(payment.amount, payment.currency))}</td><td>${esc(payment.status)}</td></tr>`).join('')
   }</tbody></table>`
 
   timelineEl.innerHTML = state.timeline.length
@@ -289,6 +314,21 @@ async function guideNext() {
   showGuide()
 }
 
+document.querySelector('#login-button').addEventListener('click', async () => {
+  const token = document.querySelector('#team-token').value
+  try {
+    await request('/api/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+    document.querySelector('#team-token').value = ''
+    await load()
+  } catch (error) {
+    showError(error.message || 'Sign-in failed.')
+  }
+})
+
 document.body.addEventListener('click', async (event) => {
   const button = event.target.closest('button')
   if (!button || inflight) return
@@ -312,6 +352,10 @@ document.body.addEventListener('click', async (event) => {
     } else if (action === 'present') {
       guideIndex = 0
       showGuide()
+    } else if (action === 'reconcile') {
+      state = await request(`/api/cases/${encodeURIComponent(button.dataset.id)}/reconcile`, { method: 'POST' })
+      selectedId = state.cases[0] ? state.cases[0].id : selectedId
+      render()
     } else if (action === 'verify') {
       const item = selected()
       if (!item || !item.receipt) {

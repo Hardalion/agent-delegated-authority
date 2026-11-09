@@ -2,9 +2,9 @@ name: ADAP CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'hackathon/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'hackathon/**']
 
 jobs:
   test:
@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.19.0
           cache: pnpm
 
       - name: Install
@@ -91,7 +91,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.19.0
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile

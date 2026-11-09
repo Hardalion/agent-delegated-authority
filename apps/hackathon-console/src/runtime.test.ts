@@ -157,6 +157,7 @@ describe('hackathon scenarios', () => {
     const state = await demo.runScenario('status')
     expect(state.cases[0]?.outcomeLabel).toBe('OUTCOME UNKNOWN')
     expect(state.cases[0]?.executed).toBe(false)
+    expect(state.cases[0]?.receiptClaimsExecuted).toBe(true)
     expect(state.sideEffects.statusReads).toBe(0)
     const execution = state.cases[0]?.stages.find((stage) => stage.id === 'execution')
     expect(execution?.detail).toBe('OUTCOME UNKNOWN')
@@ -206,6 +207,19 @@ describe('hackathon scenarios', () => {
     const restarted = runtime()
     await expect(restarted.approve(nonce, 'treasury-demo')).rejects.toThrow(/No pending approval/)
     expect(restarted.publicState().sideEffects.paymentsCreated).toBe(0)
+  })
+
+  it('does not execute an approval after the intent has expired', async () => {
+    let now = FIXED.getTime()
+    const demo = new DemoRuntime({
+      now: () => new Date(now),
+      passphrase: 'treasury-demo',
+      env: { NODE_ENV: 'demo', ADAP_DEMO_ENV: 'hackathon' },
+    })
+    await demo.runScenario('payment', { nonce: 'n-expire-1' })
+    now += 21 * 60_000
+    await expect(demo.approve('n-expire-1', 'treasury-demo')).rejects.toThrow(/expired/i)
+    expect(demo.publicState().sideEffects.paymentsCreated).toBe(0)
   })
 
   it('matches the HTTP verifier to verifyProtocolReceipt', async () => {

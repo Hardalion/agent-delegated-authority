@@ -1,0 +1,44 @@
+# One team, one console, one sandbox. Do not publish these ports beyond loopback.
+# This file does not start anything by itself and does not contain secrets.
+services:
+  sandbox:
+    build:
+      context: ../..
+      dockerfile: apps/hackathon-console/Dockerfile
+    user: "10001:10001"
+    command: ["node", "services/sandbox-apis/server.mjs"]
+    environment:
+      SANDBOX_CONTAINER: "1"
+      SANDBOX_TOKEN: ${ADAP_SANDBOX_TOKEN:?set ADAP_SANDBOX_TOKEN}
+      SANDBOX_PORT: "4318"
+      SANDBOX_DB: /data/team-hackathon.sqlite
+      SANDBOX_FAULTS: "0"
+    volumes:
+      - hackathon-data:/data
+    ports:
+      - "127.0.0.1:4318:4318"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4318/health',{headers:{authorization:'Bearer '+process.env.SANDBOX_TOKEN}}).then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  console:
+    build:
+      context: ../..
+      dockerfile: apps/hackathon-console/Dockerfile
+    environment:
+      ADAP_CONTAINER: "1"
+      ADAP_DEPLOYMENT: hosted
+      NODE_ENV: production
+      ADAP_BIND_HOST: 0.0.0.0
+      ADAP_DEMO_PORT: "4317"
+      ADAP_TEAM_ID: ${ADAP_TEAM_ID:?set ADAP_TEAM_ID}
+      ADAP_TEAM_TOKEN: ${ADAP_TEAM_TOKEN:?set ADAP_TEAM_TOKEN}
+      ADAP_APPROVER_PASSPHRASE: ${ADAP_APPROVER_PASSPHRASE:?set ADAP_APPROVER_PASSPHRASE}
+      ADAP_SESSION_SECRET: ${ADAP_SESSION_SECRET:?set ADAP_SESSION_SECRET}
+      ADAP_SANDBOX_URL: http://sandbox:4318
+      ADAP_SANDBOX_TOKEN: ${ADAP_SANDBOX_TOKEN:?set ADAP_SANDBOX_TOKEN}
+      ADAP_COOKIE_SECURE: "0"
+    ports:
+      - "127.0.0.1:4317:4317"
+    depends_on:
+      - sandbox
+volumes:
+  hackathon-data:

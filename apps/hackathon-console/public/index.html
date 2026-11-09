@@ -15,22 +15,27 @@
       <p class="lede">An agent may propose an action. It can execute a consequential operation only when ADAP grants the authority.</p>
     </div>
     <div class="flags" aria-label="Environment">
-      <span class="flag">DEMO ENVIRONMENT</span>
-      <span class="flag flag-sim">SIMULATED PAYMENT RAIL</span>
+      <span class="flag">HACKATHON SANDBOX</span>
+      <span id="rail-flag" class="flag flag-sim">Rail status loads from the server</span>
+      <span id="team-flag" class="flag">Team</span>
       <span id="health-flag" class="flag">Checking</span>
     </div>
   </header>
-  <p class="banner">Simulated payment rail. This console is not connected to a bank. Decisions come from the ADAP gateway.</p>
+  <p id="banner" class="banner">Hackathon sandbox. This console does not move real money. The rail label comes from the server after sign-in.</p>
+  <section id="login" class="panel wide">
+    <h2>Team access</h2>
+    <p class="hint">Paste the team token printed at startup. It is not stored in this page.</p>
+    <label for="team-token">Team token</label>
+    <input id="team-token" type="password" autocomplete="off" spellcheck="false">
+    <button type="button" id="login-button">Open session</button>
+  </section>
   <p id="error" class="error" role="alert"></p>
   <section id="metrics" class="metrics" aria-live="polite"></section>
   <div class="layout" id="main">
     <section class="panel">
       <h2>Scenarios</h2>
       <p class="hint">Each button asks the treasury agent to sign an intent. The gateway decides.</p>
-      <button type="button" data-action="run" data-scenario="status">Scenario A · Status read</button>
-      <button type="button" data-action="run" data-scenario="payment">Scenario B · Payment above limit</button>
-      <button type="button" data-action="run" data-scenario="beneficiary">Scenario C · Change beneficiary</button>
-      <button type="button" class="quiet" data-action="run" data-scenario="hard-cap">Hard-cap payment</button>
+      <div id="scenario-buttons"></div>
       <button type="button" class="quiet" data-action="present">Presentation mode</button>
       <section id="guide" hidden>
         <p id="guide-kicker" class="eyebrow"></p>
@@ -44,7 +49,7 @@
       </section>
       <h2>Approver</h2>
       <label for="passphrase">Demo approver passphrase</label>
-      <input id="passphrase" type="text" value="treasury-demo" autocomplete="off" spellcheck="false">
+      <input id="passphrase" type="password" autocomplete="off" spellcheck="false" placeholder="Approver passphrase">
       <p class="hint">Checked on the server. The browser does not sign the approval.</p>
     </section>
     <section class="panel">
@@ -63,7 +68,7 @@
       <div id="inbox"></div>
     </section>
     <section class="panel">
-      <h2>Simulated payments</h2>
+      <h2>Downstream records</h2>
       <p id="effects" class="hint"></p>
       <div id="payments"></div>
     </section>
@@ -89,7 +94,7 @@
     <pre id="receipt" class="receipt">No receipt selected.</pre>
   </section>
   <footer>
-    <p>Protocol: ADAP. This process is the reference implementation on a simulated rail. A deployment guarantee belongs to the network around the gateway, not to this console.</p>
+    <p>Protocol: ADAP. This is a hackathon sandbox. A completed label means the downstream system returned a result. An unknown label means the outcome was not confirmed, and the console does not repeat the call.</p>
     <p id="timings"></p>
   </footer>
   <script src="/app.js" defer></script>
