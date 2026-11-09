@@ -11,7 +11,7 @@ Current status, and what is not claimed, is in [docs/security/status.md](docs/se
 - [docs/security/regression-matrix.md](docs/security/regression-matrix.md) maps ADAP-001 through ADAP-011 to tests
 - [docs/security/residual-risks.md](docs/security/residual-risks.md) lists remaining limits
 - [THREAT_MODEL.md](THREAT_MODEL.md) is the draft threat model
-- [docs/security/historical/](docs/security/historical/) keeps earlier audit notes. Those notes are not the current `main`
+- Earlier historical audit notes are no longer maintained in the public tree. Previous versions remain in this repository's Git history and do not describe the current `main`.
 
 Run `pnpm test` and `pnpm test:security` before merging authority-path changes.
 
