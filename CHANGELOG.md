@@ -10,7 +10,7 @@ Canonical JSON now follows RFC 8785. Integer-like object keys are lexicographic.
 
 v0.1 policy documents accept only `ALLOW`, `BLOCK`, and `REQUIRE_HUMAN`. `DEFER` and `SIMULATE` stay valid on already issued receipts and are rejected by the policy schema. The protocol version stays 0.1 because those actions were never executable.
 
-The policy evaluator blocks unexpected condition failures and non-numeric ordered comparisons instead of throwing or coercing. Nested property paths resolve to arbitrary depth on own properties only. `defaultAction: ALLOW` remains an explicit configuration. The gateway refuses a non-canonical action instead of executing a folded one, and reports `executionStatePersistence` when a state callback fails after a downstream call.
+The policy evaluator blocks unexpected condition failures and non-numeric ordered comparisons instead of throwing or coercing. Nested property paths resolve to arbitrary depth on own properties only. `defaultAction: ALLOW` remains an explicit configuration. The gateway refuses a non-canonical action instead of executing a folded one, and reports `executionStatePersistence` when a state callback fails after a downstream call. `confirmed` is only used when every callback returns `'confirmed'` after a durable write. A callback that was never called is `not_attempted`. A callback that merely returns is `callback_returned`. The independent Python canonical-JSON check uses ECMAScript number formatting and runs in CI. Removing `DEFER` and `SIMULATE` from the v0.1 policy schema rejects older draft documents that named those actions. Those actions were not executable. Receipt records are unchanged.
 
 ### Reference gateway and store
 

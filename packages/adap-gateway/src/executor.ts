@@ -16,22 +16,33 @@ export interface GatewayExecuteInput extends Omit<RunAuthorityPathInput, 'execut
   readonly broker: CredentialBroker
   readonly events?: SecurityEventSink
   readonly tenantId?: string
-  /** Called before the downstream POST and again when the outcome is known. */
+  /**
+   * Called before the downstream POST and again when the outcome is known.
+   * Return `'confirmed'` only after a durable write succeeded.
+   * A resolved promise with no value means the callback returned; it is not
+   * confirmation that storage kept the record.
+   */
   readonly onExecutionState?: (
     state: ExecutionKnowledge,
     info: { readonly intentHash: string; readonly correlationId: string; readonly detail?: string },
-  ) => Promise<void>
+  ) => Promise<void | 'confirmed'>
 }
 
 /**
- * Whether the execution-state callback confirmed the write.
- * `not_configured` means `onExecutionState` was omitted.
- * `confirmed` means every callback that ran succeeded.
- * `failed` means a callback threw. A failure before the downstream call
- * prevents that call. A failure after it does not hide the downstream result
- * and does not repeat the call.
+ * What the gateway observed about execution-state persistence.
+ * `not_configured` — `onExecutionState` was omitted.
+ * `not_attempted` — a callback was supplied and this request never called it.
+ * `callback_returned` — every call returned, and at least one did not report a durable write.
+ * `confirmed` — every call returned `'confirmed'`.
+ * `failed` — a call threw. A failure before the downstream call prevents that call.
+ * A failure after it does not hide the downstream result and does not repeat the call.
  */
-export type ExecutionStatePersistence = 'not_configured' | 'confirmed' | 'failed'
+export type ExecutionStatePersistence =
+  | 'not_configured'
+  | 'not_attempted'
+  | 'callback_returned'
+  | 'confirmed'
+  | 'failed'
 
 export interface GatewayExecuteResult extends ProtocolResult {
   readonly correlationId: string
@@ -53,7 +64,7 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
   let downstream: DownstreamOutcome | undefined
   let executionState: ExecutionKnowledge | 'not_started' = 'not_started'
   let executionStatePersistence: ExecutionStatePersistence = input.onExecutionState
-    ? 'confirmed'
+    ? 'not_attempted'
     : 'not_configured'
   let authorizedCtx: ExecutionContext | undefined
 
@@ -64,7 +75,13 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
   ): Promise<void> => {
     if (!input.onExecutionState) return
     try {
-      await input.onExecutionState(state, info)
+      const outcome = await input.onExecutionState(state, info)
+      if (executionStatePersistence === 'failed') return
+      if (outcome === 'confirmed' && executionStatePersistence !== 'callback_returned') {
+        executionStatePersistence = 'confirmed'
+      } else {
+        executionStatePersistence = 'callback_returned'
+      }
     } catch {
       executionStatePersistence = 'failed'
       events?.emit({

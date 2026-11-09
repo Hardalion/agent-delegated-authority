@@ -279,6 +279,7 @@ export async function startGateway(): Promise<void> {
               state,
               detail: info.detail,
             })
+            return 'confirmed' as const
           },
         })
         console.info(JSON.stringify({
