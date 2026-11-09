@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: every job in this workflow only reads the repository.
+# CodeQL flags workflows without an explicit permissions block because the
+# default token grants can be broader than the job needs.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -47,6 +53,9 @@ jobs:
 
       - name: Attack suite
         run: pnpm attacks
+
+      - name: Canonical JSON cross-check
+        run: python3 scripts/verify-canonical-json.py
 
       - name: Dependency audit
         # High/critical findings fail the job. No suppressions are registered.

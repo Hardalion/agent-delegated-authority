@@ -440,6 +440,7 @@ describe('execution state persistence', () => {
     })
     expect(retry.decision).toBe('BLOCK')
     expect(retry.executed).toBe(false)
+    expect(retry.executionStatePersistence).toBe('not_attempted')
     expect(gate.calls()).toEqual({ resolves: 1, executes: 1 })
   })
 
@@ -470,7 +471,7 @@ describe('execution state persistence', () => {
     expect(events.events.some((event) => event.type === 'storage.failure')).toBe(true)
   })
 
-  it('confirms persistence when the callback succeeds', async () => {
+  it('does not treat a callback that merely returns as durable confirmation', async () => {
     const gate = setup()
     const result = await executeAuthorized({
       chain: [gate.root],
@@ -486,8 +487,84 @@ describe('execution state persistence', () => {
       onExecutionState: async () => {},
     })
     expect(result.executed).toBe(true)
-    expect(result.executionStatePersistence).toBe('confirmed')
+    expect(result.executionStatePersistence).toBe('callback_returned')
     expect(result.downstream?.status).toBe('completed')
+  })
+
+  it('reports confirmed only when every callback says the write is durable', async () => {
+    const gate = setup()
+    const result = await executeAuthorized({
+      chain: [gate.root],
+      intent: gate.intent,
+      directory: gate.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      ledger: new NonceLedger(),
+      signer: gate.signer,
+      policyResolver: gate.policyResolver,
+      clock: new FixedClock(NOW),
+      broker: gate.broker,
+      onExecutionState: async () => 'confirmed',
+    })
+    expect(result.executed).toBe(true)
+    expect(result.executionStatePersistence).toBe('confirmed')
+    expect(gate.calls()).toEqual({ resolves: 1, executes: 1 })
+  })
+
+  it('does not stay confirmed when a later callback does not confirm the write', async () => {
+    const gate = setup()
+    const result = await executeAuthorized({
+      chain: [gate.root],
+      intent: gate.intent,
+      directory: gate.directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      ledger: new NonceLedger(),
+      signer: gate.signer,
+      policyResolver: gate.policyResolver,
+      clock: new FixedClock(NOW),
+      broker: gate.broker,
+      onExecutionState: async (state) => (state === 'started' ? 'confirmed' : undefined),
+    })
+    expect(result.executed).toBe(true)
+    expect(result.executionStatePersistence).toBe('callback_returned')
+  })
+
+  it('reports not_attempted when authorization blocks before the callback', async () => {
+    const gate = setup()
+    const blocked: Policy = {
+      version: '1.0.0',
+      policyName: 'block-apply',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        { ruleId: 'never', action: 'BLOCK', condition: "tool.name == 'other'", alertSeverity: 'LOW' },
+      ],
+    }
+    const uri = 'block-apply@1.0.0'
+    gate.policyResolver.register(blocked, uri)
+    let calls = 0
+    const result = await executeAuthorized({
+      chain: [gate.root],
+      intent: gate.intent,
+      directory: gate.directory,
+      policy: blocked,
+      policyUri: uri,
+      ledger: new NonceLedger(),
+      signer: gate.signer,
+      policyResolver: gate.policyResolver,
+      clock: new FixedClock(NOW),
+      broker: gate.broker,
+      onExecutionState: async () => {
+        calls += 1
+        return 'confirmed'
+      },
+    })
+    expect(result.decision).toBe('BLOCK')
+    expect(result.executed).toBe(false)
+    expect(result.executionStatePersistence).toBe('not_attempted')
+    expect(calls).toBe(0)
+    expect(gate.calls()).toEqual({ resolves: 0, executes: 0 })
   })
 })
 

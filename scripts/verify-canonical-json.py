@@ -19,23 +19,53 @@ DANGEROUS = {"__proto__", "constructor", "prototype"}
 
 
 def es_number(value: float) -> str:
+    """ECMA-262 NumberToString for finite numbers, which is the RFC 8785 number format.
+
+    This is not Python json.dumps. json.dumps(500.0) is `500.0`, json.dumps(1e-6)
+    is `1e-06`, and json.dumps(1e20) stays in exponent form. JCS emits `500`,
+    `0.000001`, and decimal notation through exponent 20.
+    """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("number required")
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+    if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("non-finite")
+    if isinstance(value, int) and abs(value) < 10**21:
+        return str(value)
     if value == 0:
         return "0"
-    text = json.dumps(value)
-    if "e" not in text and "E" not in text:
-        return text
-    mantissa, exponent = text.lower().split("e", 1)
-    sign = ""
-    if exponent.startswith("+"):
-        exponent = exponent[1:]
-    elif exponent.startswith("-"):
-        sign = "-"
-        exponent = exponent[1:]
-    return f"{mantissa}e{sign}{int(exponent)}"
+    sign = "-" if value < 0 else ""
+    magnitude = float(-value if value < 0 else value)
+    scientific: str | None = None
+    for precision in range(0, 17):
+        candidate = format(magnitude, f".{precision}e")
+        if float(candidate) == magnitude:
+            scientific = candidate
+            break
+    if scientific is None:
+        scientific = format(magnitude, ".16e")
+    mantissa, exponent_text = scientific.split("e")
+    exponent = int(exponent_text)
+    digits = mantissa.replace(".", "")
+    while len(digits) > 1 and digits.endswith("0"):
+        shorter = digits[:-1]
+        trial = shorter if len(shorter) == 1 else shorter[0] + "." + shorter[1:]
+        if float(f"{trial}e{exponent}") == magnitude:
+            digits = shorter
+        else:
+            break
+    if -6 <= exponent <= 20:
+        if exponent >= 0:
+            if exponent >= len(digits) - 1:
+                text = digits + ("0" * (exponent - (len(digits) - 1)))
+            else:
+                text = digits[: exponent + 1] + "." + digits[exponent + 1 :]
+        else:
+            text = "0." + ("0" * (-exponent - 1)) + digits
+    else:
+        body = digits if len(digits) == 1 else digits[0] + "." + digits[1:]
+        exponent_sign = str(exponent) if exponent < 0 else f"+{exponent}"
+        text = body + "e" + exponent_sign
+    return sign + text
 
 
 def well_formed(text: str) -> None:
@@ -88,6 +118,18 @@ def main() -> int:
             print(f"FAIL {case['name']}\n  actual:   {actual}\n  expected: {case['canonical']}")
         else:
             print(f"ok {case['name']}")
+    for case in document["numbers"]:
+        actual = es_number(case["value"])
+        if actual != case["canonical"]:
+            failed = True
+            print(f"FAIL number {case['name']}\n  actual:   {actual}\n  expected: {case['canonical']}")
+        else:
+            print(f"ok number {case['name']}")
+    if es_number(-0.0) != "0":
+        failed = True
+        print("FAIL number negative-zero")
+    else:
+        print("ok number negative-zero")
     if failed:
         return 1
     # Programmatic rejects mirrored by the TypeScript suite.

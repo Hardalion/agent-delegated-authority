@@ -11,12 +11,17 @@ const vectors = JSON.parse(
   readFileSync(join(here, 'canonical-json.vectors.json'), 'utf8'),
 ) as {
   accept: Array<{ name: string; value: unknown; canonical: string }>
+  numbers: Array<{ name: string; value: number; canonical: string }>
 }
 
 describe('RFC 8785 canonical JSON vectors', () => {
   it.each(vectors.accept)('$name matches the shared vector', (vector) => {
     expect(canonicalJson(vector.value)).toBe(vector.canonical)
     expect(canonicalReceiptJson(vector.value)).toBe(vector.canonical)
+  })
+
+  it.each(vectors.numbers)('number $name matches ECMAScript serialization', (vector) => {
+    expect(canonicalJson(vector.value)).toBe(vector.canonical)
   })
 
   it('does not use numeric order for integer-like keys', () => {
