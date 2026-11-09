@@ -23,7 +23,9 @@
     "README.md"
   ],
   "scripts": {
+    "prebuild": "pnpm --dir ../.. --filter adap build",
     "build": "tsc",
+    "pretypecheck": "pnpm --dir ../.. --filter adap build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run src/postgres.integration.test.ts",

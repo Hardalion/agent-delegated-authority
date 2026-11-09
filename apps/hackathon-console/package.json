@@ -13,6 +13,7 @@
     "start": "node dist/main.js",
     "prereset": "tsc",
     "reset": "node dist/reset-cli.js",
+    "pretypecheck": "pnpm --dir ../.. --filter adap-gateway build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc"

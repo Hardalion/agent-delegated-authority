@@ -19,8 +19,11 @@
   },
   "files": ["dist", "README.md"],
   "scripts": {
+    "prebuild": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
     "build": "tsc",
+    "pretypecheck": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
     "test": "vitest run"
   },
   "dependencies": {
