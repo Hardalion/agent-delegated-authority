@@ -52,6 +52,10 @@ A local console on `127.0.0.1:4317` with the sandbox on `4318` was driven in a b
 - Pay €6,000 was BLOCK, `executed: false`. Sandbox counters: `committedPayments: 1`, `mutatingRequests: 1`.
 - `docker compose down` stopped the stack. It was not left running.
 
+## CI
+
+GitHub Actions run [42690887932](https://github.com/Hardalion/agent-delegated-authority/actions/runs/42690887932) completed success for commit `c29abed`, including the test job, the private-key scan, and `postgres-integration`.
+
 ## Not run
 
-GitHub Actions until this commit is pushed. Postgres `pnpm test:integration:postgres`. An HTTPS proxy. A file-level backup restore. A load test larger than the 20-wide sample.
+An HTTPS proxy in front of the console. A file-level backup restore. A load test larger than the 20-wide sample.

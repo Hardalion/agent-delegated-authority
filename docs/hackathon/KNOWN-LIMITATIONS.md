@@ -12,4 +12,4 @@
 
 6. Vendor changes and purchases are sandbox workflows. The original memory scenario `beneficiary` is still BLOCK and still has no broker route. That is the previous demo behavior, kept for the memory rail.
 
-7. Postgres integration tests were not run. The hackathon path does not use `ADAP_PG_URL`.
+7. The hackathon path does not use `ADAP_PG_URL`. The Postgres store suite runs in CI and is not part of the participant sandbox.

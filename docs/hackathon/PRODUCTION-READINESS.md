@@ -36,9 +36,9 @@ Browser: €120 executed and stored, €750 waited with no new payment, approval
 | Public bind refused unless `ADAP_CONTAINER=1` | PASS |
 | Unknown downstream result is ALLOW, `executed: false`, and not retried | PASS |
 | Docker image build, non-root user, loopback publish, health, ready, €120 stored, €6,000 blocked | PASS |
-| GitHub Actions on this commit | See the Actions run for this commit after push |
+| GitHub Actions on `hackathon/participant-sandbox` | PASS for commit `c29abed`. Latest run: https://github.com/Hardalion/agent-delegated-authority/actions/runs/42690887932 |
 | HTTPS proxy | NOT TESTED |
-| Postgres suite | NOT TESTED |
+| Postgres suite in CI | PASS (`postgres-integration` on that run) |
 | Backup file restore drill | NOT TESTED |
 | Event-sized load beyond 20-wide on one instance | NOT TESTED |
 
@@ -46,4 +46,4 @@ Browser: €120 executed and stored, €750 waited with no new payment, approval
 
 Unknown receipts and the hosted compose drill are fixed on this commit. The compose stack was built from `apps/hackathon-console/Dockerfile`, ran as user `adap`, published only `127.0.0.1:4317` and `127.0.0.1:4318`, returned health and readiness, stored one €120 sandbox payment, and left the €6,000 request blocked with that single committed payment. The stack was then stopped.
 
-GitHub Actions is the remaining check. It runs on push to `hackathon/**`. Do not merge to `main`. Do not publish the host port beyond loopback. HTTPS in front of the proxy was not part of this drill.
+GitHub Actions on this branch passed for commit `c29abed`: https://github.com/Hardalion/agent-delegated-authority/actions/runs/42690887932. Do not merge to `main`. Do not publish the host port beyond loopback. HTTPS in front of the proxy was not part of this drill.
