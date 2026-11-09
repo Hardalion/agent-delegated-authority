@@ -1,6 +1,6 @@
 # Regression matrix
 
-Current map of ADAP-001 through ADAP-011 to tests in this repository. Historical audit notes are in [historical/](historical/).
+Current map of ADAP-001 through ADAP-011 to tests in this repository. Historical audit notes are no longer maintained in the public tree; previous versions remain in this repository's Git history and are not the current state.
 
 | ID | Original behavior | Fix | Regression test | Status |
 | --- | --- | --- | --- | --- |
