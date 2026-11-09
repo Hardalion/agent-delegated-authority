@@ -34,3 +34,7 @@ The reference path recomputes the intent hash immediately before the executor an
 `packages/aap/src/path.ts` and `packages/aap/src/attacks.ts` (`06-post-approval-mutation`).
 
 The reference gateway in `packages/adap-gateway` is not required by this section. When its downstream call ends as `unknown`, the executor callback returns, the path reports `executed: true`, and the nonce is consumed. `executed: true` in that case is still the callback report, not proof the external system committed. See [docs/operations/outcome-unknown.md](../docs/operations/outcome-unknown.md).
+
+Intent `action` is an exact string. The authority check does not trim or case-fold it, because that would authorize a different action than the one that was signed. The reference gateway refuses the broker call unless `ctx.action` is already equal to its canonical form (`^[a-z][a-z0-9._-]{0,127}$` after the same trim and lowercase the helper uses). Mixed-case, padded, and otherwise non-canonical actions are `BLOCK`. `resolveHandle` and `execute` are not called, and the receipt does not claim execution. Canonical form is enforced at that boundary rather than by rewriting the signed intent.
+
+`executionStatePersistence` on the gateway result is `not_configured`, `confirmed`, or `failed`. A failure before the downstream call prevents the call. A failure after the call is visible and does not repeat the call, does not change the nonce, and does not report `executed: false` when the downstream call already returned.

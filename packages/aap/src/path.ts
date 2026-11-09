@@ -286,6 +286,8 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       agentRole: verified.intent.actor,
     })
 
+    // Only ALLOW reaches executeBound. REQUIRE_HUMAN pauses. Every other
+    // action, including one the v0.1 schema cannot produce, is BLOCK.
     if (
       policyDecision.action === 'BLOCK' ||
       (policyDecision.action !== 'ALLOW' && policyDecision.action !== 'REQUIRE_HUMAN')

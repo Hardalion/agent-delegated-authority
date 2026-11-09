@@ -187,13 +187,17 @@ Normative verification semantics:
 The reference profile implemented by `packages/audit-verify` is:
 
 1. Build the unsigned object without `signature` and with `integrity.contentHash` set to `""`.
-2. Canonical JSON: recursively sort object keys; UTF-8; no insignificant whitespace.
+2. Canonical JSON is RFC 8785 (JCS). Object members are written in ascending UTF-16 code-unit order directly from the sorted entries. The serializer does not rebuild a JavaScript object and then enumerate it, because integer-like keys would otherwise come out in numeric order. UTF-8. No insignificant whitespace. Finite numbers use ECMAScript Number-to-String, the same conversion as `JSON.stringify`: `500.0` is `500`, `1e-7` stays `1e-7`, and negative zero is `0`. Non-finite numbers, lone surrogates, BigInt, functions, and symbols are rejected. Undefined object members are omitted and do not enter the encoding. Dangerous keys (`__proto__`, `constructor`, `prototype`) and objects whose prototype is not `Object.prototype` or `null` are rejected. Shared vectors: `packages/audit-verify/src/canonical-json.vectors.json`. An independent check is `scripts/verify-canonical-json.py`.
 3. `contentHash = hex(SHA-256(utf8(canonicalJson)))`.
 4. Replace the placeholder with that `contentHash`.
 5. Canonicalize again, still without `signature`.
 6. `signature = hex(Ed25519.Sign(issuerPrivateKey, utf8(canonicalJson)))`.
 
 `issuerKeyId` names the public key. The reference profile does not define a hosted key directory.
+
+Receipt verbs still include `DEFER` and `SIMULATE` so already issued receipts remain verifiable. v0.1 policy evaluation does not produce those actions. See [policy-schema.md](./policy-schema.md).
+
+Compatibility: objects whose keys are not integer-index strings canonicalize to the same bytes as the previous reference profile. `examples/receipt.json` still has content hash `35a2f27d1d11b306fbbfa81d0345afe66db6c9087d760eec7f20644744f2511c`. Keys that are integer-index strings were previously emitted in numeric order (`"9"` before `"10"`). They are now lexicographic (`"10"` before `"9"`), which is what RFC 8785 requires. A receipt, tool-argument hash, or signature that covered such keys was bound to the old order and must be re-issued. The published example receipt does not use those keys.
 
 ---
 

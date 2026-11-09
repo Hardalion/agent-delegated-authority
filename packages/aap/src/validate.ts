@@ -1,6 +1,6 @@
 import { canonicalJson, importPublicKey, sha256, verifyObject } from './crypto.js'
 import { AuthorityError } from './errors.js'
-import { assertAmountWithinLimit, assertCanonicalAmount, isMaxAmountKey } from './amount.js'
+import { assertCanonicalAmount, assertWithinCeiling, ceilingField, isMaxAmountKey } from './amount.js'
 import { hasOwn, ownEntries } from './safe-object.js'
 import {
   assertCanonicalCurrency,
@@ -128,14 +128,19 @@ function assertParametersWithin(
   constraints: Constraints
 ): void {
   for (const [key, bound] of ownEntries(constraints as Record<string, unknown>)) {
-    if (key === 'max_amount') {
-      const amount = hasOwn(parameters, 'amount') ? parameters.amount : undefined
-      if (amount === undefined) {
-        if (action === 'read' || action === 'search') continue
-        throw new AuthorityError('constraint', 'amount is required', true)
+    const field = ceilingField(key)
+    if (field) {
+      const presented = hasOwn(parameters, field) ? parameters[field] : undefined
+      if (presented === undefined) {
+        // Documented exception: read and search may omit amount under max_amount only.
+        if (field === 'amount' && (action === 'read' || action === 'search')) continue
+        throw new AuthorityError('constraint', `${field} is required`, true)
       }
-      assertAmountWithinLimit(amount, bound, 'parameters.amount')
+      assertWithinCeiling(presented, bound, field, key)
       continue
+    }
+    if (key.startsWith('max_')) {
+      throw new AuthorityError('constraint', `constraint ${key} is not a canonical max_<field> ceiling`, true)
     }
     if (key === 'currency') {
       const presented = parameters[key]

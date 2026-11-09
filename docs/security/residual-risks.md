@@ -14,7 +14,9 @@ These are limits of the reference implementation and of a deployment. They are n
 | Vault dev mode | The local drill uses Vault dev mode. See [local staging](../operations/local-staging.md). |
 | Clock and policy registry | The operator supplies the clock and the policy documents. Caller `now` is rejected. |
 | External retest | Not done. |
-| Cumulative spend | `max_amount` is per intent. |
+| Cumulative spend | `max_<field>` ceilings, including `max_amount`, are per intent. |
+| Explicit `defaultAction: ALLOW` | Unmatched calls follow that configured action. v0.1 does not rewrite it to `BLOCK`. Consequential policies should set `BLOCK`. |
+| Freeform argument names | The evaluator does not run prompt text. A policy can still name a field the caller controls. There is no universal argument whitelist. |
 | Receipt chain | `verifyReceiptChain` does not detect a dropped tail. |
 
 Deployment controls that remain outside the protocol: network policy, a production secret manager, and a highly available nonce store.

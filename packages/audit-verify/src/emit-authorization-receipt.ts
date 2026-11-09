@@ -9,6 +9,7 @@ import { bytesToHex } from '@noble/hashes/utils.js'
 import {
   AUTHORIZATION_RECEIPT_KIND,
   buildUnsignedAuthorizationReceipt,
+  canonicalReceiptJson,
   normalizeAuthorizationOutcome,
   type AuthorizationAlertSeverity,
   type AuthorizationReceiptAction,
@@ -59,22 +60,9 @@ function sha256HexUtf8(utf8: string): string {
   return bytesToHex(sha256(new TextEncoder().encode(utf8)))
 }
 
-/** Stable args hash for receipt intent (canonical key order). */
+/** Stable args hash for receipt intent. Same canonical JSON as receipt signatures. */
 export function hashToolArgs(toolArgs: Record<string, unknown>): string {
-  return sha256HexUtf8(JSON.stringify(sortKeys(toolArgs)))
-}
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys)
-  if (value != null && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    const sorted: Record<string, unknown> = {}
-    for (const key of Object.keys(record).sort()) {
-      sorted[key] = sortKeys(record[key])
-    }
-    return sorted
-  }
-  return value
+  return sha256HexUtf8(canonicalReceiptJson(toolArgs))
 }
 
 function copyArgs(toolArgs: Record<string, unknown>): Record<string, unknown> {

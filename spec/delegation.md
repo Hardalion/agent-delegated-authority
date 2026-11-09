@@ -11,9 +11,21 @@ A delegation is a signed grant from an issuer to a subject.
 | `issued_at`, `expires_at` | Lifetime |
 | `parent_delegation_id` | Present when this grant narrows a parent |
 
-## `max_amount`
+## `max_<field>` ceilings
 
-`max_amount` is a **per-intent** ceiling: each signed intent's amount is checked against the terminal grant's `max_amount`. It is not a cumulative spend ledger across a delegation. This draft does not track total spending over the life of a grant. Implementations that need cumulative limits must add that outside this schema (for example in a commercial gateway) and state the semantics separately.
+A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
+
+| Constraint | Bounded parameter |
+| --- | --- |
+| `max_amount` | `amount` |
+| `max_quantity` | `quantity` |
+| `max_records` | `records` |
+
+`<field>` matches `^[A-Za-z][A-Za-z0-9_]*$`. The same rule applies to every such key. The value is a canonical non-negative safe integer. The intent parameter must be present and must be less than or equal to the ceiling. Echoing the ceiling as its own parameter does not satisfy it: `{ quantity: 999, max_quantity: 5 }` is outside a grant of `max_quantity: 5`. A missing bounded parameter fails closed.
+
+`read` and `search` may omit `amount` when the only ceiling in question is `max_amount`. That exception does not apply to other actions or to other `max_<field>` keys.
+
+`max_amount` is not a cumulative spend ledger. This draft does not track total spending over the life of a grant. Implementations that need cumulative limits must add that outside this schema and state the semantics separately.
 
 ## Narrowing
 
@@ -23,7 +35,7 @@ A child cannot:
 - start earlier than the parent
 - expire later than the parent
 - widen a target
-- raise `max_amount` (canonical safe-integer minor units; see [amounts-and-targets.md](amounts-and-targets.md))
+- raise a `max_<field>` ceiling, including `max_amount` and `max_quantity` (canonical safe-integer units; see [amounts-and-targets.md](amounts-and-targets.md))
 - pass on a capability marked `delegable: false`
 - drop a parent constraint, including by relying on inherited / prototype properties
 

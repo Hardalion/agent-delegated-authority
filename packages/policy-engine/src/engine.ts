@@ -5,6 +5,7 @@ import {
   buildEvaluationContext,
   evaluateCondition,
   NonFiniteComparisonError,
+  NumericComparisonError,
   type EvaluationContext,
 } from './evaluator.js'
 import { BUNDLED_POLICIES, normalizePolicyReference } from './policies/bundled.js'
@@ -67,7 +68,7 @@ export function listBundledPolicyNames(): string[] {
 }
 
 const AGENT_ROLE_PATTERN = /^[A-Za-z0-9:_./@-]{1,128}$/
-const POLICY_ACTIONS = new Set(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN', 'DEFER', 'SIMULATE'])
+const POLICY_ACTIONS = new Set(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN'])
 
 /** A present identity. Omitted, empty, whitespace, and malformed values are not in scope. */
 export function isWellFormedAgentRole(agentRole: unknown): agentRole is string {
@@ -87,14 +88,12 @@ function agentMatchesPolicy(policy: Policy, agentRole: unknown): boolean {
 }
 
 const ACTION_PRIORITY: Record<PolicyAction, number> = {
-  BLOCK: 5,
-  REQUIRE_HUMAN: 4,
-  DEFER: 3,
-  SIMULATE: 2,
+  BLOCK: 3,
+  REQUIRE_HUMAN: 2,
   ALLOW: 1,
 }
 
-/** Evaluate all rules; highest-priority matching action wins (BLOCK > REQUIRE_HUMAN > DEFER > SIMULATE > ALLOW). */
+/** Evaluate all rules; highest-priority matching action wins (BLOCK > REQUIRE_HUMAN > ALLOW). */
 export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
   const policy = resolvePolicy(input.policy)
 
@@ -124,9 +123,33 @@ export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
           alertSeverity: 'CRITICAL',
         }
       }
-      throw error
+      if (error instanceof NumericComparisonError) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'numeric_comparison_rejected',
+          reason: 'ordered comparison requires finite numbers',
+          alertSeverity: 'CRITICAL',
+        }
+      }
+      return {
+        matched: false,
+        action: 'BLOCK',
+        ruleId: 'condition_evaluation_error',
+        reason: 'condition evaluation failed closed',
+        alertSeverity: 'CRITICAL',
+      }
     }
     if (matched) {
+      if (!POLICY_ACTIONS.has(rule.action)) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'unsupported_policy_action',
+          reason: 'policy action is not executable in v0.1',
+          alertSeverity: 'CRITICAL',
+        }
+      }
       matches.push({
         matched: true,
         action: rule.action,

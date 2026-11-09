@@ -20,6 +20,8 @@ Principal
 | Reject a child that raises `max_amount`, widens a target, outlives the parent, drops a parent constraint, or is issued by anyone but the parent subject, and not call the executor | `packages/aap/src/attacks.ts` (`01-over-delegation`), `packages/aap/src/validate.test.ts` |
 | Reject re-delegation of a capability with `delegable: false`, and not call the executor | `packages/aap/src/attacks.ts` (`02-privilege-escalation`) |
 | Reject an intent outside the terminal delegation, including an amount above `max_amount`, and not treat free text as a constraint | `packages/aap/src/attacks.ts` (`03-prompt-injection`), `packages/aap/src/validate.test.ts` |
+| Treat each `max_<field>` constraint as a ceiling on `parameters.<field>`. Reject a missing, non-canonical, or above-ceiling value. Echoing the ceiling does not satisfy it | `packages/aap/src/validate.test.ts` |
+| Accept only `ALLOW`, `BLOCK`, and `REQUIRE_HUMAN` as policy actions. `DEFER` and `SIMULATE` do not validate and do not call the executor | `packages/policy-engine/src/engine.test.ts`, `packages/aap/src/path.test.ts` |
 | Reject an expired delegation or intent, and not call the executor | `packages/aap/src/attacks.ts` (`05-expired-delegation`) |
 | Reject a consumed, failed, or in-flight nonce, and not call the executor for that attempt | `packages/aap/src/attacks.ts` (`04-replay`), `packages/aap/src/nonce.test.ts`, `packages/aap/src/path.test.ts` |
 | Not call the executor on `BLOCK`, or on `REQUIRE_HUMAN` without an approval bound to the same intent hash | `packages/aap/src/attacks.ts` (`06-post-approval-mutation`), `packages/aap/src/path.ts` |

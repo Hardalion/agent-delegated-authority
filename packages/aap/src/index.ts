@@ -27,6 +27,8 @@ export { systemClock, FixedClock, resolveTrustedNow, type Clock } from './clock.
 export {
   assertCanonicalAmount,
   assertAmountWithinLimit,
+  assertWithinCeiling,
+  ceilingField,
   isCanonicalAmount,
   AMOUNT_MAX,
   AMOUNT_MIN,
