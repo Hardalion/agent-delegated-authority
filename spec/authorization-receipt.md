@@ -220,6 +220,21 @@ When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form
 
 Standalone receipts without those fields remain conforming. They do not, by themselves, prove that none were omitted.
 
+### 7.1 What the chain does not prove (proposed)
+
+> Status: proposed in review.
+
+- The reference gateway does not set `sequence` or `prevReceiptHash`, does not return the receipt in its HTTP response, and does not store it. In that deployment no chain exists.
+- `sequence` is a caller input. Concurrent requests with the same value fork the chain. An emitter that claims a chain serializes issuance and assigns `sequence` itself.
+- Every link is signed by one issuer key. Whoever holds it can produce a new, internally consistent chain. Tamper evidence against the issuer needs something the issuer does not control: signed tree heads published to an append-only log (RFC 9162 style), or counter-signature by the principal or the resource server.
+- `receiptId` in the reference path is `rcpt_` plus the first 20 hex characters of the intent hash plus the decision. It is predictable, and not unique across re-evaluations of one intent.
+
+### 7.2 Execution outcome (proposed)
+
+When the executor throws, the reference path signs `decision: BLOCK`, `executed: false`. A downstream write that partly committed and then errored is recorded as a policy refusal. When the downstream outcome is unknown, the path records `executed: true`.
+
+Proposed: keep `BLOCK` for policy decisions. An authorized attempt is `ALLOW` with `execution.state` one of `committed`, `failed`, `unknown`. The reference path already computes `executionHash` over the executor result but leaves it out of the receipt; the receipt body should carry it.
+
 ---
 
 ## 8. Conformance

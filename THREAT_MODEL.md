@@ -110,6 +110,21 @@ The property holds only when the operator's network gives the agent no other rou
 - Executor that returns after a partial external write and then throws: the path records `executed: false` and spends the nonce. Operators must make the write idempotent or reconcilable.
 - Executor that returns a value that cannot be hashed: the path still reports `executed: true` with `executionHash: unhashable` and no receipt body. The nonce is spent.
 
+## Gaps raised in review (proposed)
+
+These are inside the draft's own scope and are not listed above.
+
+| Gap | Where |
+| --- | --- |
+| Any directory key can issue a root delegation, and the root issuer is the required approver, so an agent can approve its own `REQUIRE_HUMAN` | [delegation.md](spec/delegation.md#root-of-authority-proposed), [human-approval.md](spec/human-approval.md#who-may-approve-proposed) |
+| The caller chooses the governing policy | [policy-decision.md](spec/policy-decision.md#which-policy-governs-proposed) |
+| `BLOCK` rules do not match when the compared argument is missing | [deterministic-evaluation.md](spec/deterministic-evaluation.md#missing-and-non-numeric-operands-proposed) |
+| No delegation revocation | [delegation.md](spec/delegation.md#revocation-proposed) |
+| Nonces are keyed by nonce alone, not by `(actor, nonce)`. Any directory identity can spend another agent's predictable nonce first | `packages/aap/src/nonce.ts` |
+| The agent's intent-signing key sits in the process the model drives. A prompt-injected agent signs anything inside its bounds. A signed intent gives attribution, not proof the principal wanted it | Deployment boundary above |
+| Decisions are per call. Split spending and sequences of individually allowed calls pass | [mcp-binding.md](spec/mcp-binding.md#session-state) |
+| Receipt chain is not used by the reference gateway and is not tamper-evident against the issuer | [authorization-receipt.md](spec/authorization-receipt.md) §7.1 |
+
 ## Out of scope
 
 Physical-world safety, model alignment, and business logic beyond delegation constraints and the evaluated policy.
