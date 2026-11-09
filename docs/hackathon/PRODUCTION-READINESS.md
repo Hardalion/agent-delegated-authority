@@ -34,20 +34,16 @@ Browser: €120 executed and stored, €750 waited with no new payment, approval
 | Tampered receipt fails verification | PASS |
 | Team session required for state and reset | PASS |
 | Public bind refused unless `ADAP_CONTAINER=1` | PASS |
-| Receipt `execution.executed` matches an unknown downstream result | FAIL |
-| GitHub Actions on this commit | NOT TESTED |
-| Docker image build and compose start | NOT TESTED |
+| Unknown downstream result is ALLOW, `executed: false`, and not retried | PASS |
+| Docker image build, non-root user, loopback publish, health, ready, €120 stored, €6,000 blocked | PASS |
+| GitHub Actions on this commit | See the Actions run for this commit after push |
 | HTTPS proxy | NOT TESTED |
 | Postgres suite | NOT TESTED |
 | Backup file restore drill | NOT TESTED |
 | Event-sized load beyond 20-wide on one instance | NOT TESTED |
 
-## Launch blockers
+## Launch status
 
-The branch is not clear to call production-ready.
+Unknown receipts and the hosted compose drill are fixed on this commit. The compose stack was built from `apps/hackathon-console/Dockerfile`, ran as user `adap`, published only `127.0.0.1:4317` and `127.0.0.1:4318`, returned health and readiness, stored one €120 sandbox payment, and left the €6,000 request blocked with that single committed payment. The stack was then stopped.
 
-1. Unknown downstream results are safe in the console (no retry, label UNKNOWN, reconcile is a read) and unsafe in the signed receipt, which can still say executed. That needs an explicit kernel decision.
-2. Hosted deployment was not executed. The compose file and Dockerfile are unchecked on a running daemon.
-3. CI for `hackathon/**` is in the workflow file and has not gone green on this commit.
-
-Do not merge to `main`. Do not expose the port publicly until those three are accepted or fixed.
+GitHub Actions is the remaining check. It runs on push to `hackathon/**`. Do not merge to `main`. Do not publish the host port beyond loopback. HTTPS in front of the proxy was not part of this drill.

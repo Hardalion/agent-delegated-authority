@@ -39,6 +39,7 @@ services:
     ports:
       - "127.0.0.1:4317:4317"
     depends_on:
-      - sandbox
+      sandbox:
+        condition: service_healthy
 volumes:
   hackathon-data:

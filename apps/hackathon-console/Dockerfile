@@ -16,6 +16,7 @@ RUN pnpm install --frozen-lockfile \
   && pnpm --filter adap-policy build \
   && pnpm --filter adap-receipt build \
   && pnpm --filter adap build \
+  && pnpm --filter adap-store-postgres build \
   && pnpm --filter adap-gateway build \
   && pnpm --filter adap-hackathon-console build \
   && mkdir -p /data \

@@ -209,3 +209,74 @@ describe('exclusive nonce claim before execution', () => {
     expect(executions).toBe(1)
   })
 })
+
+describe('unknown downstream result', () => {
+  it('seals ALLOW with executed false, spends the nonce, and does not call the executor again', async () => {
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_reader')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*' }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal
+    )
+    const intent = signIntent(
+      {
+        intent_id: 'int_unknown',
+        actor: agent.id,
+        delegation_chain: [root.delegation_id],
+        action: 'read',
+        target: 'resource/example',
+        parameters: {},
+        nonce: 'nonce-unknown',
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      agent
+    )
+    const ledger = new NonceLedger()
+    const pendingStore = new PendingAuthorizationStore()
+    const policyResolver = new ImmutablePolicyResolver()
+    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
+    let calls = 0
+    const input = {
+      chain: [root],
+      intent,
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+      execute: () => {
+        calls += 1
+        return { executionState: 'unknown' as const, error: 'downstream_timeout' }
+      },
+    }
+    const first = await runAuthorityPath(input)
+    const second = await runAuthorityPath(input)
+
+    expect(first.decision).toBe('ALLOW')
+    expect(first.executed).toBe(false)
+    expect(first.receipt.execution?.executed).toBe(false)
+    expect(first.receipt.decision.failureMode).toBe('SYSTEM_ERROR')
+    expect(first.receipt.extensions?.executionState).toBe('unknown')
+    expect(first.reason).toMatch(/not confirmed/i)
+    expect(second.decision).toBe('BLOCK')
+    expect(second.executed).toBe(false)
+    expect(calls).toBe(1)
+  })
+})

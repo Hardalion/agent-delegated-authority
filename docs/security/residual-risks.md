@@ -6,7 +6,7 @@ These are limits of the reference implementation and of a deployment. They are n
 | --- | --- |
 | Receipt is not an external observation | `executed: true` means the callback returned. |
 | Throw after a partial write | The path records `executed: false` and spends the nonce. That does not prove the external write did not happen. The external system must be idempotent or reconcilable. |
-| Gateway `unknown` | The callback returned an unknown downstream state. The nonce is consumed. `executed: true` on that response is the callback report, not a confirmed commit. See [outcome unknown](../operations/outcome-unknown.md). |
+| Gateway `unknown` | The callback returned an unknown downstream state. The nonce is consumed. The receipt is `ALLOW` with `executed: false` and `extensions.executionState = unknown`. That is not a confirmed commit and not a claim the effect was prevented. See [outcome unknown](../operations/outcome-unknown.md). |
 | Unhashable executor result | The path reports `executed: true`, `executionHash: unhashable`, and no receipt body. The nonce is consumed. |
 | Shared store | `NonceLedger` is one process. `adap-store-postgres` coordinates only workers that share that database. It is not exactly-once across the external system. |
 | Credential isolation | If the agent holds the rail credential, it can skip this path. |

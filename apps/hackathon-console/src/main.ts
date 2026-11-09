@@ -47,8 +47,9 @@ process.on('SIGTERM', shutdown)
 
 server.listen(config.port, config.bindHost, () => {
   const rail = sandbox ? 'local sandbox API' : 'process memory (simulated rail)'
+  const listener = config.bindHost === '0.0.0.0' ? 'container listener 0.0.0.0; publish the host port on 127.0.0.1 only' : config.bindHost
   process.stdout.write(
-    `ADAP hackathon sandbox http://${config.bindHost}:${config.port} team=${config.teamId} rail=${rail}. Synthetic records only. No real money.\n`,
+    `ADAP hackathon sandbox ${listener}:${config.port} team=${config.teamId} rail=${rail}. Synthetic records only. No real money.\n`,
   )
   if (config.generatedSecrets) {
     securityLog('startup.generated_secrets', { teamId: config.teamId })

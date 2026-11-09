@@ -41,6 +41,17 @@ A local console on `127.0.0.1:4317` with the sandbox on `4318` was driven in a b
 - Approve created one €750.00 row. Payments created became 2.
 - Pay €6,000 showed NOT EXECUTED · BLOCKED. Payments created stayed 2.
 
+## Hosted compose drill
+
+`docker compose -f deploy/hackathon/docker-compose.yml up --build -d` on Docker 28.3.3.
+
+- Images `hackathon-console` and `hackathon-sandbox` built from Node 22.19.0.
+- Console user `adap`. Ports `127.0.0.1:4317` and `127.0.0.1:4318`.
+- `GET /api/health` returned ok. `GET /api/ready` returned 200 `{ ready: true, rail: "sandbox" }`.
+- After team sign-in, Pay €120 was ALLOW, `sandbox-api`, resource `pay_423210e53d63c685`, receipt `executed: true`.
+- Pay €6,000 was BLOCK, `executed: false`. Sandbox counters: `committedPayments: 1`, `mutatingRequests: 1`.
+- `docker compose down` stopped the stack. It was not left running.
+
 ## Not run
 
-GitHub Actions on this commit. Docker Compose. Postgres `pnpm test:integration:postgres`. An HTTPS proxy. A file-level backup restore. A load test larger than the 20-wide sample.
+GitHub Actions until this commit is pushed. Postgres `pnpm test:integration:postgres`. An HTTPS proxy. A file-level backup restore. A load test larger than the 20-wide sample.

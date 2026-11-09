@@ -206,7 +206,7 @@ The same path refuses six further cases. `pnpm attacks` prints them. Each refusa
 
 Every consequential agent action can leave a portable, independently verifiable proof of authority.
 
-Not a log. A cryptographically verifiable authorization receipt. The signature does not, by itself, prove that an external system performed the action. `executed: true` means the reference runtime's executor callback returned. It is not an independent observation of that system.
+Not a log. A cryptographically verifiable authorization receipt. The signature does not, by itself, prove that an external system performed the action. `executed: true` means the reference runtime observed a completed executor result. An unknown downstream result is sealed as `ALLOW` with `executed: false`. Neither value is an independent observation of an external system.
 
 ```
 AUTHORIZATION RECEIPT

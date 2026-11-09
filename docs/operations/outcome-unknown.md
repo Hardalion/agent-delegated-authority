@@ -2,7 +2,7 @@
 
 Reference-gateway behavior in this repository. It is not a protocol requirement that every runtime use these field names.
 
-`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result. The executor callback still returned, so the authority path reports `executed: true` and consumes the nonce. That boolean is the callback report. It is not proof the external system committed. Reconciliation is a later read of the downstream ledger. It does not POST.
+`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result. The executor callback returns that state. The authority path keeps decision `ALLOW`, sets `execution.executed` to false, stores `extensions.executionState = unknown` on the receipt, and consumes the nonce. `executed: false` means the side effect was not confirmed. It is not a `BLOCK` and it is not a claim that the downstream system reversed or skipped the effect. Reconciliation is a later read of the downstream ledger. It does not POST.
 
 # OUTCOME-UNKNOWN-RECONCILIATION
 
@@ -18,7 +18,9 @@ The gateway:
 4. The nonce is consumed, so the same signed intent cannot be executed again.
 5. `GET /v1/reconcile/:intentHash` reads the downstream ledger. It does not POST. It moves `unknown` or `started` to `reconciled`.
 
-## Measured run
+## Earlier measurement
+
+This table is the 2026-11-02 staging observation, from before unknown results were sealed with `executed: false`. It is not the current contract.
 
 | Step | Observation |
 | --- | --- |

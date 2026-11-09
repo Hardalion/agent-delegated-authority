@@ -1,7 +1,12 @@
+node_modules
 **/node_modules
+dist
 **/dist
-**/.env
-staging/.secrets
-staging/.evidence
+.demo
 .git
-*.md
+coverage
+*.tsbuildinfo
+.vite
+oss
+*.pem
+*.key

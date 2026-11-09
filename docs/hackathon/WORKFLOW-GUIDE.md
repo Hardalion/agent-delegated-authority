@@ -18,7 +18,7 @@ Amounts are integer euro cents. €120 is `12000`. €750 is `75000`. €6,000 i
 | Timeout after commit | UNKNOWN until reconcile | One row. Reconcile reads it and does not POST again |
 | Unknown or malformed agent | Denied | No sandbox write |
 
-The signed receipt can still say `execution.executed: true` when the downstream result is unknown. That is a kernel limitation on this branch. The console label stays OUTCOME UNKNOWN, and `executed` on the case is false until a completed downstream result or a reconcile read confirms the row. See `docs/hackathon/KNOWN-LIMITATIONS.md`.
+An unknown downstream result stays decision ALLOW. The signed receipt has `execution.executed: false` and `extensions.executionState: unknown`. The nonce is spent, so the same request is not sent again. Reconcile reads the sandbox and does not repeat the call.
 
 Starter examples:
 

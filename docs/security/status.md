@@ -11,7 +11,7 @@ Mohammad Ali Oweidat's independent retest is **not** recorded as complete. [hist
 
 ## What a receipt proves
 
-A signed receipt proves the issuer attested that body. `executed: true` means the reference runtime's executor callback returned. It does not prove an external system committed the action. Confirming that requires evidence from the external system, such as the reference gateway's reconcile read against its own downstream ledger.
+A signed receipt proves the issuer attested that body. `executed: true` means the reference runtime observed a completed executor result. It does not prove an external system committed the action. An unknown downstream result is `ALLOW` with `executed: false` and `extensions.executionState = unknown`. Confirming a side effect requires evidence from the external system, such as the reference gateway's reconcile read against its own downstream ledger.
 
 ## Local staging is not production
 

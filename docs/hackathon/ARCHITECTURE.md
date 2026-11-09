@@ -22,11 +22,6 @@ The adapter does not retry a POST. A timeout is `unknown`. `POST /api/cases/:id/
 
 Policy for the sandbox is `hackathon-sandbox-authority` 1.1.0. €120 is ALLOW. €750 is REQUIRE_HUMAN. €6,000 is BLOCK. Vendor account changes are REQUIRE_HUMAN. Restricted purchases are BLOCK. The in-memory rail and its original treasury policy remain available when no sandbox URL is configured. The page label says which one is attached.
 
-## Kernel limitation
+## Unknown downstream results
 
-`packages/aap` still seals `execution.executed: true` when the execute callback returns, even if the gateway status is `unknown`. Throwing instead would seal a BLOCK that claims nothing executed. Neither representation was changed. The console case flag `executed` is true only when the downstream status is `completed` or `accepted`, and the page shows the receipt claim separately.
-
-Options, if that receipt flag must change:
-
-1. Keep this kernel and teach participants to read the downstream status and the console label.
-2. Change `executeBound` so an explicit unknown result is sealed without `executed: true` and without `BLOCK`. That is a protocol change and was not taken from `security/execution-semantics`.
+When the executor returns `{ executionState: 'unknown' }`, the authority path keeps decision `ALLOW`, sets `execution.executed` to false, writes `extensions.executionState = unknown` on the signed receipt, and consumes the nonce. The same intent is not sent again. `executed: false` means the side effect is not confirmed. It is not a `BLOCK`, and it is not a claim that the downstream system prevented the effect. Reconcile is a later read.

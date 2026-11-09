@@ -8,7 +8,7 @@ Reference execution gateway. It is a deployment of the ADAP authority path, not 
 - `executeAuthorized` runs `runAuthorityPath` then a credential broker.
 - Rail credentials never leave the broker; agents never receive them.
 - Downstream outcomes distinguish `completed`, `accepted`, `failed`, and `unknown`.
-- `unknown` returns from the executor callback. The authority path then reports `executed: true` and consumes the nonce. `executionState: unknown` is the gateway's statement that the downstream result was not observed. It is not proof the external system committed. A later reconcile read does not POST. See [docs/operations/outcome-unknown.md](../../docs/operations/outcome-unknown.md).
+- `unknown` returns from the executor callback as `{ executionState: 'unknown' }`. The authority path keeps `ALLOW`, sets `execution.executed` to false, and consumes the nonce. That is not proof the external system committed, and it is not a claim that the effect was prevented. A later reconcile read does not POST. See [docs/operations/outcome-unknown.md](../../docs/operations/outcome-unknown.md).
 
 ## Production blocker (deployment)
 
