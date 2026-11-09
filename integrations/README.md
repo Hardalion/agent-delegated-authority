@@ -64,6 +64,34 @@ adap-policy --policy-uri basic-agent-authority@1.0.0 --tool apply --args "{\"amo
 # Exit 1 = BLOCK
 ```
 
+## Model Context Protocol (MCP)
+
+Guard MCP `tools/call` invocations directly with `McpToolGate` from `adap-policy`:
+
+```typescript
+import { McpToolGate, type McpToolCall } from 'adap-policy'
+
+const gate = new McpToolGate({
+  policy: 'basic-agent-authority',
+  agentRole: 'agt_reader',
+})
+
+// Intercept incoming MCP CallToolRequest
+const call: McpToolCall = {
+  name: request.params.name,
+  arguments: request.params.arguments,
+}
+
+const result = await gate.execute(call, async (args) => {
+  // Underlying tool execution only runs when ADAP policy returns ALLOW
+  return executeMyTool(call.name, args)
+})
+
+// On BLOCK or REQUIRE_HUMAN: result.isError is true, executor was not called.
+// On ALLOW: result.content contains tool output, result._meta.adap has decision.
+return result
+```
+
 ## Contributing an adapter
 
 Open a pull request with:
