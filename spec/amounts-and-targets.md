@@ -16,6 +16,8 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Comparison | Deterministic numeric compare on canonical values only. |
 | Scope | `max_amount` (and `max_*` keys) are **per-intent** ceilings, not cumulative spend. |
 
+> **Review note (proposed):** the reference path does not enforce `max_*` keys other than `max_amount` as ceilings. `assertParametersWithin` maps only `max_amount` to a parameter named `amount`. Any other `max_*` key falls to the equality branch, so an intent must present a parameter with that exact name and value. Either the table above changes, or each `max_*` key needs a declared parameter it bounds.
+
 Policy evaluation and terminal constraint enforcement must use the same normalized representation.
 
 ## Currency

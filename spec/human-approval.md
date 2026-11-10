@@ -34,6 +34,19 @@ Policy substitution that turns `REQUIRE_HUMAN` into `ALLOW` without a valid boun
 
 Duplicate approval of the same binding is rejected when a seen-approval set is configured. Expired pending records and approvals outside the intent lifetime fail closed.
 
+## Who may approve (proposed)
+
+> Status: proposed in review. Not enforced by the reference path at `bc5ae76`.
+
+The reference path accepts an approval when `approver_id` equals `chain[0].issuer`. Combined with an unconstrained root (see [delegation.md](./delegation.md#root-of-authority-proposed)), an agent can issue its own root, receive `REQUIRE_HUMAN`, sign the approval itself, and execute. The resulting receipt says `human.status: approved`.
+
+A conforming runtime:
+
+1. Requires the approver's directory entry to be of kind `human`.
+2. Rejects an approver who appears as `subject` anywhere in the presented chain, or as the intent `actor`.
+3. Requires the root issuer to be authorized for the namespace (root of authority) before treating it as the approver.
+4. Defines what the approver was shown. Approving a hash is not informed consent. The approval binds the hash of a canonical, human-readable rendering of the intent (action, target, every parameter), and the runtime renders exactly that.
+
 ## Reference
 
 `packages/aap/src/pending.ts`, `packages/aap/src/path.ts`, `packages/aap/src/agents.test.ts`, `packages/aap/src/security-adversarial.test.ts`.
