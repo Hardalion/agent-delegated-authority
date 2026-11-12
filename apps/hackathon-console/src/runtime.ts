@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -9,6 +9,7 @@ import {
   importPublicKey,
   NonceLedger,
   PendingAuthorizationStore,
+  type PendingStore,
   publicKeyFingerprint,
   signApproval,
   signDelegation,
@@ -25,6 +26,10 @@ import { executeAuthorized, MemorySecurityEventSink, type SecurityEvent } from '
 import { TreasuryAgent } from './agent.js'
 import { HttpSandboxAdapter } from './adapters/http-sandbox.js'
 import { DemoBroker } from './broker.js'
+import {
+  openTeamDurableStore,
+  type TeamDurableStore,
+} from './durable-store.js'
 import { DemoError } from './errors.js'
 import { assertDemoResetAllowed, RESET_CONFIRM, type DemoEnv } from './guard.js'
 import {
@@ -36,7 +41,13 @@ import {
 } from './payments.js'
 import { authorityNote, POLICY_URI, PURPOSE, TREASURY_POLICY, AUTONOMOUS_LIMIT_CENTS, HARD_LIMIT_CENTS } from './policy.js'
 import { SandboxBroker } from './sandbox-broker.js'
-import { SANDBOX_POLICY, SANDBOX_POLICY_URI, SANDBOX_PURPOSE } from './sandbox-policy.js'
+import {
+  SANDBOX_AUTONOMOUS_CENTS,
+  SANDBOX_HARD_CAP_CENTS,
+  SANDBOX_POLICY,
+  SANDBOX_POLICY_URI,
+  SANDBOX_PURPOSE,
+} from './sandbox-policy.js'
 import { SANDBOX_SCENARIOS, SCENARIOS, isSandboxScenarioId, type ScenarioId } from './scenarios.js'
 import {
   buildStages,
@@ -56,6 +67,10 @@ export interface RuntimeOptions {
   readonly passphrase?: string
   readonly teamId?: string
   readonly sandbox?: HttpSandboxAdapter
+  readonly durableStore?: TeamDurableStore | null
+  readonly stateDirectory?: string
+  readonly encryptionKey?: Buffer
+  readonly deployment?: 'local' | 'hosted'
 }
 
 export interface Verification {
@@ -100,7 +115,7 @@ export interface PublicCase {
 export interface HealthReport {
   readonly ok: boolean
   readonly problems: readonly string[]
-  readonly store: 'process-local-memory'
+  readonly store: 'process-local-memory' | 'sqlite-durable'
   readonly simulatedRail: boolean
   readonly rail: 'memory' | 'sandbox'
   readonly demoEnv: string
@@ -115,7 +130,7 @@ export interface PublicState {
     readonly rail: 'memory' | 'sandbox'
     readonly railLabel: string
     readonly teamId: string
-    readonly store: 'process-local memory'
+    readonly store: 'process-local memory' | 'sqlite-durable'
   }
   readonly health: HealthReport
   readonly principal: { readonly id: string; readonly label: string; readonly fingerprint: string }
@@ -140,7 +155,7 @@ export interface PublicState {
     readonly targetAgents: readonly string[]
     readonly rules: readonly { readonly ruleId: string; readonly action: string; readonly condition: string }[]
   }
-  readonly limits: { readonly autonomousCents: number; readonly hardCapCents: number; readonly currency: 'USD' }
+  readonly limits: { readonly autonomousCents: number; readonly hardCapCents: number; readonly currency: 'USD' | 'EUR' }
   readonly payments: readonly SimPayment[]
   readonly vendors: readonly { id: string; name: string; iban: string }[]
   readonly purchases: readonly { id: string; category: string; amount: number; title: string; status: string }[]
@@ -180,6 +195,9 @@ export interface EvidenceBundle {
   readonly note: string
   readonly cases: readonly PublicCase[]
   readonly payments: readonly SimPayment[]
+  readonly vendors: readonly { id: string; name: string; iban: string }[]
+  readonly purchases: readonly { id: string; category: string; amount: number; title: string; status: string }[]
+  readonly sandboxCounters: PublicState['sandboxCounters']
   readonly timeline: readonly TimelineEvent[]
   readonly gatewayEvents: readonly SecurityEvent[]
   readonly sideEffects: RailSideEffects
@@ -251,6 +269,7 @@ export class DemoRuntime {
   readonly #policy: Policy
   readonly #policyUri: string
   readonly #sandbox: HttpSandboxAdapter | null
+  readonly #store: TeamDurableStore | null
   #sandboxBroker: SandboxBroker | null
   readonly #principal: Identity
   readonly #agentIdentity: Identity
@@ -264,7 +283,7 @@ export class DemoRuntime {
   #payments: SimulatedPaymentSystem | null
   #broker: DemoBroker | SandboxBroker
   #ledger: NonceLedger
-  #pending: PendingAuthorizationStore
+  #pending: PendingStore
   #seenApprovals = new Set<string>()
   #events = new MemorySecurityEventSink()
   #cases: PublicCase[] = []
@@ -284,14 +303,32 @@ export class DemoRuntime {
     if (!options.passphrase) throw new DemoError(403, 'config_refused', 'An approver passphrase is required.')
     this.#passphrase = options.passphrase
     this.#teamId = options.teamId ?? 'local'
+    this.#store =
+      options.durableStore === undefined
+        ? options.stateDirectory || options.encryptionKey || options.deployment === 'hosted'
+          ? openTeamDurableStore({
+              teamId: this.#teamId,
+              stateDirectory: options.stateDirectory ?? process.env.ADAP_STATE_DIR,
+              encryptionKey: options.encryptionKey,
+              env: process.env,
+              deployment: options.deployment,
+            })
+          : null
+        : options.durableStore
     this.#sandbox = options.sandbox ?? null
     this.#railMode = options.sandbox ? 'sandbox' : 'memory'
     this.#policy = options.sandbox ? SANDBOX_POLICY : TREASURY_POLICY
     this.#policyUri = options.sandbox ? SANDBOX_POLICY_URI : POLICY_URI
-    this.#principal = createIdentity('prn_treasury')
-    this.#agentIdentity = createIdentity('agt_treasury')
-    this.#outsider = createIdentity('agt_outsider')
-    this.#signer = createIdentity('iss_hackathon')
+    const identities = this.#store?.loadOrCreateIdentities({
+      principalId: 'prn_treasury',
+      agentId: 'agt_treasury',
+      outsiderId: 'agt_outsider',
+      signerId: 'iss_hackathon',
+    })
+    this.#principal = identities?.principal ?? createIdentity('prn_treasury')
+    this.#agentIdentity = identities?.agent ?? createIdentity('agt_treasury')
+    this.#outsider = identities?.outsider ?? createIdentity('agt_outsider')
+    this.#signer = identities?.signer ?? createIdentity('iss_hackathon')
     this.#directory = new Map([
       [this.#principal.id, this.#principal.publicKey],
       [this.#agentIdentity.id, this.#agentIdentity.publicKey],
@@ -310,8 +347,18 @@ export class DemoRuntime {
       this.#sandboxBroker = null
       this.#broker = new DemoBroker(rail.payments, rail.capability)
     }
-    this.#ledger = new NonceLedger()
-    this.#pending = new PendingAuthorizationStore()
+    this.#ledger = new NonceLedger(this.#store?.nonceBackend)
+    this.#pending = this.#store?.pendingStore ?? new PendingAuthorizationStore()
+    if (this.#store) {
+      this.#cases = this.#store.loadCases<PublicCase>()
+      this.#open = this.#store.loadOpen<OpenIntent>()
+      this.#timeline = this.#store.loadTimeline<TimelineEvent>()
+      this.#seenApprovals = this.#store.loadSeenApprovals()
+      this.#events.events.push(...this.#store.loadGatewayEvents<SecurityEvent>())
+      const receiptMeta = this.#store.loadReceiptMeta()
+      this.#sequence = receiptMeta.sequence
+      this.#prevReceiptHash = receiptMeta.prevHash
+    }
     const health = this.health()
     if (!health.ok) throw new DemoError(500, 'fixture_invalid', health.problems.join('; '))
   }
@@ -337,7 +384,7 @@ export class DemoRuntime {
     return {
       ok: problems.length === 0,
       problems,
-      store: 'process-local-memory',
+      store: this.#store ? 'sqlite-durable' : 'process-local-memory',
       simulatedRail: this.#railMode === 'memory',
       rail: this.#railMode,
       demoEnv: this.#env.ADAP_DEMO_ENV ?? 'unset',
@@ -470,7 +517,7 @@ export class DemoRuntime {
         instant,
         measure: 'approval',
       })
-      if (created.executed) {
+      if (created.decision === 'ALLOW') {
         pending.approvalState = 'approved'
         pending.continuedBy = created.id
         pending.outcomeLabel = 'NOT EXECUTED · CONTINUED'
@@ -498,6 +545,7 @@ export class DemoRuntime {
           'This approval was not applied again. The intent was already decided. No additional execution was performed.',
         )
       }
+      this.#persist()
       return this.publicState()
     })
   }
@@ -551,6 +599,7 @@ export class DemoRuntime {
         intentHash: pending.intentHash,
         reason: pending.reason,
       })
+      this.#persist()
       return this.publicState()
     })
   }
@@ -594,6 +643,9 @@ export class DemoRuntime {
       timeline: state.timeline,
       gatewayEvents: state.gatewayEvents,
       sideEffects: state.sideEffects,
+      vendors: state.vendors,
+      purchases: state.purchases,
+      sandboxCounters: state.sandboxCounters,
     }
   }
 
@@ -611,17 +663,23 @@ export class DemoRuntime {
         throw new DemoError(400, 'reset_confirm_required', 'Reset requires the exact confirmation phrase.')
       }
       this.#assertPassphrase(input.passphrase)
-      if (this.#sandbox) await this.#sandbox.reset()
       const evidence = this.exportEvidence()
       const dir = exportDirectory()
       await mkdir(dir, { recursive: true })
       const file = join(dir, `evidence-${Date.now()}.json`)
-      await writeFile(file, JSON.stringify(evidence), 'utf8')
+      const serialized = JSON.stringify(evidence)
+      await writeFile(file, serialized, 'utf8')
+      if ((await readFile(file, 'utf8')) !== serialized) {
+        throw new DemoError(500, 'export_failed', 'Evidence export could not be verified. Reset was not performed.')
+      }
+      if (this.#sandbox) await this.#sandbox.reset()
+      this.#store?.clearOperationalState()
       this.#reseed()
       if (this.#sandbox && this.#sandboxBroker) {
         await this.#sandboxBroker.refresh()
         this.#counters = await this.#sandbox.counters()
       }
+      this.#persist()
       return { evidence, file, state: this.publicState() }
     })
   }
@@ -650,7 +708,7 @@ export class DemoRuntime {
             ? 'Local sandbox API. Synthetic EUR records. No real money.'
             : 'Process memory. Simulated rail. No real money.',
         teamId: this.#teamId,
-        store: 'process-local memory',
+        store: this.#store ? 'sqlite-durable' : 'process-local memory',
       },
       health: this.health(),
       principal: {
@@ -695,9 +753,9 @@ export class DemoRuntime {
         })),
       },
       limits: {
-        autonomousCents: AUTONOMOUS_LIMIT_CENTS,
-        hardCapCents: HARD_LIMIT_CENTS,
-        currency: 'USD',
+        autonomousCents: this.#railMode === 'sandbox' ? SANDBOX_AUTONOMOUS_CENTS : AUTONOMOUS_LIMIT_CENTS,
+        hardCapCents: this.#railMode === 'sandbox' ? SANDBOX_HARD_CAP_CENTS : HARD_LIMIT_CENTS,
+        currency: this.#railMode === 'sandbox' ? 'EUR' : 'USD',
       },
       payments: this.#railList(),
       vendors: this.#sandboxBroker?.vendors() ?? [],
@@ -993,7 +1051,14 @@ export class DemoRuntime {
         item.reason = 'The sandbox could not confirm the record. The original call was not repeated.'
       }
       item.stages = buildStages(this.#viewFromCase(item))
+      if (body?.state === 'committed') {
+        this.#store?.markExecutionCompleted(item.intentHash, item.downstreamResourceId)
+      } else {
+        const execution = this.#store?.getExecution(item.intentHash)
+        if (execution?.state === 'started') this.#store?.markExecutionUnresolved(item.intentHash, 'reconcile_unconfirmed')
+      }
       await this.refreshSandbox()
+      this.#persist()
       return this.publicState()
     })
   }
@@ -1027,12 +1092,28 @@ export class DemoRuntime {
         clock: new FixedClock(input.instant),
         pendingStore: this.#pending,
         policyResolver: this.#policyResolver,
+        trustedRootIssuers: new Set([this.#principal.id]),
         seenApprovals: this.#seenApprovals,
         receiptSequence: this.#sequence,
         prevReceiptHash: this.#prevReceiptHash,
         broker: this.#broker,
         events: this.#events,
         tenantId: 'hackathon',
+        onExecutionState: async (state, info) => {
+          if (!this.#store) return
+          if (state === 'started') {
+            this.#store.recordExecutionStart({
+              intentHash: info.intentHash,
+              nonce: input.intent.nonce,
+              correlationId: info.correlationId,
+              updatedAt: this.#now().toISOString(),
+            })
+          } else if (state === 'completed' || state === 'accepted') {
+            this.#store.markExecutionCompleted(info.intentHash, null, this.#now().toISOString())
+          } else {
+            this.#store.markExecutionUnresolved(info.intentHash, info.detail ?? state, this.#now().toISOString())
+          }
+        },
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'authority path failed'
@@ -1056,6 +1137,7 @@ export class DemoRuntime {
         at: input.instant.toISOString(),
       })
       this.#timeline.push(...timelineFromAuthority(this.#viewFromCase(failed)))
+      this.#persist()
       return failed
     }
 
@@ -1106,6 +1188,7 @@ export class DemoRuntime {
         this.#counters = this.#counters
       }
     }
+    this.#persist()
     return created
   }
 
@@ -1284,8 +1367,8 @@ export class DemoRuntime {
       this.#sandboxBroker = null
       this.#broker = new DemoBroker(rail.payments, rail.capability)
     }
-    this.#ledger = new NonceLedger()
-    this.#pending = new PendingAuthorizationStore()
+    this.#ledger = new NonceLedger(this.#store?.nonceBackend)
+    this.#pending = this.#store?.pendingStore ?? new PendingAuthorizationStore()
     this.#seenApprovals = new Set()
     this.#events = new MemorySecurityEventSink()
     this.#cases = []
@@ -1297,6 +1380,16 @@ export class DemoRuntime {
     this.#lastApprovalMs = null
     this.#lastVerifyMs = null
     this.#delegation = this.#signDelegation(instant)
+  }
+
+  #persist(): void {
+    if (!this.#store) return
+    this.#store.saveCases(this.#cases)
+    this.#store.saveOpen(this.#open)
+    this.#store.saveTimeline(this.#timeline)
+    this.#store.saveGatewayEvents(this.#events.events)
+    this.#store.saveSeenApprovals(this.#seenApprovals)
+    this.#store.saveReceiptMeta({ sequence: this.#sequence, prevHash: this.#prevReceiptHash })
   }
 
   #assertPassphrase(input: string): void {

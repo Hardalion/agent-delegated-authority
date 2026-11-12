@@ -129,6 +129,7 @@ export class HttpSandboxAdapter {
         classification: 'unavailable',
       }
     }
+    const faultMode = this.#fault
     try {
       const response = await this.#dispatch(input)
       const body = await response.json().catch(() => null)
@@ -162,7 +163,12 @@ export class HttpSandboxAdapter {
           status: 'unknown',
           correlationId: input.correlationId,
           error: 'downstream_timeout',
-          classification: this.#fault === 'timeout-before' ? 'timeout_before_commit' : 'timeout_after_commit',
+          classification:
+            faultMode === 'timeout-before'
+              ? 'timeout_before_commit'
+              : faultMode === 'timeout-after'
+                ? 'timeout_after_commit'
+                : 'unknown',
         }
       }
       if (isConnectionRefused(error)) {

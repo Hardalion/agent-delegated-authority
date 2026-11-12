@@ -122,7 +122,6 @@ export class ConsoleSecurity {
   }
 
   authorize(req: IncomingMessage, method: string): void {
-    this.#rateLimit(req)
     this.#limitHeaders(req)
     const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
     if (
@@ -131,17 +130,38 @@ export class ConsoleSecurity {
         path === '/index.html' ||
         path === '/styles.css' ||
         path === '/app.js' ||
+        path === '/i18n.js' ||
+        path === '/guide-lang.js' ||
+        path === '/guide' ||
+        path === '/guide.html' ||
         path === '/api/health' ||
         path === '/api/ready')
     ) {
+      this.#rateLimit(`public:${this.#clientAddress(req)}`)
       return
     }
-    if (method === 'POST' && path === '/api/session') return
+    if (method === 'POST' && path === '/api/session') {
+      this.#rateLimit(`login:${this.#clientAddress(req)}`)
+      return
+    }
+    const bearer = bearerToken(req)
+    if (bearer != null) {
+      if (!secretEqual(bearer, this.#config.teamToken)) {
+        this.#rateLimit(`auth:${this.#clientAddress(req)}`)
+        securityLog('auth.denied', { teamId: this.#config.teamId, path })
+        throw new DemoError(401, 'auth_required', 'Team credential was not accepted.')
+      }
+      const fingerprint = createHmac('sha256', this.#config.sessionSecret).update(bearer).digest('base64url')
+      this.#rateLimit(`bearer:${fingerprint}`)
+      return
+    }
     const session = this.#validSession(req)
     if (!session || session.teamId !== this.#config.teamId) {
+      this.#rateLimit(`auth:${this.#clientAddress(req)}`)
       securityLog('auth.denied', { teamId: this.#config.teamId, path })
       throw new DemoError(401, 'auth_required', 'A team session is required.')
     }
+    this.#rateLimit(`session:${session.id}`)
     if (method !== 'GET' && method !== 'HEAD') this.#assertMutation(req)
   }
 
@@ -202,8 +222,11 @@ export class ConsoleSecurity {
     }
   }
 
-  #rateLimit(req: IncomingMessage): void {
-    const key = req.socket.remoteAddress ?? 'local'
+  #clientAddress(req: IncomingMessage): string {
+    return req.socket.remoteAddress ?? 'local'
+  }
+
+  #rateLimit(key: string): void {
     const now = Date.now()
     const recent = (this.#hits.get(key) ?? []).filter((stamp) => now - stamp < 60_000)
     if (recent.length >= this.#config.rateLimitPerMinute) {
@@ -228,7 +251,14 @@ export class ConsoleSecurity {
   }
 }
 
-export function secretEqual(input: string, expected: string): boolean {
+export function bearerToken(req: IncomingMessage): string | null {
+  const header = req.headers.authorization
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null
+  const token = header.slice('Bearer '.length).trim()
+  return token.length > 0 ? token : null
+}
+
+function secretEqual(input: string, expected: string): boolean {
   const left = Buffer.from(input)
   const right = Buffer.from(expected)
   if (left.length !== right.length) return false

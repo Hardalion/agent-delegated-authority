@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ADAP · Hardalion</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <input id="lang-el" class="lang-pick" type="radio" name="lang" checked>
+  <input id="lang-en" class="lang-pick" type="radio" name="lang">
+  <input id="lang-fr" class="lang-pick" type="radio" name="lang">
+  <input id="lang-de" class="lang-pick" type="radio" name="lang">
+  <div class="top">
+    <div>
+      <p class="eyebrow"><a href="https://hardalion.com">Hardalion</a> · GenAI Summit · 14–15 Nov 2026</p>
+      <h1>ADAP</h1>
+      <div class="lang-switch" role="radiogroup" aria-label="Language">
+        <label for="lang-el">Ελληνικά</label>
+        <label for="lang-en">English</label>
+        <label for="lang-fr">Français</label>
+        <label for="lang-de">Deutsch</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="lang-body lang-el">
+    <p class="lede">Ο agent προτείνει. Το ADAP αποφασίζει. Το εργαλείο τρέχει μόνο αν η απόφαση είναι ALLOW.</p>
+    <p class="lede">Η ομάδα σου φτιάχνει έναν agent που παίρνει στόχο, διαλέγει εργαλεία και τελειώνει δουλειά. Τα θέματα ανακοινώνονται στο kickoff. Αυτή η σελίδα είναι όλη η σύνδεση. <a href="/">Πίσω στο sandbox</a>.</p>
+    <p class="banner">Το έφτιαξε η Hardalion για αυτό το hackathon. Είναι sandbox. Μια απόφαση εδώ δεν μεταφέρει χρήματα, δεν στέλνει αληθινό email και δεν καλεί παραγωγικό σύστημα.</p>
+    <section class="panel wide">
+      <h2>Hardalion</h2>
+      <p>Η Hardalion φτιάχνει υποδομή εξουσιοδότησης για αυτόνομα συστήματα. Το ADAP είναι το ανοιχτό πρωτόκολλο: το μοντέλο προτείνει, μια ντετερμινιστική πολιτική αποφασίζει, και το εργαλείο τρέχει μόνο όταν η απόφαση είναι ALLOW. Για τη σκηνή: «Ο agent μπορεί να το δοκιμάσει. Το ADAP της Hardalion αποφασίζει αν θα γίνει.»</p>
+      <p><a href="https://hardalion.com">hardalion.com</a> · <a href="https://github.com/Hardalion/agent-delegated-authority">ADAP στο GitHub</a></p>
+    </section>
+    <section class="panel wide">
+      <h2>30 δευτερόλεπτα</h2>
+      <p>Ξεκίνα την κονσόλα με <code>pnpm hackathon:start</code>. Βάλε αυτό μπροστά από το εργαλείο, όχι μπροστά από το μοντέλο.</p>
+      <pre class="receipt">import { gateTool, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: 'search_web',
+  toolArgs: { q: 'athens agents' },
+  execute: searchWeb,
+})
+
+if (!result.executed) {
+  // BLOCK ή REQUIRE_HUMAN. Το searchWeb δεν καλέστηκε.
+  console.log(result.decision.action, result.decision.ruleId)
+}</pre>
+      <p class="hint">Άλλαξε το <code>WEEKEND_AGENT</code> και το <code>targetAgents</code> στο <code>apps/hackathon-console/src/weekend-gate.ts</code> στο id του agent της ομάδας σου. Κενό ή άγνωστο id γίνεται BLOCK. Δεν υπάρχει κρυφή προεπιλογή.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Τι κάνει η πολιτική του Σαββατοκύριακου</h2>
+      <p>Οι ομάδες τυλίγουν εργαλεία έρευνας (search, scrape, Firecrawl), παραγωγή (drafts, εικόνες fal) και μετά μια παρενέργεια (email, Slack, ticket, κράτηση). Η πολιτική ακολουθεί αυτό το σχήμα.</p>
+      <pre class="receipt">search_web, scrape_url, firecrawl_scrape, read_page, generate_image  → ALLOW
+send_email, post_slack, publish_post, update_crm, book_calendar     → REQUIRE_HUMAN
+delete_record, transfer_funds, send_payment, read_secret            → BLOCK
+κάθε εργαλείο με args.amount &gt; 500                                  → BLOCK
+εργαλείο που μόλις εφηύρες                                          → REQUIRE_HUMAN
+άγνωστο, κενό ή κακογραμμένο agent                                   → BLOCK</pre>
+      <p class="hint">Το REQUIRE_HUMAN σημαίνει ότι δείχνεις την απόφαση και περιμένεις. Η συνάρτηση του εργαλείου δεν καλείται. Πρόσθεσε το όνομα του εργαλείου σου στη λίστα μέσα στο <code>weekend-gate.ts</code> αν πρέπει να επιτρέπεται στο demo.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Κάθε framework τελειώνει σε ένα tool call</h2>
+      <p>Τα OpenAI, LangChain, LangGraph, Vercel AI SDK, Claude και Gemini δίνουν όνομα και arguments. Κάνε normalize και μετά πέρασέ το από την πύλη. Τα Python stacks (CrewAI, Pydantic AI, Google ADK, AutoGen, LlamaIndex) χρησιμοποιούν την ίδια κλήση HTTP.</p>
+      <pre class="receipt">import { gateTool, normalizeToolCall, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const openai = { function: { name: 'search_web', arguments: '{"q":"athens"}' } }
+const langchain = { name: 'search_web', args: { q: 'athens' } }
+const claude = { name: 'send_email', input: { to: 'team@example.com' } }
+
+const call = normalizeToolCall(openai)
+if ('error' in call) throw new Error(call.error)
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: call.toolName,
+  toolArgs: call.toolArgs,
+  execute: myTools[call.toolName],
+})</pre>
+      <h2>Python</h2>
+      <pre class="receipt"># examples/hackathon/gate.py
+# ADAP_URL=http://127.0.0.1:4317
+# ADAP_TEAM_TOKEN=το token που τυπώθηκε στην εκκίνηση
+# ADAP_AGENT_ID=agt_hackathon_demo
+
+from gate import guard
+
+def crewai_tool(name, args):
+    return guard(name, args, my_tools[name])</pre>
+      <p class="hint"><code>POST /api/gate</code> με <code>Authorization: Bearer &lt;team token&gt;</code> και <code>{"agentId","tool","args"}</code>. Η απάντηση λέει την απόφαση. Το <code>runTool: true</code> σημαίνει ότι η δική σου διεργασία επιτρέπεται να καλέσει το εργαλείο. Η κονσόλα δεν το καλεί για σένα.</p>
+    </section>
+    <section class="panel wide">
+      <h2>LangChain, CrewAI, AutoGen</h2>
+    <p>Το wrap μπαίνει γύρω από το εργαλείο που έχεις ήδη. Το αρχικό τρέχει μόνο σε ALLOW.</p>
+    <pre class="receipt">import { adapNode, WEEKEND_AGENT } from './examples/hackathon/langgraph.mjs'
+graph.addNode('act', adapNode(act, { agentRole: WEEKEND_AGENT }))
+
+# CrewAI
+from crewai_adap import adap_tool
+@adap_tool("send_email")
+def send_email(to, body): ...
+
+# Microsoft AutoGen
+from autogen_adap import safe_handoff
+safe_handoff({"from": "agt_a", "to": "agt_b", "task": "send_email"})</pre>
+    <h2>Δείξ’ το στο demo</h2>
+      <ol>
+        <li>Τρέξε <code>search_web</code>. Πες την απόφαση δυνατά: ALLOW, και το εργαλείο έτρεξε.</li>
+        <li>Τρέξε <code>send_email</code>. Το εργαλείο δεν τρέχει. Αυτό είναι REQUIRE_HUMAN.</li>
+        <li>Τρέξε <code>delete_record</code> ή ποσό πάνω από 500. BLOCK. Καμία παρενέργεια.</li>
+      </ol>
+      <p>Η σελίδα sandbox είναι η ιστορία πληρωμής, προμηθευτή και αγοράς, με αποδείξεις. Αυτός ο οδηγός είναι πώς ο δικός σου agent χρησιμοποιεί την ίδια ιδέα με μία κλήση. <a href="/">Άνοιξε το sandbox</a>.</p>
+    </section>
+  </div>
+
+  <div class="lang-body lang-en">
+    <p class="lede">The agent proposes. ADAP decides. The tool runs only when the decision is ALLOW.</p>
+    <p class="lede">Your team builds an agent that takes a goal, picks tools, and finishes real work. Challenges are announced at kickoff. This page is the whole integration. <a href="/">Back to the sandbox</a>.</p>
+    <p class="banner">Built by Hardalion for this hackathon. Sandbox only. A decision here does not move money, send a real email, or call a production system.</p>
+    <section class="panel wide">
+      <h2>Hardalion</h2>
+      <p>Hardalion builds authority infrastructure for autonomous systems. ADAP is the open protocol: the model proposes, a deterministic policy decides, and the tool runs only when that decision is ALLOW. For the stage: “The agent can try. Hardalion’s ADAP decides whether it happens.”</p>
+      <p><a href="https://hardalion.com">hardalion.com</a> · <a href="https://github.com/Hardalion/agent-delegated-authority">ADAP on GitHub</a></p>
+    </section>
+    <section class="panel wide">
+      <h2>30 seconds</h2>
+      <p>Start the console with <code>pnpm hackathon:start</code>. Put this in front of the tool, not in front of the model.</p>
+      <pre class="receipt">import { gateTool, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: 'search_web',
+  toolArgs: { q: 'athens agents' },
+  execute: searchWeb,
+})
+
+if (!result.executed) {
+  // BLOCK or REQUIRE_HUMAN. searchWeb was not called.
+  console.log(result.decision.action, result.decision.ruleId)
+}</pre>
+      <p class="hint">Change <code>WEEKEND_AGENT</code> and <code>targetAgents</code> in <code>apps/hackathon-console/src/weekend-gate.ts</code> to your team's agent id. A missing or unknown id is BLOCK. There is no hidden default.</p>
+    </section>
+    <section class="panel wide">
+      <h2>What the weekend policy does</h2>
+      <p>Teams wrap research tools (search, scrape, Firecrawl), generation (drafts, fal images), and then a side effect (email, Slack, a ticket, a calendar booking). The policy matches that shape.</p>
+      <pre class="receipt">search_web, scrape_url, firecrawl_scrape, read_page, generate_image  → ALLOW
+send_email, post_slack, publish_post, update_crm, book_calendar     → REQUIRE_HUMAN
+delete_record, transfer_funds, send_payment, read_secret            → BLOCK
+any tool with args.amount &gt; 500                                     → BLOCK
+a tool you just invented                                            → REQUIRE_HUMAN
+unknown, missing, or malformed agent                                → BLOCK</pre>
+      <p class="hint">REQUIRE_HUMAN means you show the decision and wait. The tool function is not called. Add your tool name to the list in <code>weekend-gate.ts</code> if it should be allowed in the demo.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Every framework ends at a tool call</h2>
+      <p>OpenAI, LangChain, LangGraph, the Vercel AI SDK, Claude, and Gemini give you a name plus arguments. Normalize that object, then gate it. Python stacks (CrewAI, Pydantic AI, Google ADK, AutoGen, LlamaIndex) use the same HTTP call.</p>
+      <pre class="receipt">import { gateTool, normalizeToolCall, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const openai = { function: { name: 'search_web', arguments: '{"q":"athens"}' } }
+const langchain = { name: 'search_web', args: { q: 'athens' } }
+const claude = { name: 'send_email', input: { to: 'team@example.com' } }
+
+const call = normalizeToolCall(openai)
+if ('error' in call) throw new Error(call.error)
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: call.toolName,
+  toolArgs: call.toolArgs,
+  execute: myTools[call.toolName],
+})</pre>
+      <h2>Python</h2>
+      <pre class="receipt"># examples/hackathon/gate.py
+# ADAP_URL=http://127.0.0.1:4317
+# ADAP_TEAM_TOKEN=the token printed at startup
+# ADAP_AGENT_ID=agt_hackathon_demo
+
+from gate import guard
+
+def crewai_tool(name, args):
+    return guard(name, args, my_tools[name])</pre>
+      <p class="hint"><code>POST /api/gate</code> with <code>Authorization: Bearer &lt;team token&gt;</code> and <code>{"agentId","tool","args"}</code>. The response is the decision. <code>runTool: true</code> means your process may call the tool. The console does not call it for you.</p>
+    </section>
+    <section class="panel wide">
+      <h2>LangChain, CrewAI, AutoGen</h2>
+    <p>The wrap sits around the tool you already have. The original runs only on ALLOW.</p>
+    <pre class="receipt">import { adapNode, WEEKEND_AGENT } from './examples/hackathon/langgraph.mjs'
+graph.addNode('act', adapNode(act, { agentRole: WEEKEND_AGENT }))
+
+# CrewAI
+from crewai_adap import adap_tool
+@adap_tool("send_email")
+def send_email(to, body): ...
+
+# Microsoft AutoGen
+from autogen_adap import safe_handoff
+safe_handoff({"from": "agt_a", "to": "agt_b", "task": "send_email"})</pre>
+    <h2>Show it in the demo</h2>
+      <ol>
+        <li>Run <code>search_web</code>. Say the decision out loud: ALLOW, and the tool ran.</li>
+        <li>Run <code>send_email</code>. The tool does not run. That is REQUIRE_HUMAN.</li>
+        <li>Run <code>delete_record</code> or an amount over 500. BLOCK. No side effect.</li>
+      </ol>
+      <p>The sandbox page is the payment, vendor, and purchase story, with receipts. This guide is how your own agent uses the same idea in one call. <a href="/">Open the sandbox</a>.</p>
+    </section>
+  </div>
+
+  <div class="lang-body lang-fr">
+    <p class="lede">L’agent propose. ADAP décide. L’outil ne s’exécute que si la décision est ALLOW.</p>
+    <p class="lede">Votre équipe construit un agent qui prend un objectif, choisit des outils et termine un vrai travail. Les sujets sont annoncés au kickoff. Cette page est toute l’intégration. <a href="/">Retour au sandbox</a>.</p>
+    <p class="banner">Réalisé par Hardalion pour ce hackathon. Sandbox uniquement. Une décision ici ne transfère pas d’argent, n’envoie pas d’e-mail réel et n’appelle pas un système de production.</p>
+    <section class="panel wide">
+      <h2>Hardalion</h2>
+      <p>Hardalion construit l’infrastructure d’autorité pour les systèmes autonomes. ADAP est le protocole ouvert : le modèle propose, une politique déterministe décide, et l’outil ne s’exécute que si la décision est ALLOW. Pour la scène : « L’agent peut essayer. L’ADAP de Hardalion décide si cela a lieu. »</p>
+      <p><a href="https://hardalion.com">hardalion.com</a> · <a href="https://github.com/Hardalion/agent-delegated-authority">ADAP sur GitHub</a></p>
+    </section>
+    <section class="panel wide">
+      <h2>30 secondes</h2>
+      <p>Démarrez la console avec <code>pnpm hackathon:start</code>. Placez ceci devant l’outil, pas devant le modèle.</p>
+      <pre class="receipt">import { gateTool, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: 'search_web',
+  toolArgs: { q: 'athens agents' },
+  execute: searchWeb,
+})
+
+if (!result.executed) {
+  // BLOCK ou REQUIRE_HUMAN. searchWeb n’a pas été appelé.
+  console.log(result.decision.action, result.decision.ruleId)
+}</pre>
+      <p class="hint">Remplacez <code>WEEKEND_AGENT</code> et <code>targetAgents</code> dans <code>apps/hackathon-console/src/weekend-gate.ts</code> par l’id de l’agent de votre équipe. Un id absent ou inconnu donne BLOCK. Il n’y a pas de valeur cachée.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Ce que fait la politique du week-end</h2>
+      <p>Les équipes enveloppent des outils de recherche (search, scrape, Firecrawl), de génération (brouillons, images fal), puis un effet de bord (e-mail, Slack, ticket, réservation). La politique suit cette forme.</p>
+      <pre class="receipt">search_web, scrape_url, firecrawl_scrape, read_page, generate_image  → ALLOW
+send_email, post_slack, publish_post, update_crm, book_calendar     → REQUIRE_HUMAN
+delete_record, transfer_funds, send_payment, read_secret            → BLOCK
+tout outil avec args.amount &gt; 500                                   → BLOCK
+un outil que vous venez d’inventer                                  → REQUIRE_HUMAN
+agent inconnu, absent ou mal formé                                  → BLOCK</pre>
+      <p class="hint">REQUIRE_HUMAN veut dire : montrez la décision et attendez. La fonction de l’outil n’est pas appelée. Ajoutez le nom de votre outil à la liste dans <code>weekend-gate.ts</code> s’il doit être permis pendant la démo.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Chaque framework finit par un tool call</h2>
+      <p>OpenAI, LangChain, LangGraph, le Vercel AI SDK, Claude et Gemini donnent un nom et des arguments. Normalisez cet objet, puis passez-le par la porte. Les stacks Python (CrewAI, Pydantic AI, Google ADK, AutoGen, LlamaIndex) utilisent le même appel HTTP.</p>
+      <pre class="receipt">import { gateTool, normalizeToolCall, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const openai = { function: { name: 'search_web', arguments: '{"q":"athens"}' } }
+const langchain = { name: 'search_web', args: { q: 'athens' } }
+const claude = { name: 'send_email', input: { to: 'team@example.com' } }
+
+const call = normalizeToolCall(openai)
+if ('error' in call) throw new Error(call.error)
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: call.toolName,
+  toolArgs: call.toolArgs,
+  execute: myTools[call.toolName],
+})</pre>
+      <h2>Python</h2>
+      <pre class="receipt"># examples/hackathon/gate.py
+# ADAP_URL=http://127.0.0.1:4317
+# ADAP_TEAM_TOKEN=le jeton affiché au démarrage
+# ADAP_AGENT_ID=agt_hackathon_demo
+
+from gate import guard
+
+def crewai_tool(name, args):
+    return guard(name, args, my_tools[name])</pre>
+      <p class="hint"><code>POST /api/gate</code> avec <code>Authorization: Bearer &lt;team token&gt;</code> et <code>{"agentId","tool","args"}</code>. La réponse est la décision. <code>runTool: true</code> signifie que votre processus peut appeler l’outil. La console ne l’appelle pas à votre place.</p>
+    </section>
+    <section class="panel wide">
+      <h2>LangChain, CrewAI, AutoGen</h2>
+    <p>Le wrap entoure l’outil que vous avez déjà. L’original ne s’exécute qu’en cas de ALLOW.</p>
+    <pre class="receipt">import { adapNode, WEEKEND_AGENT } from './examples/hackathon/langgraph.mjs'
+graph.addNode('act', adapNode(act, { agentRole: WEEKEND_AGENT }))
+
+# CrewAI
+from crewai_adap import adap_tool
+@adap_tool("send_email")
+def send_email(to, body): ...
+
+# Microsoft AutoGen
+from autogen_adap import safe_handoff
+safe_handoff({"from": "agt_a", "to": "agt_b", "task": "send_email"})</pre>
+    <h2>Montrez-le dans la démo</h2>
+      <ol>
+        <li>Lancez <code>search_web</code>. Dites la décision à voix haute : ALLOW, et l’outil a tourné.</li>
+        <li>Lancez <code>send_email</code>. L’outil ne tourne pas. C’est REQUIRE_HUMAN.</li>
+        <li>Lancez <code>delete_record</code> ou un montant au-dessus de 500. BLOCK. Aucun effet.</li>
+      </ol>
+      <p>La page sandbox raconte le paiement, le fournisseur et l’achat, avec des reçus. Ce guide montre comment votre agent utilise la même idée en un appel. <a href="/">Ouvrir le sandbox</a>.</p>
+    </section>
+  </div>
+
+  <div class="lang-body lang-de">
+    <p class="lede">Der Agent schlägt vor. ADAP entscheidet. Das Werkzeug läuft nur, wenn die Entscheidung ALLOW ist.</p>
+    <p class="lede">Euer Team baut einen Agenten, der ein Ziel nimmt, Werkzeuge wählt und echte Arbeit beendet. Die Aufgaben werden beim Kickoff bekannt gegeben. Diese Seite ist die ganze Anbindung. <a href="/">Zurück zur Sandbox</a>.</p>
+    <p class="banner">Von Hardalion für dieses Hackathon gebaut. Nur eine Sandbox. Eine Entscheidung hier überweist kein Geld, sendet keine echte E-Mail und ruft kein Produktivsystem auf.</p>
+    <section class="panel wide">
+      <h2>Hardalion</h2>
+      <p>Hardalion baut Autoritätsinfrastruktur für autonome Systeme. ADAP ist das offene Protokoll: Das Modell schlägt vor, eine deterministische Policy entscheidet, und das Werkzeug läuft nur bei ALLOW. Für die Bühne: „Der Agent darf es versuchen. Hardalions ADAP entscheidet, ob es passiert.“</p>
+      <p><a href="https://hardalion.com">hardalion.com</a> · <a href="https://github.com/Hardalion/agent-delegated-authority">ADAP auf GitHub</a></p>
+    </section>
+    <section class="panel wide">
+      <h2>30 Sekunden</h2>
+      <p>Startet die Konsole mit <code>pnpm hackathon:start</code>. Setzt das vor das Werkzeug, nicht vor das Modell.</p>
+      <pre class="receipt">import { gateTool, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: 'search_web',
+  toolArgs: { q: 'athens agents' },
+  execute: searchWeb,
+})
+
+if (!result.executed) {
+  // BLOCK oder REQUIRE_HUMAN. searchWeb wurde nicht aufgerufen.
+  console.log(result.decision.action, result.decision.ruleId)
+}</pre>
+      <p class="hint">Ersetzt <code>WEEKEND_AGENT</code> und <code>targetAgents</code> in <code>apps/hackathon-console/src/weekend-gate.ts</code> durch die Agent-Id eures Teams. Eine fehlende oder unbekannte Id wird BLOCK. Es gibt keinen versteckten Default.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Was die Wochenend-Policy tut</h2>
+      <p>Teams hüllen Recherche-Werkzeuge (Search, Scrape, Firecrawl), Erzeugung (Entwürfe, fal-Bilder) und dann einen Seiteneffekt (E-Mail, Slack, Ticket, Termin). Die Policy folgt dieser Form.</p>
+      <pre class="receipt">search_web, scrape_url, firecrawl_scrape, read_page, generate_image  → ALLOW
+send_email, post_slack, publish_post, update_crm, book_calendar     → REQUIRE_HUMAN
+delete_record, transfer_funds, send_payment, read_secret            → BLOCK
+jedes Werkzeug mit args.amount &gt; 500                                → BLOCK
+ein Werkzeug, das ihr gerade erfunden habt                          → REQUIRE_HUMAN
+unbekannter, fehlender oder fehlerhafter Agent                      → BLOCK</pre>
+      <p class="hint">REQUIRE_HUMAN heißt: Entscheidung zeigen und warten. Die Werkzeugfunktion wird nicht aufgerufen. Tragt den Namen eures Werkzeugs in die Liste in <code>weekend-gate.ts</code> ein, wenn es in der Demo erlaubt sein soll.</p>
+    </section>
+    <section class="panel wide">
+      <h2>Jedes Framework endet bei einem Tool Call</h2>
+      <p>OpenAI, LangChain, LangGraph, das Vercel AI SDK, Claude und Gemini liefern einen Namen plus Argumente. Normalisiert das Objekt und schickt es durch das Gate. Python-Stacks (CrewAI, Pydantic AI, Google ADK, AutoGen, LlamaIndex) nutzen denselben HTTP-Aufruf.</p>
+      <pre class="receipt">import { gateTool, normalizeToolCall, WEEKEND_AGENT } from './examples/hackathon/plug.mjs'
+
+const openai = { function: { name: 'search_web', arguments: '{"q":"athens"}' } }
+const langchain = { name: 'search_web', args: { q: 'athens' } }
+const claude = { name: 'send_email', input: { to: 'team@example.com' } }
+
+const call = normalizeToolCall(openai)
+if ('error' in call) throw new Error(call.error)
+
+const result = await gateTool({
+  agentRole: WEEKEND_AGENT,
+  toolName: call.toolName,
+  toolArgs: call.toolArgs,
+  execute: myTools[call.toolName],
+})</pre>
+      <h2>Python</h2>
+      <pre class="receipt"># examples/hackathon/gate.py
+# ADAP_URL=http://127.0.0.1:4317
+# ADAP_TEAM_TOKEN=das beim Start gedruckte Token
+# ADAP_AGENT_ID=agt_hackathon_demo
+
+from gate import guard
+
+def crewai_tool(name, args):
+    return guard(name, args, my_tools[name])</pre>
+      <p class="hint"><code>POST /api/gate</code> mit <code>Authorization: Bearer &lt;team token&gt;</code> und <code>{"agentId","tool","args"}</code>. Die Antwort ist die Entscheidung. <code>runTool: true</code> heißt, euer Prozess darf das Werkzeug aufrufen. Die Konsole ruft es nicht für euch auf.</p>
+    </section>
+    <section class="panel wide">
+      <h2>LangChain, CrewAI, AutoGen</h2>
+    <p>Der Wrap liegt um das Werkzeug, das ihr schon habt. Das Original läuft nur bei ALLOW.</p>
+    <pre class="receipt">import { adapNode, WEEKEND_AGENT } from './examples/hackathon/langgraph.mjs'
+graph.addNode('act', adapNode(act, { agentRole: WEEKEND_AGENT }))
+
+# CrewAI
+from crewai_adap import adap_tool
+@adap_tool("send_email")
+def send_email(to, body): ...
+
+# Microsoft AutoGen
+from autogen_adap import safe_handoff
+safe_handoff({"from": "agt_a", "to": "agt_b", "task": "send_email"})</pre>
+    <h2>Zeigt es in der Demo</h2>
+      <ol>
+        <li>Führt <code>search_web</code> aus. Sagt die Entscheidung laut: ALLOW, und das Werkzeug lief.</li>
+        <li>Führt <code>send_email</code> aus. Das Werkzeug läuft nicht. Das ist REQUIRE_HUMAN.</li>
+        <li>Führt <code>delete_record</code> aus oder einen Betrag über 500. BLOCK. Kein Seiteneffekt.</li>
+      </ol>
+      <p>Die Sandbox-Seite ist die Geschichte von Zahlung, Lieferant und Einkauf, mit Belegen. Dieser Leitfaden zeigt, wie euer eigener Agent dieselbe Idee in einem Aufruf nutzt. <a href="/">Sandbox öffnen</a>.</p>
+    </section>
+  </div>
+  <script src="/i18n.js" defer></script>
+  <script src="/guide-lang.js" defer></script>
+</body>
+</html>

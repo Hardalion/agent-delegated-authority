@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { verifyProtocolReceipt, importPublicKey } from 'adap'
 import { RESET_CONFIRM } from './guard.js'
 import { DemoRuntime } from './runtime.js'
+import { openTeamDurableStore } from './durable-store.js'
 
 const FIXED = new Date('2026-11-01T12:00:00.000Z')
 
@@ -9,6 +13,7 @@ function runtime(env: { NODE_ENV?: string; ADAP_DEMO_ENV?: string; ADAP_PG_URL?:
   return new DemoRuntime({
     now: () => FIXED,
     passphrase: 'treasury-demo',
+    durableStore: null,
     env: { NODE_ENV: 'demo', ADAP_DEMO_ENV: 'hackathon', ...env },
   })
 }
@@ -184,6 +189,7 @@ describe('hackathon scenarios', () => {
     const reset = await demo.reset({
       confirm: RESET_CONFIRM,
       passphrase: 'treasury-demo',
+      durableStore: null,
       acknowledgeExport: true,
     })
     expect(reset.evidence.cases).toHaveLength(1)
@@ -211,6 +217,40 @@ describe('hackathon scenarios', () => {
     const restarted = runtime()
     await expect(restarted.approve(nonce, 'treasury-demo')).rejects.toThrow(/No pending approval/)
     expect(restarted.publicState().sideEffects.paymentsCreated).toBe(0)
+  })
+
+  it('recovers a pending approval from the durable store after reopen', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'adap-runtime-restart-'))
+    const encryptionKey = Buffer.alloc(32, 9)
+    const firstStore = openTeamDurableStore({ teamId: 'team-restart', stateDirectory: directory, encryptionKey })
+    try {
+      const first = new DemoRuntime({
+        now: () => FIXED,
+        passphrase: 'treasury-demo',
+        teamId: 'team-restart',
+        durableStore: firstStore,
+      })
+      await first.runScenario('payment', { nonce: 'n-durable-restart' })
+      firstStore.close()
+
+      const secondStore = openTeamDurableStore({ teamId: 'team-restart', stateDirectory: directory, encryptionKey })
+      try {
+        const restarted = new DemoRuntime({
+          now: () => FIXED,
+          passphrase: 'treasury-demo',
+          teamId: 'team-restart',
+          durableStore: secondStore,
+        })
+        expect(restarted.publicState().pending).toHaveLength(1)
+        const approved = await restarted.approve('n-durable-restart', 'treasury-demo')
+        expect(approved.pending).toHaveLength(0)
+        expect(approved.sideEffects.paymentsCreated).toBe(1)
+      } finally {
+        secondStore.close()
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   it('does not execute an approval after the intent has expired', async () => {

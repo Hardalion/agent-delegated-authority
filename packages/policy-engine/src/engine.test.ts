@@ -55,9 +55,9 @@ rules:
     expect(decision.ruleId).toBe('agent_not_in_scope')
   })
 
-  it('DEFER wins over SIMULATE and ALLOW but loses to REQUIRE_HUMAN', () => {
+  it('lets BLOCK outrank REQUIRE_HUMAN, DEFER, SIMULATE, and ALLOW', () => {
     const policy = parsePolicyDocument(`version: "1.0"
-policyName: defer-priority-test
+policyName: priority-test
 targetAgents: ["*"]
 defaultAction: BLOCK
 rules:
@@ -65,15 +65,15 @@ rules:
     action: ALLOW
     condition: "tool.name == 'ping'"
     alertSeverity: LOW
-  - ruleId: defer_ping
-    action: DEFER
+  - ruleId: human_ping
+    action: REQUIRE_HUMAN
     condition: "tool.name == 'ping'"
     alertSeverity: MEDIUM
 `)
-    expect(evaluateToolCall({ policy, toolName: 'ping', agentRole: ROLE }).action).toBe('DEFER')
+    expect(evaluateToolCall({ policy, toolName: 'ping', agentRole: ROLE }).action).toBe('REQUIRE_HUMAN')
 
     const policyWithBlock = parsePolicyDocument(`version: "1.0"
-policyName: defer-block-test
+policyName: block-priority-test
 targetAgents: ["*"]
 defaultAction: BLOCK
 rules:
@@ -81,12 +81,26 @@ rules:
     action: BLOCK
     condition: "tool.name == 'ping'"
     alertSeverity: CRITICAL
+  - ruleId: human_ping
+    action: REQUIRE_HUMAN
+    condition: "tool.name == 'ping'"
+    alertSeverity: MEDIUM
   - ruleId: defer_ping
     action: DEFER
     condition: "tool.name == 'ping'"
     alertSeverity: MEDIUM
+  - ruleId: simulate_ping
+    action: SIMULATE
+    condition: "tool.name == 'ping'"
+    alertSeverity: LOW
+  - ruleId: allow_ping
+    action: ALLOW
+    condition: "tool.name == 'ping'"
+    alertSeverity: LOW
 `)
-    expect(evaluateToolCall({ policy: policyWithBlock, toolName: 'ping', agentRole: ROLE }).action).toBe('BLOCK')
+    const decision = evaluateToolCall({ policy: policyWithBlock, toolName: 'ping', agentRole: ROLE })
+    expect(decision.action).toBe('BLOCK')
+    expect(decision.ruleId).toBe('block_ping')
   })
 
   it('blocks an apply over the cap and waits for a person under it', () => {

@@ -88,6 +88,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -121,6 +122,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: permissive,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -145,6 +147,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent: intent2,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -157,6 +160,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent: intent2,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: permissive,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -192,6 +196,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -233,6 +238,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -259,6 +265,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
@@ -301,7 +308,7 @@ describe('ADAP-002 object-valued nonce replay', () => {
   })
 
   it('blocks a second authority request after an independent JSON parse of the same nonce', async () => {
-    const { agent, signer, directory, root } = fixture()
+    const { principal, agent, signer, directory, root } = fixture()
     const allow: Policy = {
       version: '1.0.0',
       policyName: 'allow-apply',
@@ -328,6 +335,7 @@ describe('ADAP-002 object-valued nonce replay', () => {
     const shared = {
       chain: [root],
       directory,
+      trustedRootIssuers: [principal.id],
       policy: allow,
       policyUri: 'allow-apply@1',
       clock: new FixedClock(NOW),
@@ -462,7 +470,7 @@ describe('ADAP-007 missing required intent fields', () => {
   })
 
   it('rejects a malformed intent at runAuthorityPath before the executor is called', async () => {
-    const { agent, signer, directory, root, policyResolver } = fixture()
+    const { principal, agent, signer, directory, root, policyResolver } = fixture()
     const good = signedApply(agent, root, 10, 'adap007-boundary')
     let exec = 0
     const malformed = [
@@ -476,6 +484,7 @@ describe('ADAP-007 missing required intent fields', () => {
         chain: [root],
         intent: intent as unknown as SignedIntent,
         directory,
+        trustedRootIssuers: [principal.id],
         policy: BASIC_AGENT_AUTHORITY,
         policyUri: BASIC_AGENT_AUTHORITY_URI,
         clock: new FixedClock(NOW),
@@ -498,12 +507,13 @@ describe('ADAP-007 missing required intent fields', () => {
 
 describe('ADAP-008 trusted clock', () => {
   it('rejects expired authority against the trusted now, not intent-embedded clocks alone', async () => {
-    const { agent, signer, directory, root, pendingStore, policyResolver } = fixture()
+    const { principal, agent, signer, directory, root, pendingStore, policyResolver } = fixture()
     const intent = signedApply(agent, root, 420, 'adap008')
     const expired = await runAuthorityPath({
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(new Date(Date.parse(EXPIRES) + 1000)),
@@ -519,13 +529,14 @@ describe('ADAP-008 trusted clock', () => {
   })
 
   it('rejects caller-supplied now that would revive an expired intent', async () => {
-    const { agent, signer, directory, root, policyResolver } = fixture()
+    const { principal, agent, signer, directory, root, policyResolver } = fixture()
     const intent = signedApply(agent, root, 10, 'adap008-caller-now')
     let exec = 0
     const result = await runAuthorityPath({
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(new Date(Date.parse(EXPIRES) + 60_000)),
@@ -607,12 +618,13 @@ describe('ADAP-011 receipt semantic consistency', () => {
 
 describe('execution gate', () => {
   it('never executes BLOCK or unresolved REQUIRE_HUMAN', async () => {
-    const { agent, signer, directory, root, pendingStore, policyResolver } = fixture()
+    const { principal, agent, signer, directory, root, pendingStore, policyResolver } = fixture()
     let exec = 0
     const pending = await runAuthorityPath({
       chain: [root],
       intent: signedApply(agent, root, 420, 'exec-gate'),
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),

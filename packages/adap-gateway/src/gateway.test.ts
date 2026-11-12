@@ -108,6 +108,7 @@ describe('credential isolation gateway', () => {
         chain: [root],
         intent,
         directory,
+        trustedRootIssuers: [principal.id],
         policy: ALLOW_APPLY,
         policyUri: ALLOW_URI,
         ledger: new NonceLedger(),

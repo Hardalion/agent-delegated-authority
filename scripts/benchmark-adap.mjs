@@ -124,6 +124,7 @@ async function main() {
       chain: [root],
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy,
       policyUri: uri,
       ledger: new NonceLedger(),

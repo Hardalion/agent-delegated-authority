@@ -96,6 +96,33 @@ th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px 4p
 .history-item button, .inbox-item button { width: auto; display: inline-block; margin-right: 8px; }
 .event small, .history-item small { color: var(--muted); }
 .receipt { white-space: pre-wrap; overflow: auto; max-height: 360px; background: #0d1117; padding: 12px; font: 12px/1.4 var(--mono); }
+a { color: var(--accent); }
+.lang-pick { position: absolute; opacity: 0; pointer-events: none; }
+.lang-switch { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.lang-switch input { width: auto; margin: 0 6px 0 0; }
+.lang-switch label {
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.lang-pick:focus-visible + .top .lang-switch label { outline: 2px solid var(--accent); }
+#lang-el:checked ~ .top label[for="lang-el"],
+#lang-en:checked ~ .top label[for="lang-en"],
+#lang-fr:checked ~ .top label[for="lang-fr"],
+#lang-de:checked ~ .top label[for="lang-de"] { border-color: var(--accent); color: var(--accent); }
+.lang-body { display: none; padding: 0 0 32px; }
+.lang-body > .lede,
+.lang-body > .banner {
+  width: min(1240px, calc(100% - 32px));
+  margin-left: auto;
+  margin-right: auto;
+}
+#lang-el:checked ~ .lang-el,
+#lang-en:checked ~ .lang-en,
+#lang-fr:checked ~ .lang-fr,
+#lang-de:checked ~ .lang-de { display: block; }
 footer { padding-bottom: 28px; font-size: 13px; }
 .empty { color: var(--muted); }
 @media (max-width: 960px) {

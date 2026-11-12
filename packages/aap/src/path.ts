@@ -56,6 +56,11 @@ export interface RunAuthorityPathInput {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
   readonly directory: ReadonlyMap<string, string>
+  /**
+   * Operator-configured identities allowed to issue a root delegation.
+   * Required. A public key in `directory` with a valid signature is not enough.
+   */
+  readonly trustedRootIssuers: ReadonlySet<string> | readonly string[]
   /** Must be the document pinned under `policyUri` in `policyResolver`. */
   readonly policy: Policy
   readonly policyUri: string
@@ -129,10 +134,14 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     if (!hasResolver(input.policyResolver)) {
       throw new AuthorityError('policy', 'a trusted policy resolver is required', false)
     }
+    if (input.trustedRootIssuers == null) {
+      throw new AuthorityError('trust', 'trusted root issuers are required', false)
+    }
     presented = presentAuthority({
       chain: input.chain,
       intent: input.intent,
       directory: input.directory,
+      trustedRootIssuers: input.trustedRootIssuers,
     })
     signatureVerified = true
     intentHash = sha256(unsignedIntent(presented.intent))

@@ -287,6 +287,7 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
           chain: [root],
           intent,
           directory,
+          trustedRootIssuers: [principal.id],
           policy: ALLOW_APPLY,
           policyUri: ALLOW_URI,
           ledger,

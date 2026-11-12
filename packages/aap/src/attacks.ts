@@ -214,6 +214,7 @@ async function executeCase(input: {
     chain: input.chain,
     intent: input.intent,
     directory: input.actors.directory,
+    trustedRootIssuers: [input.actors.principal.id],
     policy: POLICY,
     policyUri: POLICY_URI,
     clock: new FixedClock(input.now ?? DEMO_NOW),

@@ -114,6 +114,7 @@ function run(
     chain: [env.root],
     intent,
     directory: env.directory,
+    trustedRootIssuers: [env.principal.id],
     policy,
     policyUri,
     clock: options.clock ?? new FixedClock(NOW),

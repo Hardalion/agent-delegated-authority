@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { DemoError } from './errors.js'
+import { gateTool } from './weekend-gate.js'
 import type { DemoRuntime } from './runtime.js'
 import { ConsoleSecurity } from './security.js'
 
@@ -19,6 +20,17 @@ const ResetBody = z
 const VerifyBody = z.object({ receipt: z.unknown() }).strict()
 const SessionBody = z.object({ token: z.string().min(1).max(500) }).strict()
 const Scalar = z.union([z.string().max(200), z.number().finite(), z.boolean()])
+const GateArgs = z.record(
+  z.string().max(64),
+  z.union([z.string().max(500), z.number().finite(), z.boolean()]),
+)
+const GateBody = z
+  .object({
+    agentId: z.string().min(1).max(128),
+    tool: z.string().min(1).max(80),
+    args: GateArgs.optional(),
+  })
+  .strict()
 const AgentRequestBody = z
   .object({
     agentId: z.string().min(1).max(128),
@@ -33,6 +45,10 @@ const FILES: Readonly<Record<string, { readonly file: string; readonly type: str
   '/index.html': { file: 'index.html', type: 'text/html; charset=utf-8' },
   '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
+  '/i18n.js': { file: 'i18n.js', type: 'text/javascript; charset=utf-8' },
+  '/guide-lang.js': { file: 'guide-lang.js', type: 'text/javascript; charset=utf-8' },
+  '/guide': { file: 'guide.html', type: 'text/html; charset=utf-8' },
+  '/guide.html': { file: 'guide.html', type: 'text/html; charset=utf-8' },
 }
 
 function publicDir(): string {
@@ -155,6 +171,22 @@ export function createDemoServer(runtime: DemoRuntime, security: ConsoleSecurity
       if (method === 'POST' && path === '/api/receipts/verify') {
         const body = parse(VerifyBody, await readBody(req))
         send(security, res, 200, runtime.verifyReceipt(body.receipt))
+        return
+      }
+      if (method === 'POST' && path === '/api/gate') {
+        const body = parse(GateBody, await readBody(req))
+        const result = await gateTool({
+          agentRole: body.agentId,
+          toolName: body.tool,
+          toolArgs: body.args ?? {},
+        })
+        send(security, res, 200, {
+          action: result.decision.action,
+          ruleId: result.decision.ruleId,
+          reason: result.decision.reason,
+          executed: false,
+          runTool: result.decision.action === 'ALLOW',
+        })
         return
       }
       if (method === 'POST' && path === '/api/requests') {

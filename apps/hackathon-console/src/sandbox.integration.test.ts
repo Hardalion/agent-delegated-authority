@@ -64,18 +64,29 @@ function startSandbox(dbPath: string, token: string): Promise<{ proc: ChildProce
   })
 }
 
-async function session(url: string, token: string) {
+async function session(url: string, token: string): Promise<{
+  readonly cookie: string
+  readonly call: (path: string, init?: RequestInit) => Promise<Response>
+}> {
   const login = await fetch(`${url}/api/session`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ token }),
   })
-  const cookie = (login.headers.getSetCookie?.() ?? []).map((value) => value.split(';')[0]).join('; ')
-  return async (path: string, init: RequestInit = {}) => {
-    const headers = new Headers(init.headers)
-    headers.set('cookie', cookie)
-    if ((init.method ?? 'GET') !== 'GET') headers.set('x-adap-request', '1')
-    return fetch(`${url}${path}`, { ...init, headers })
+  expect(login.status).toBe(200)
+  const cookie = (login.headers.getSetCookie?.() ?? [])
+    .map((value) => value.split(';')[0])
+    .filter((value): value is string => Boolean(value))
+    .join('; ')
+  expect(cookie).toMatch(/adap_session=/)
+  return {
+    cookie,
+    call: async (path: string, init: RequestInit = {}) => {
+      const headers = new Headers(init.headers)
+      headers.set('cookie', cookie)
+      if ((init.method ?? 'GET') !== 'GET') headers.set('x-adap-request', '1')
+      return fetch(`${url}${path}`, { ...init, headers })
+    },
   }
 }
 
@@ -235,7 +246,8 @@ describe('persistent sandbox workflows', () => {
 
     const http = createDemoServer(runtimeA, new ConsoleSecurity(security('team-a', 'team-a-console-token-0123456789')))
     const urlA = await listen(http)
-    const callA = await session(urlA, 'team-a-console-token-0123456789')
+    const teamA = await session(urlA, 'team-a-console-token-0123456789')
+    const callA = teamA.call
     const unknownAgent = await callA('/api/requests', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -271,8 +283,21 @@ describe('persistent sandbox workflows', () => {
     const teamBPayments = (await adapterB.listPayments()).length
     const httpB = createDemoServer(runtimeB, new ConsoleSecurity(security('team-b', 'team-b-console-token-0123456789')))
     const urlB = await listen(httpB)
-    const cross = await fetch(`${urlB}/api/state`, { headers: { cookie: (await callA('/api/state')).headers.get('set-cookie') ?? 'adap_session=nope' } })
-    expect(cross.status).toBe(401)
+    const crossState = await fetch(`${urlB}/api/state`, { headers: { cookie: teamA.cookie } })
+    expect(crossState.status).toBe(401)
+    const crossMutation = await fetch(`${urlB}/api/scenarios/pay-120`, {
+      method: 'POST',
+      headers: { cookie: teamA.cookie, 'x-adap-request': '1' },
+    })
+    expect(crossMutation.status).toBe(401)
+    const crossBearer = await fetch(`${urlB}/api/state`, {
+      headers: { authorization: 'Bearer team-a-console-token-0123456789' },
+    })
+    expect(crossBearer.status).toBe(401)
+    const foreignSandbox = await fetch(`http://127.0.0.1:${portB}/v1/payments`, {
+      headers: { authorization: `Bearer ${tokenA}` },
+    })
+    expect(foreignSandbox.status).toBe(401)
     await runtimeA.reset({ confirm: 'RESET HACKATHON DEMO', passphrase: PASSPHRASE, acknowledgeExport: true })
     expect((await adapterB.listPayments()).length).toBe(teamBPayments)
     expect((await adapterA.listPayments()).some((payment) => payment.id === 'pay_seed_1001')).toBe(true)

@@ -62,6 +62,20 @@ function loadDirectory(filePath: string): Map<string, string> {
   return directory
 }
 
+/** Operator-configured root issuers. Directory membership alone is not enough. */
+function loadTrustedRootIssuers(): readonly string[] {
+  const raw = requiredEnv('ADAP_TRUSTED_ROOT_ISSUERS')
+  const issuers = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+  if (issuers.length === 0) {
+    console.error(JSON.stringify({ channel: 'adap.security', type: 'boot.trusted_roots_empty' }))
+    process.exit(1)
+  }
+  return issuers
+}
+
 function tokenMatches(presented: string, expected: string): boolean {
   const a = Buffer.from(presented)
   const b = Buffer.from(expected)
@@ -107,6 +121,7 @@ export async function startGateway(): Promise<void> {
   })
   const registry = await migrateAndRegister(pool)
   const directory = loadDirectory(requiredEnv('ADAP_DIRECTORY_PATH'))
+  const trustedRootIssuers = loadTrustedRootIssuers()
   const signer = loadIssuer(requiredEnv('ADAP_ISSUER_KEY_PATH'))
   const clientToken = requiredEnv('ADAP_GATEWAY_CLIENT_TOKEN')
   const broker = new VaultCredentialBroker({
@@ -260,6 +275,7 @@ export async function startGateway(): Promise<void> {
           intent: parsed.intent as never,
           approval: parsed.approval as never,
           directory,
+          trustedRootIssuers,
           policy: pin.policy,
           policyUri,
           ledger: new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool })),

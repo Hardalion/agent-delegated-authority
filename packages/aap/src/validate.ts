@@ -202,6 +202,35 @@ function verifySignatures(
   }
 }
 
+function normalizeTrustedRootIssuers(
+  trustedRootIssuers: ReadonlySet<string> | readonly string[] | undefined
+): ReadonlySet<string> | undefined {
+  if (trustedRootIssuers == null) return undefined
+  if (trustedRootIssuers instanceof Set) return trustedRootIssuers
+  return new Set(trustedRootIssuers)
+}
+
+/**
+ * A valid signature and a key in the directory are not enough for a root.
+ * The operator must name the issuer as a trusted root.
+ */
+function assertTrustedRootIssuer(
+  chain: readonly SignedDelegation[],
+  trustedRootIssuers: ReadonlySet<string> | readonly string[] | undefined
+): void {
+  const trusted = normalizeTrustedRootIssuers(trustedRootIssuers)
+  if (trusted == null) return
+  const root = chain[0]
+  if (!root) throw new AuthorityError('trust', 'delegation chain is empty', false)
+  if (!trusted.has(root.issuer)) {
+    throw new AuthorityError(
+      'trust',
+      'root issuer is not an operator-trusted authority',
+      false
+    )
+  }
+}
+
 /**
  * Clone the presented chain and intent, then verify signatures.
  * Failures here are unauthenticated: the nonce must not be consumed.
@@ -211,6 +240,12 @@ export function presentAuthority(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
   readonly directory: ReadonlyMap<string, string>
+  /**
+   * Operator-configured root issuers. When set (including an empty set), the
+   * root delegation issuer must be listed. A directory key and a valid
+   * signature alone do not establish root authority.
+   */
+  readonly trustedRootIssuers?: ReadonlySet<string> | readonly string[]
 }): { readonly chain: SignedDelegation[]; readonly intent: SignedIntent } {
   if (!Array.isArray(input.chain)) {
     throw new AuthorityError('schema', 'delegation chain must be an array', false)
@@ -225,6 +260,7 @@ export function presentAuthority(input: {
   })
   assertCanonicalForm(unsignedIntent(intent), 'intent')
   verifySignatures(chain, intent, input.directory)
+  assertTrustedRootIssuer(chain, input.trustedRootIssuers)
   return { chain, intent }
 }
 
@@ -267,6 +303,7 @@ export function verifyAuthority(input: {
   readonly intent: SignedIntent
   readonly directory: ReadonlyMap<string, string>
   readonly now: Date
+  readonly trustedRootIssuers?: ReadonlySet<string> | readonly string[]
 }): VerifiedAuthority {
   const presented = presentAuthority(input)
   return authorizePresented({ chain: presented.chain, intent: presented.intent, now: input.now })

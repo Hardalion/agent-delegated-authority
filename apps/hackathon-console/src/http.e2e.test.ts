@@ -78,7 +78,8 @@ describe('console boundary', () => {
     expect(page).toContain('/api/scenarios/')
     expect(page).toContain('outcomeLabel')
     expect(page).not.toContain('executed = true')
-    expect(html).toContain('Rail status loads from the server')
+    expect(html).toContain('id="rail-flag"')
+    expect(html).toContain('Ελληνικά')
     expect(html).not.toContain('treasury-demo')
   })
 })
@@ -87,7 +88,9 @@ describe('console HTTP', () => {
   it('serves the three scenarios, refresh, a second session, and a restart', async () => {
     const first = await boot()
     const page = await fetch(`${first.url}/`)
-    expect(await page.text()).toContain('Rail status loads from the server')
+    const htmlPage = await page.text()
+    expect(htmlPage).toContain('id="rail-flag"')
+    expect(htmlPage).toContain('Français')
     const anonymous = await fetch(`${first.url}/api/state`)
     expect(anonymous.status).toBe(401)
 

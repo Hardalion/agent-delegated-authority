@@ -1,4 +1,5 @@
 import type { KeyObject } from 'node:crypto'
+import { createPublicKey } from 'node:crypto'
 import { exportPublicKey, generateEd25519, signObject } from './crypto.js'
 import { assertValidIdentity } from './runtime-validate.js'
 
@@ -85,6 +86,15 @@ export function createIdentity(id: string): Identity {
   assertValidIdentity(id, 'identity.id')
   const keys = generateEd25519()
   return { id, publicKey: exportPublicKey(keys.publicKey), privateKey: keys.privateKey }
+}
+
+export function identityFromKeys(id: string, publicKeySpki: string, privateKey: KeyObject): Identity {
+  assertValidIdentity(id, 'identity.id')
+  const derivedPublicKey = exportPublicKey(createPublicKey(privateKey))
+  if (derivedPublicKey !== publicKeySpki) {
+    throw new Error('identity public key does not match private key')
+  }
+  return { id, publicKey: publicKeySpki, privateKey }
 }
 
 export function signDelegation(payload: DelegationPayload, issuer: Identity): SignedDelegation {

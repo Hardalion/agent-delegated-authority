@@ -5,6 +5,7 @@ import {
   buildEvaluationContext,
   evaluateCondition,
   NonFiniteComparisonError,
+  NumericComparisonError,
   type EvaluationContext,
 } from './evaluator.js'
 import { BUNDLED_POLICIES, normalizePolicyReference } from './policies/bundled.js'
@@ -124,9 +125,33 @@ export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
           alertSeverity: 'CRITICAL',
         }
       }
-      throw error
+      if (error instanceof NumericComparisonError) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'numeric_comparison_rejected',
+          reason: 'ordered comparison requires finite numbers',
+          alertSeverity: 'CRITICAL',
+        }
+      }
+      return {
+        matched: false,
+        action: 'BLOCK',
+        ruleId: 'condition_evaluation_error',
+        reason: 'condition evaluation failed closed',
+        alertSeverity: 'CRITICAL',
+      }
     }
     if (matched) {
+      if (!POLICY_ACTIONS.has(rule.action)) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'unsupported_policy_action',
+          reason: 'policy action is not executable in v0.1',
+          alertSeverity: 'CRITICAL',
+        }
+      }
       matches.push({
         matched: true,
         action: rule.action,

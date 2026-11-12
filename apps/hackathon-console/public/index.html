@@ -1,102 +1,111 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="el">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ADAP Authority Console</title>
+  <title>Κονσόλα εξουσιοδότησης ADAP</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <a class="skip" href="#main">Skip to content</a>
+<body data-page="sandbox">
+  <a class="skip" href="#main" data-i18n="skip">Μετάβαση στο περιεχόμενο</a>
   <header class="top">
     <div>
-      <p class="eyebrow">Hackathon demonstration</p>
-      <h1>ADAP Authority Console</h1>
-      <p class="lede">An agent may propose an action. It can execute a consequential operation only when ADAP grants the authority.</p>
+      <p class="eyebrow">Hardalion · ADAP sandbox</p>
+      <h1 data-i18n="title">Κονσόλα εξουσιοδότησης ADAP</h1>
+      <p class="lede" data-i18n="lede">Ο agent μπορεί να προτείνει μια ενέργεια. Εκτελείται μόνο όταν το ADAP δίνει την εξουσιοδότηση.</p>
+      <p class="lede"><a href="/guide" data-i18n="guideLink">Σύνδεσε τον agent σου</a><span data-i18n="guideRest">. Η ίδια πύλη μπαίνει μπροστά από OpenAI, LangChain, Vercel AI SDK, Claude, Gemini, CrewAI και τα υπόλοιπα stacks του Σαββατοκύριακου.</span></p>
+      <div class="lang-switch" role="radiogroup" aria-label="Language">
+        <label><input type="radio" name="sandbox-lang" value="el" checked> Ελληνικά</label>
+        <label><input type="radio" name="sandbox-lang" value="en"> English</label>
+        <label><input type="radio" name="sandbox-lang" value="fr"> Français</label>
+        <label><input type="radio" name="sandbox-lang" value="de"> Deutsch</label>
+      </div>
     </div>
     <div class="flags" aria-label="Environment">
-      <span class="flag">HACKATHON SANDBOX</span>
-      <span id="rail-flag" class="flag flag-sim">Rail status loads from the server</span>
-      <span id="team-flag" class="flag">Team</span>
-      <span id="health-flag" class="flag">Checking</span>
+      <span class="flag">HARDALION</span>
+      <span class="flag" data-i18n="sandboxFlag">SANDBOX HACKATHON</span>
+      <span id="rail-flag" class="flag flag-sim" data-i18n="railLoading">Η κατάσταση του rail φορτώνει από τον server</span>
+      <span id="team-flag" class="flag" data-i18n="team">Ομάδα</span>
+      <span id="health-flag" class="flag" data-i18n="checking">Έλεγχος</span>
     </div>
   </header>
-  <p id="banner" class="banner">Hackathon sandbox. This console does not move real money. The rail label comes from the server after sign-in.</p>
+  <p id="banner" class="banner" data-i18n="bannerSignedOut">Sandbox hackathon. Αυτή η κονσόλα δεν μεταφέρει αληθινά χρήματα. Η ετικέτα του rail έρχεται από τον server μετά τη σύνδεση.</p>
   <section id="login" class="panel wide">
-    <h2>Team access</h2>
-    <p class="hint">Paste the team token printed at startup. It is not stored in this page.</p>
-    <label for="team-token">Team token</label>
+    <h2 data-i18n="loginTitle">Πρόσβαση ομάδας</h2>
+    <p class="hint" data-i18n="loginHint">Επικόλλησε το team token που τυπώθηκε στην εκκίνηση. Δεν αποθηκεύεται σε αυτή τη σελίδα.</p>
+    <label for="team-token" data-i18n="teamToken">Team token</label>
     <input id="team-token" type="password" autocomplete="off" spellcheck="false">
-    <button type="button" id="login-button">Open session</button>
+    <button type="button" id="login-button" data-i18n="openSession">Άνοιγμα συνεδρίας</button>
   </section>
   <p id="error" class="error" role="alert"></p>
   <section id="metrics" class="metrics" aria-live="polite"></section>
   <div class="layout" id="main">
     <section class="panel">
-      <h2>Scenarios</h2>
-      <p class="hint">Each button asks the treasury agent to sign an intent. The gateway decides.</p>
+      <h2 data-i18n="scenarios">Σενάρια</h2>
+      <p class="hint" data-i18n="scenariosHint">Κάθε κουμπί ζητά από τον treasury agent να υπογράψει ένα intent. Το gateway αποφασίζει.</p>
       <div id="scenario-buttons"></div>
-      <button type="button" class="quiet" data-action="present">Presentation mode</button>
+      <button type="button" class="quiet" data-action="present" data-i18n="present">Λειτουργία παρουσίασης</button>
       <section id="guide" hidden>
         <p id="guide-kicker" class="eyebrow"></p>
         <h3 id="guide-title"></h3>
         <p id="guide-body"></p>
         <p id="guide-check"></p>
         <div class="row">
-          <button type="button" id="guide-next">Continue</button>
-          <button type="button" class="quiet" id="guide-stop">Exit</button>
+          <button type="button" id="guide-next" data-i18n="continue">Συνέχεια</button>
+          <button type="button" class="quiet" id="guide-stop" data-i18n="exit">Έξοδος</button>
         </div>
       </section>
-      <h2>Approver</h2>
-      <label for="passphrase">Demo approver passphrase</label>
-      <input id="passphrase" type="password" autocomplete="off" spellcheck="false" placeholder="Approver passphrase">
-      <p class="hint">Checked on the server. The browser does not sign the approval.</p>
+      <h2 data-i18n="approver">Εγκριτής</h2>
+      <label for="passphrase" data-i18n="passphrase">Συνθηματικό εγκριτή</label>
+      <input id="passphrase" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="passphrase" placeholder="Συνθηματικό εγκριτή">
+      <p class="hint" data-i18n="passphraseHint">Ελέγχεται στον server. Ο browser δεν υπογράφει την έγκριση.</p>
     </section>
     <section class="panel">
-      <h2>Live execution</h2>
-      <p id="outcome" class="outcome">No decision yet.</p>
+      <h2 data-i18n="live">Ζωντανή εκτέλεση</h2>
+      <p id="outcome" class="outcome" data-i18n="noDecision">Δεν υπάρχει απόφαση ακόμα.</p>
       <ol id="flow" class="flow"></ol>
     </section>
     <section class="panel">
-      <h2>Authorization inspector</h2>
+      <h2 data-i18n="inspector">Επιθεώρηση εξουσιοδότησης</h2>
       <dl id="inspector" class="inspector"></dl>
     </section>
   </div>
   <div class="layout lower">
     <section class="panel">
-      <h2>Human approval inbox</h2>
+      <h2 data-i18n="inbox">Εισερχόμενα εγκρίσεων</h2>
       <div id="inbox"></div>
     </section>
     <section class="panel">
-      <h2>Downstream records</h2>
+      <h2 data-i18n="records">Αρχεία downstream</h2>
       <p id="effects" class="hint"></p>
       <div id="payments"></div>
     </section>
     <section class="panel">
-      <h2>Event timeline</h2>
+      <h2 data-i18n="timeline">Χρονολόγιο</h2>
       <div id="timeline"></div>
     </section>
   </div>
   <section class="panel wide">
-    <h2>Execution history</h2>
+    <h2 data-i18n="history">Ιστορικό εκτελέσεων</h2>
     <div id="history"></div>
   </section>
   <section class="panel wide">
     <div class="row spread">
-      <h2>Receipt verification</h2>
+      <h2 data-i18n="receiptTitle">Επαλήθευση απόδειξης</h2>
       <div class="row">
-        <button type="button" class="quiet" data-action="verify">Verify selected receipt</button>
-        <button type="button" class="quiet" data-action="export">Export evidence</button>
-        <button type="button" class="quiet" data-action="reset">Reset demo</button>
+        <button type="button" class="quiet" data-action="verify" data-i18n="verify">Επαλήθευση επιλεγμένης απόδειξης</button>
+        <button type="button" class="quiet" data-action="export" data-i18n="export">Εξαγωγή τεκμηρίων</button>
+        <button type="button" class="quiet" data-action="reset" data-i18n="reset">Επαναφορά demo</button>
       </div>
     </div>
     <p id="verify-result" class="hint"></p>
-    <pre id="receipt" class="receipt">No receipt selected.</pre>
+    <pre id="receipt" class="receipt" data-i18n="noReceipt">Δεν έχει επιλεγεί απόδειξη.</pre>
   </section>
   <footer>
-    <p>Protocol: ADAP. This is a hackathon sandbox. A completed label means the downstream system returned a result. An unknown label means the outcome was not confirmed, and the console does not repeat the call.</p>
+    <p><a href="https://hardalion.com">Hardalion</a> · <span data-i18n="footer">Το ADAP είναι ανοιχτό πρωτόκολλο της Hardalion. Αυτό το sandbox είναι η reference implementation για το hackathon του GenAI Summit. Η ετικέτα ολοκλήρωσης σημαίνει ότι το downstream επέστρεψε αποτέλεσμα. Η ετικέτα άγνωστου σημαίνει ότι το αποτέλεσμα δεν επιβεβαιώθηκε και η κονσόλα δεν επαναλαμβάνει την κλήση.</span></p>
     <p id="timings"></p>
   </footer>
+  <script src="/i18n.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

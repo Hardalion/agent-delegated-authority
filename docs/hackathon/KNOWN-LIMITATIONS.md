@@ -1,6 +1,6 @@
 # Known limitations
 
-1. One console process handles one team and serializes decisions on an in-process lock. Pending approvals and the nonce ledger are lost if the process restarts. A restarted process will not execute an approval that only the old process knew about. That behavior is tested.
+1. One console process handles one team and serializes decisions on an in-process lock. With durable SQLite state enabled (default for `pnpm hackathon:start` / hosted compose), identities, nonces, pending approvals, cases, and receipt chain metadata survive restart. In-memory sessions still do not; participants must sign in again after a restart. Without a durable store (unit-test mode), pending approvals are lost on restart.
 
 2. The hosted compose stack was built and started once on this machine, checked, and stopped. It is not left running and it was not published beyond `127.0.0.1`. GitHub Actions runs when this branch is pushed. The result for a commit is that commit's Actions run, not a claim made in advance.
 

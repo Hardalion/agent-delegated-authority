@@ -48,11 +48,14 @@ export {
   verifyObject,
   generateEd25519,
   exportPublicKey,
+  exportPrivateKeyPkcs8,
   importPublicKey,
+  importPrivateKeyPkcs8,
   publicKeyFingerprint,
 } from './crypto.js'
 export {
   createIdentity,
+  identityFromKeys,
   signApproval,
   signDelegation,
   signIntent,

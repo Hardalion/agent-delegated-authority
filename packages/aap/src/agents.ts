@@ -109,6 +109,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
       agentB
     ),
     directory,
+    trustedRootIssuers: [principal.id],
     policy: BASIC_AGENT_AUTHORITY,
     policyUri: BASIC_AGENT_AUTHORITY_URI,
     clock: new FixedClock(now),
@@ -154,6 +155,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
     chain: [root],
     intent: applyBody,
     directory,
+    trustedRootIssuers: [principal.id],
     policy: BASIC_AGENT_AUTHORITY,
     policyUri: BASIC_AGENT_AUTHORITY_URI,
     clock: new FixedClock(now),
@@ -225,6 +227,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
       chain,
       intent,
       directory,
+      trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(now),

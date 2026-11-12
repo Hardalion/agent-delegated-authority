@@ -6,15 +6,17 @@ Do not start this against a public interface until the operator has reviewed the
 
 Local: `pnpm hackathon:start`. Stop with Ctrl+C. The console closes the HTTP server on SIGINT and SIGTERM, then exits.
 
-Hosted, one team: generate secrets outside the repo, export them, and run `docker compose -f deploy/hackathon/docker-compose.yml up --build` only after the daemon is available and the publish lines still say `127.0.0.1`. This compose file was not executed here.
+Hosted, one team: generate secrets outside the repo (including `ADAP_STATE_ENCRYPTION_KEY`), export them, and run `docker compose -f deploy/hackathon/docker-compose.yml up --build` only after the daemon is available and the console publish line still says `127.0.0.1`. The sandbox port is not published on the host. See `docs/hackathon/OPERATOR-RELEASE.md`.
 
 Health: `GET /api/health` returns `{ ok: true }` with no secrets. Readiness: `GET /api/ready` returns 200 only when the sandbox answers `/ready`.
 
 ## Reset and recovery
 
-`pnpm hackathon:reset` requires the team token and the approver passphrase. It exports evidence under `.demo/exports`, then resets that process's sandbox file and memory. It does not open `ADAP_PG_URL`.
+`pnpm hackathon:reset` requires the team token and the approver passphrase. It exports evidence under `.demo/exports`, verifies the file, then resets that process's sandbox file and durable operational state. Identities remain. It does not open `ADAP_PG_URL`.
 
-To roll back a bad console build, stop the process and check out the previous commit on `hackathon/participant-sandbox`. SQLite files under `.demo/` or `/data` remain until reset. Copy the sqlite file aside before a reset if the team needs the rows. A restore drill that copied a file back and restarted was not run.
+Durable console state lives under `.demo/state/` (local) or `/data/state` (hosted). Pending approvals and nonces survive a process restart when the encryption key is unchanged.
+
+To roll back a bad console build, stop the process and check out the previous commit on the release branch. SQLite files under `.demo/` or `/data` remain until reset. Backup with `sqlite3 file ".backup '...'"` against a quiesced database; do not treat a live WAL copy as a restore image.
 
 ## Incidents
 

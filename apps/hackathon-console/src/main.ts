@@ -3,6 +3,7 @@ import { demoEnvFromProcess } from './guard.js'
 import { DemoRuntime } from './runtime.js'
 import { HttpSandboxAdapter } from './adapters/http-sandbox.js'
 import { ConsoleSecurity, loadDeploymentConfig, securityLog } from './security.js'
+import { openTeamDurableStore } from './durable-store.js'
 
 const config = loadDeploymentConfig(process.env)
 const env = demoEnvFromProcess(process.env)
@@ -18,12 +19,21 @@ if (config.deployment === 'hosted' && !sandbox) {
   process.stderr.write('Hosted mode requires a sandbox API.\n')
   process.exit(1)
 }
+const durableStore = openTeamDurableStore({
+  teamId: config.teamId,
+  stateDirectory: process.env.ADAP_STATE_DIR,
+  encryptionKeyBase64url: process.env.ADAP_STATE_ENCRYPTION_KEY,
+  deployment: config.deployment,
+  env: process.env,
+})
 
 const runtime = new DemoRuntime({
   env,
   passphrase: config.approverPassphrase,
   teamId: config.teamId,
   sandbox,
+  durableStore,
+  deployment: config.deployment,
 })
 const server = createDemoServer(runtime, new ConsoleSecurity(config))
 
@@ -38,9 +48,15 @@ function shutdown() {
   if (shuttingDown) return
   shuttingDown = true
   server.close(() => {
-    void sandbox?.close().finally(() => process.exit(0))
+    void sandbox?.close().finally(() => {
+      durableStore.close()
+      process.exit(0)
+    })
   })
-  setTimeout(() => process.exit(0), 5_000).unref()
+  setTimeout(() => {
+    durableStore.close()
+    process.exit(0)
+  }, 5_000).unref()
 }
 process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)
