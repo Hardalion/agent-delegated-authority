@@ -3,7 +3,7 @@
 Date: 2026-11-12  
 Branch: `hackathon/participant-release-2026-11-11`  
 Baseline: `origin/hackathon/participant-sandbox` @ `8c398e0`  
-Release candidate commit: `f3ab0fde0ab7bd731f5829202c301508c07e476d`
+Release candidate tip: run `git rev-parse HEAD` on this branch. Hardening commit: `1b2f7208be2b65298fd75ad95be1e894a55d94f4`.
 
 This is an event-production release candidate for synthetic hackathon use. It is not approval for real banking or production enterprise writes.
 
