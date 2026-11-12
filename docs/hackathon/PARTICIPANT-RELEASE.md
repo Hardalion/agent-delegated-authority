@@ -19,7 +19,7 @@ pnpm install --frozen-lockfile
 pnpm hackathon:start
 ```
 
-Open `http://127.0.0.1:4317`. Paste the printed team token. Use the printed approver passphrase only when a decision is waiting for a person.
+`pnpm hackathon:start` builds workspace packages, then starts the sandbox and console. Open `http://127.0.0.1:4317`. Paste the printed team token. Use the printed approver passphrase only when a decision is waiting for a person.
 
 ## What you will see
 

@@ -10,6 +10,8 @@ pnpm install --frozen-lockfile
 pnpm hackathon:start
 ```
 
+`pnpm hackathon:start` builds packages first, then starts the local pair.
+
 Open `http://127.0.0.1:4317`. Paste the printed team token. Use the printed approver passphrase only when a decision says it is waiting for a person. Full guide: `docs/hackathon/PARTICIPANT-RELEASE.md`.
 
 Open `http://127.0.0.1:4317/guide` before you write an agent. It is the plug-in page: one function in front of a tool call. The same call shape covers OpenAI, LangChain, LangGraph, the Vercel AI SDK, Claude, Gemini, and, over HTTP, CrewAI, Pydantic AI, Google ADK, AutoGen, and LlamaIndex. Research tools such as `search_web` and `firecrawl_scrape` are allowed. `send_email` waits for a person. `delete_record`, `send_payment`, and related payment tools are blocked.

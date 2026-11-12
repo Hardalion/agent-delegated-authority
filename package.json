@@ -18,7 +18,7 @@
     "demo:up": "pnpm --filter adap-policy --filter adap-receipt --filter adap --filter adap-store-postgres --filter adap-gateway --filter adap-hackathon-console build && pnpm --filter adap-hackathon-console exec node dist/main.js",
     "demo:reset": "pnpm --filter adap-hackathon-console reset",
     "demo:test": "pnpm --filter adap-hackathon-console test",
-    "hackathon:start": "node services/sandbox-apis/start-local.mjs",
+    "hackathon:start": "pnpm build && node services/sandbox-apis/start-local.mjs",
     "hackathon:test": "pnpm --filter adap-hackathon-console test",
     "hackathon:reset": "pnpm --filter adap-hackathon-console reset",
     "bench": "node scripts/benchmark-adap.mjs",

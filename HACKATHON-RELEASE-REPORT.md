@@ -8,7 +8,11 @@ Release commits on this branch (relative to baseline):
 1. `1b2f7208be2b65298fd75ad95be1e894a55d94f4` — Harden the Gen AI Summit participant sandbox for event production.
 2. `e1b925095ec0528a547c7ba139ec15652b2fa60c` — Record the release candidate commit hash in the report.
 
-Pre-event closure commit (this write-up and follow-ups) is recorded below after it is created.  
+Pre-event closure commits on top of the two release commits:
+
+3. `0981325ea589d6f6c73425c219611c8821c4c21f` — approval identity, trusted TLS UI evidence, operator Host guidance.
+4. *(this commit)* — clean-install fix: `pnpm hackathon:start` runs `pnpm build` first; participant docs updated.
+
 Hardening commit `1b2f720…` is an ancestor of HEAD (**PASS**).
 
 This is an event-production release candidate for synthetic hackathon use. It is not approval for real banking or production enterprise writes.
@@ -18,7 +22,7 @@ This is an event-production release candidate for synthetic hackathon use. It is
 | Scope | Decision | Basis |
 |---|---|---|
 | A. Local participant installations | **APPROVED** | Fresh-install path, suites, durable restart, SQLite backup/restore |
-| B. Central hosted event deployment | **APPROVED WITH CONDITIONS** | 3-team Compose PASS; mkcert-trusted TLS browser E2E PASS; operators must use a trusted cert, preserve public `Host` on the reverse proxy, and set a valid base64url 32-byte `ADAP_STATE_ENCRYPTION_KEY` |
+| B. Central hosted event deployment | **APPROVED WITH CONDITIONS** | 3-team Compose PASS; mkcert-trusted TLS browser E2E PASS; clean-install path fixed; operators must use a trusted cert, preserve public `Host` on the reverse proxy, and set a valid base64url 32-byte `ADAP_STATE_ENCRYPTION_KEY` |
 | C. Real enterprise execution | **NOT APPROVED** | Synthetic sandbox only |
 
 Do not conflate A, B, and C.
@@ -62,7 +66,8 @@ Recorded after push of this branch.
 | Check | Result |
 |---|---|
 | Branch | `hackathon/participant-release-2026-11-11` |
-| Baseline relative commits | Exactly the two listed above before the pre-event closure commit |
+| Original release pair vs baseline | `1b2f720` + `e1b9250` |
+| Pre-event closures on top | approval-identity / TLS evidence + clean-install build fix |
 | `1b2f720…` ancestor of HEAD | **PASS** |
 
 ## 2. Gates
@@ -157,11 +162,20 @@ Fail-closed numeric comparisons and related evaluator hardening. Not blindly mer
 
 ## 12. Clean installation drill
 
-Status: **PENDING** until this branch is pushed, then re-run from a fresh clone with no prior `.demo` or `node_modules`. Result will be appended in the commit that lands the push confirmation, or recorded here as:
+Fresh clone of `hackathon/participant-release-2026-11-11` into `%TEMP%/adap-clean-install-verify` with no prior ADAP env vars.
 
 | Check | Result |
 |---|---|
-| Fresh clone + checkout + `pnpm install --frozen-lockfile` + `pnpm hackathon:start` | *to be filled after push* |
+| First attempt with guide-only `pnpm install` + `pnpm hackathon:start` (before fix) | **FAIL** — console `prestart`/`tsc` could not resolve unbuilt workspace packages |
+| Fix | Root `hackathon:start` now runs `pnpm build && …` |
+| After fix: health on `:4317` | **PASS** |
+| Generated credentials printed | **PASS** |
+| Session login | **PASS** |
+| Pay €120 ALLOW → 1 payment | **PASS** |
+| Pay €750 REQUIRE_HUMAN → still 1 payment, pending=1 | **PASS** |
+| Approve → 2 payments | **PASS** |
+| Pay €6,000 BLOCK → still 2 payments | **PASS** |
+| Overall after fix | **PASS** |
 
 ## Verification hygiene
 
