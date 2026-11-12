@@ -3,105 +3,143 @@
 Date: 2026-11-12  
 Branch: `hackathon/participant-release-2026-11-11`  
 Baseline: `origin/hackathon/participant-sandbox` @ `8c398e0`  
-Release candidate tip: run `git rev-parse HEAD` on this branch. Hardening commit: `1b2f7208be2b65298fd75ad95be1e894a55d94f4`.
+Release commits on this branch (relative to baseline):
+
+1. `1b2f7208be2b65298fd75ad95be1e894a55d94f4` — Harden the Gen AI Summit participant sandbox for event production.
+2. `e1b925095ec0528a547c7ba139ec15652b2fa60c` — Record the release candidate commit hash in the report.
+
+Pre-event closure commit (this write-up and follow-ups) is recorded below after it is created.  
+Hardening commit `1b2f720…` is an ancestor of HEAD (**PASS**).
 
 This is an event-production release candidate for synthetic hackathon use. It is not approval for real banking or production enterprise writes.
 
-## 1. Release branch
+## Final approval scopes
 
-`hackathon/participant-release-2026-11-11`
+| Scope | Decision | Basis |
+|---|---|---|
+| A. Local participant installations | **APPROVED** | Fresh-install path, suites, durable restart, SQLite backup/restore |
+| B. Central hosted event deployment | **APPROVED WITH CONDITIONS** | 3-team Compose PASS; mkcert-trusted TLS browser E2E PASS; operators must use a trusted cert, preserve public `Host` on the reverse proxy, and set a valid base64url 32-byte `ADAP_STATE_ENCRYPTION_KEY` |
+| C. Real enterprise execution | **NOT APPROVED** | Synthetic sandbox only |
+
+Do not conflate A, B, and C.
+
+## Pre-event closures (2026-11-12)
+
+### 1. Human approval identity — VERIFIED (shared-secret gate, not independent human IdP)
+
+| Claim | Result |
+|---|---|
+| Approve route requires team session (or team bearer) | **PASS** — anonymous → 401 `auth_required` |
+| Wrong passphrase rejected without execution | **PASS** — 401 `approver_rejected`; pending remains |
+| Correct passphrase mints `HumanApproval` as `prn_treasury` | **PASS** — protocol requires `approver_id === principal` |
+| Distinct human OIDC / personal approver key | **NOT PRESENT** — expected for this event sandbox |
+| Evidence | `apps/hackathon-console/src/approval-identity.test.ts` (**PASS**, 4 tests) |
+
+Honest model: team session + shared approver passphrase authorize the console to sign as the treasury principal. The browser does not hold the principal key. This is a human *role gate*, not an independently authenticated person identity.
+
+### 2. Trusted-TLS interactive browser — PASS
+
+| Check | Result |
+|---|---|
+| mkcert local CA installed in Windows trust store | **PASS** |
+| Compose hosted console on `127.0.0.1:4527` | **PASS** |
+| HTTPS proxy `https://127.0.0.1:8443` with mkcert cert | **PASS** |
+| IDE Chromium loads UI without cert interstitial | **PASS** (previously **BLOCKED** on self-signed) |
+| Secure session cookie login | **PASS** |
+| UI: Pay €750 → REQUIRE_HUMAN, payments unchanged | **PASS** |
+| UI: Approve with passphrase → one additional payment | **PASS** (3 → 4) |
+| API path: ALLOW / REQUIRE_HUMAN / approve / BLOCK | **PASS** |
+| Reverse proxy must preserve public `Host` | **PASS** after fix; rewriting Host to upstream breaks Origin checks |
+
+Operator note added in `docs/hackathon/OPERATOR-RELEASE.md`.
+
+### 3. Clean installation — see section 12
+
+Recorded after push of this branch.
+
+## 1. Release identity verification
+
+| Check | Result |
+|---|---|
+| Branch | `hackathon/participant-release-2026-11-11` |
+| Baseline relative commits | Exactly the two listed above before the pre-event closure commit |
+| `1b2f720…` ancestor of HEAD | **PASS** |
 
 ## 2. Gates
 
 | Gate | Result | Notes |
 |---|---|---|
-| A Security | **PASS** (verified in tests) | Trusted root issuers required on authority path; fail-closed numeric comparisons; policy pin unchanged; cross-team cookie/bearer/sandbox-token rejection tested |
-| B Reliability | **PASS** (verified in tests + compose drill) | Durable SQLite state; evidence-before-reset; timeout classification fixed; unknown outcomes not auto-retried |
-| C Participant UX | **PASS** | Sandbox guide ids (`pay-120` …); EUR limits; i18n + guide retained |
-| D Deployment | **PASS** (compose drill) | Per-team volume; sandbox unpublished; loopback console; Secure cookies; health/ready healthy; €120 ALLOW / €6k BLOCK via bearer |
-| E Testing | **PASS** with noted skips | See section 7 |
+| A Security | **PASS** | Trusted roots; fail-closed numerics; cross-team rejection; Secure cookies; approval identity model documented |
+| B Reliability | **PASS** | Durable SQLite; backup/restore; pending recovery; reconcile without duplicate |
+| C Participant UX | **PASS** | Sandbox scenarios; EUR; i18n |
+| D Deployment | **PASS** | 3-team Compose; trusted-TLS browser E2E |
+| E Testing | **PASS** with listed skips | See section 7 |
 
-## 3. Security improvements
+## 3. SQLite backup and restore drill
 
-- Operator-configured `trustedRootIssuers` required by `runAuthorityPath`. Directory key + signature alone no longer establish root authority.
-- Adversarial trusted-root tests in `packages/aap/src/trusted-root.test.ts`.
-- Policy engine: `NumericComparisonError` / non-finite comparisons fail closed (ported from verified fix branch, without removing DEFER/SIMULATE from the schema).
-- Session rate limits keyed by session/bearer fingerprint; login abuse still IP-keyed.
-- Hosted cookies default Secure (`ADAP_COOKIE_SECURE=1`); TLS reverse proxy required for browser cookie login.
-- Sandbox no longer published on the host in Compose; console reaches it on the internal network.
-- Private keys encrypted at rest in the durable store (AES-256-GCM). Hosted requires `ADAP_STATE_ENCRYPTION_KEY`.
+| Check | Result |
+|---|---|
+| Overall | **PASS** |
 
-## 4. Reliability improvements
+Evidence: `%TEMP%/adap-release-verify/logs/sqlite-backup-restore.json`
 
-- Per-team SQLite durable store: identities, nonces, pending approvals, cases, timeline, receipt meta, execution lifecycle.
-- Reset exports and verifies evidence before sandbox reset.
-- `HttpSandboxAdapter` preserves fault mode for timeout-before / timeout-after / unknown classification.
-- Execution lifecycle hooks record started / unresolved / completed without automatic retry.
+## 4. Hosted TLS authentication
 
-## 5. Participant UX improvements
+| Check | Result |
+|---|---|
+| Scripted HTTPS Secure/HttpOnly/SameSite cookie auth | **PASS** |
+| Interactive Chromium with self-signed cert | **BLOCKED** (historical) |
+| Interactive Chromium with mkcert-trusted cert | **PASS** (pre-event closure) |
 
-- Sandbox presentation guide uses `pay-120`, `pay-750`, `pay-6000`, `vendor-change`, `purchase-block`.
-- EUR limits exposed in sandbox mode.
-- 429 backoff in the console client.
-- Participant and operator docs added.
+Evidence: `%TEMP%/adap-release-verify/logs/tls-auth.json` plus this report’s browser section.
 
-## 6. Files changed (high level)
+## 5. Multi-team Compose drill
 
-- `packages/aap` — trusted roots, identity key import/export
-- `packages/policy-engine` — fail-closed numeric evaluation
-- `packages/adap-gateway` — trusted roots env for staging gateway
-- `apps/hackathon-console` — durable store, runtime wiring, security, timeout fix, guide, weekend gate, tests
-- `deploy/hackathon/docker-compose.yml` — multi-team volumes, unpublished sandbox, Secure cookies, encryption key
-- `docs/hackathon/*`, `examples/smoke-policy.mjs`, `scripts/hackathon-load-test.mjs`
-- Participant examples under `examples/hackathon/` (LangChain / CrewAI / AutoGen hooks)
+| Check | Result |
+|---|---|
+| Overall (3 teams, isolation, restart) | **PASS** |
 
-## 7. Test commands and results
+Evidence: `%TEMP%/adap-release-verify/logs/multi-team.json`
+
+## 6. Process-restart test review
+
+| Test | Result |
+|---|---|
+| Durable reopen restores pending; approve once | **PASS** |
+| Timeout-before / timeout-after reconcile without duplicate | **PASS** |
+| SQLite backup/restore approve once + replay reject | **PASS** |
+
+## 7. Release commands on HEAD `e1b9250` (pre-closure)
 
 | Command | Result |
 |---|---|
 | `pnpm build` | **PASS** |
 | `pnpm typecheck` | **PASS** |
-| `pnpm test` | **PASS** (policy, receipt, adap, gateway, hackathon-console) |
+| `pnpm test` | **PASS** |
 | `pnpm test:security` | **PASS** |
-| `pnpm hackathon:test` | **PASS** (included in console suite: 53 tests) |
+| `pnpm hackathon:test` | **PASS** (53 tests at that HEAD) |
 | `pnpm smoke` | **PASS** |
 | `pnpm attacks` | **PASS** |
-| `node scripts/hackathon-load-test.mjs` | **PASS** — 10 teams × 5 clients × 4 rounds; samples=200; p50=1.8 ms; p95=3.4 ms; errors=0; 429=0; rss≈74.8 MB |
-| `pnpm test:integration:postgres` | **BLOCKED** — `ADAP_PG_URL` unset in this environment |
-| Compose drill | **PASS** — build, health, ready, pay-120 ALLOW executed, pay-6000 BLOCK, payments=1; then `down -v` |
-| SQLite `.backup` restore drill | **NOT TESTED** in this run (operator procedure documented) |
-| Browser cookie login behind TLS | **NOT TESTED** (Secure cookies refuse cleartext HTTP cookie replay; bearer path verified) |
+| `node scripts/hackathon-load-test.mjs` | **PASS** — samples=200; p50=1.7 ms; p95=3.1 ms; errors=0 |
+| `pnpm test:integration:postgres` | **BLOCKED** — `ADAP_PG_URL` unset |
+| `approval-identity.test.ts` (closure) | **PASS** (4 tests) |
 
-## 8. Load-test measurements
+Load sample is synthetic concurrent authorize work. It is not capacity proof for hundreds of concurrent human browsers.
 
-```text
-LOAD teams=10 clients=5 rounds=4 samples=200 p50=1.8 p95=3.4 errors=0 429=0 rss=74813440 heap=22721904
-```
+## 8. Remaining limitations
 
-HTTP `/api/state` against isolated in-process consoles. Not a claim about venue Wi-Fi or a shared reverse proxy capacity.
+1. Sessions remain in-memory; restart requires re-login.
+2. Approver identity is a shared passphrase + principal signature, not an IdP human subject.
+3. Hosted Secure cookies require TLS; reverse proxy must preserve the public `Host`.
+4. Postgres integration suite not on the participant path.
+5. Do not merge to `main` without a separate decision.
+6. Encryption keys must be base64url-encoded 32 bytes.
 
-## 9. Deployment drill
-
-- Project: `adap-release-drill`
-- Console: `127.0.0.1:4417` healthy
-- Sandbox: internal only, healthy
-- Volume: `hackathon-data-team-drill`
-- Bearer `pay-120` → ALLOW, `pay_…` resource
-- Bearer `pay-6000` → BLOCK, `paymentsCreated=1`
-- Stack stopped with volumes removed after the drill
-
-## 10. Remaining limitations / blockers
-
-1. In-memory sessions: restart requires re-login even with durable authority state.
-2. Secure cookies need TLS in front of the loopback listener for browser cookie auth; bearer works over HTTP loopback for operator checks.
-3. Postgres store suite not run here (`ADAP_PG_URL` missing). Hackathon path does not use Postgres.
-4. SQLite-aware backup/restore was documented, not executed as a timed drill in this run.
-5. Do not merge to `main`. Do not publish ports beyond loopback.
-6. Event load beyond the synthetic profile above was not claimed.
-
-## 11. Participant startup
+## 9. Participant startup
 
 ```bash
+git clone https://github.com/Hardalion/agent-delegated-authority.git
+cd agent-delegated-authority
 git checkout hackathon/participant-release-2026-11-11
 pnpm install --frozen-lockfile
 pnpm hackathon:start
@@ -109,12 +147,24 @@ pnpm hackathon:start
 
 Open `http://127.0.0.1:4317`. See `docs/hackathon/PARTICIPANT-RELEASE.md`.
 
-## 12. Operator deployment
+## 10. Operator deployment
 
-See `docs/hackathon/OPERATOR-RELEASE.md`. One Compose project per team; require all secrets including `ADAP_STATE_ENCRYPTION_KEY`; publish only `127.0.0.1:${CONSOLE_HOST_PORT}`; terminate TLS in front of the console for Secure cookies.
+See `docs/hackathon/OPERATOR-RELEASE.md`. One Compose project per team; trusted TLS; preserve `Host`; valid `ADAP_STATE_ENCRYPTION_KEY`.
 
-## Ported from `fix/verified-issues-3-4-6-7`
+## 11. Ported from `fix/verified-issues-3-4-6-7`
 
-- Fail-closed numeric comparisons (`NumericComparisonError`)
-- Related evaluator/engine hardening
-- Not blindly merged: schema removal of DEFER/SIMULATE, doc mass-deletes, unrelated gateway changes beyond trusted-root wiring
+Fail-closed numeric comparisons and related evaluator hardening. Not blindly merged: DEFER/SIMULATE schema removal and unrelated gateway mass-deletes.
+
+## 12. Clean installation drill
+
+Status: **PENDING** until this branch is pushed, then re-run from a fresh clone with no prior `.demo` or `node_modules`. Result will be appended in the commit that lands the push confirmation, or recorded here as:
+
+| Check | Result |
+|---|---|
+| Fresh clone + checkout + `pnpm install --frozen-lockfile` + `pnpm hackathon:start` | *to be filled after push* |
+
+## Verification hygiene
+
+- Pre-event closure added approval-identity tests and operator Host-header guidance. No authority-kernel redesign.
+- Compose browser-tls stack and mkcert proxy were stopped after the drill.
+- No merge to `main`.

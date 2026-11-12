@@ -27,6 +27,7 @@ docker compose -f deploy/hackathon/docker-compose.yml up --build -d
 - Sandbox is not published on the host; console reaches it as `http://sandbox:4318`
 - Volume `hackathon-data-${ADAP_TEAM_ID}` holds sandbox SQLite and durable console state
 - `ADAP_COOKIE_SECURE=1` requires a TLS reverse proxy in front of the loopback listener
+- The reverse proxy must preserve the public `Host` header (or set it to the browser-visible hostname/port). Rewriting `Host` to the upstream loopback address makes Origin checks fail and blocks authenticated mutations from the browser.
 
 Health: `GET /api/health`. Ready: `GET /api/ready`.
 
