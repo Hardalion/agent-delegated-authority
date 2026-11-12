@@ -66,4 +66,23 @@ describe('validatePolicyPin', () => {
     expect(validatePolicyPin('basic-agent-authority').ok).toBe(false)
     expect(validatePolicyPin('basic-agent-authority@9.9.9').ok).toBe(false)
   })
+
+  it('rejects an empty pin and asks for one', () => {
+    for (const raw of ['', '   ']) {
+      const result = validatePolicyPin(raw)
+      expect(result).toMatchObject({ ok: false, code: 'INVALID_URI' })
+      if (!result.ok) expect(result.message).toMatch(/Policy pin is required/)
+    }
+  })
+
+  it('does not resolve a pin that names a different publisher', () => {
+    expect(validatePolicyPin('basic-agent-authority@1.0.0/publisher/example').ok).toBe(true)
+    expect(validatePolicyPin('basic-agent-authority@1.0.0/publisher/other')).toMatchObject({
+      ok: false,
+      code: 'UNRESOLVED',
+    })
+    expect(
+      resolvePolicyRegistryEntry(parsePolicyPin('basic-agent-authority@1.0.0/publisher/other')),
+    ).toBeNull()
+  })
 })
