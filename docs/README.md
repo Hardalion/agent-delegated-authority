@@ -1,16 +1,12 @@
 # ADAP documentation
 
-ADAP is an open protocol. This repository also contains reference implementations. A package, a local Compose drill, and a passing test are not a production deployment and not a certification.
+## Public (share with participants)
 
 | Path | What it is |
 | --- | --- |
-| [spec/](../spec/) | Protocol requirements |
-| [docs/architecture/reference.md](architecture/reference.md) | How the reference packages relate to the protocol |
-| [docs/security/status.md](security/status.md) | Current security status of this tree |
-| [docs/security/regression-matrix.md](security/regression-matrix.md) | ADAP-001 through ADAP-011 and the tests that cover them |
-| [docs/operations/local-staging.md](operations/local-staging.md) | Local Compose drill |
-| [docs/operations/outcome-unknown.md](operations/outcome-unknown.md) | Reference-gateway unknown outcome and reconciliation |
-| [docs/operations/deployment.md](operations/deployment.md) | Deployment assumptions for an operator who runs the reference gateway |
-| [THREAT_MODEL.md](../THREAT_MODEL.md) | What this draft does and does not guarantee |
+| [HACKATHON-QUICKSTART.md](HACKATHON-QUICKSTART.md) | Clone → start → demo → connect agent |
+| [HACKATHON-PARTICIPANT-GUIDE.md](HACKATHON-PARTICIPANT-GUIDE.md) | Full participant manual |
+| [ADAP-FRAMEWORK-INTEGRATION.md](ADAP-FRAMEWORK-INTEGRATION.md) | Framework-neutral policy decision API (`/api/gate`) |
+| [../spec/](../spec/) | Protocol specification |
 
-`docs/security/historical/` and `docs/operations/historical/` keep earlier audit notes and drill records. They are labeled historical. Do not read a commit id in those files as the current `main`.
+ADAP is an open protocol. The hackathon console is a synthetic local reference sandbox, not Hardalion Nexus production enforcement.

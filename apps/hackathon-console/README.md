@@ -36,9 +36,8 @@ pnpm hackathon:reset
 
 Reset exports evidence, then clears only this team's sandbox database. The database path must contain `hackathon` or `demo`.
 
-## Modes
+## Mode
 
-- Local participant mode is the default. One process, loopback only, one team's state.
-- Hosted event mode is one console and one sandbox per team, behind a TLS proxy. See `docs/hackathon/ARCHITECTURE.md`. Do not publish the application port on a public interface.
+Local participant mode is the supported hackathon path: loopback only, one team's synthetic state. See [docs/HACKATHON-QUICKSTART.md](../../docs/HACKATHON-QUICKSTART.md).
 
 The page label comes from the server. `Process memory` means the simulated rail. `Local sandbox API` means SQLite records in the sandbox process.

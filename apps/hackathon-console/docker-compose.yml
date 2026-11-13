@@ -1,1 +1,4 @@
-# Use deploy/hackathon/docker-compose.yml from the repository root.
+# Participant path is local-first (no Docker):
+#   pnpm install --frozen-lockfile
+#   pnpm hackathon:start
+# Open http://127.0.0.1:4317

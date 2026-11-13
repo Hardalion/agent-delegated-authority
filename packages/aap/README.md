@@ -14,6 +14,6 @@ Principal → Agent A → Agent B → Authorized action → Receipt
 
 Caller-supplied `now` is rejected. Tests inject `FixedClock`. Production uses the process clock unless the operator supplies a clock it controls.
 
-The caller-supplied `execute` callback is for local testing. If the agent process holds the API credential, it can skip this path. Keeping the credential out of the agent process is a deployment property; see [THREAT_MODEL.md](../../THREAT_MODEL.md).
+The caller-supplied `execute` callback is for local testing. If the agent process holds the API credential, it can skip this path. Keeping the credential out of the agent process is a deployment property; see [spec/threat-model.md](../../spec/threat-model.md).
 
 The reference walkthrough is synthetic. A principal delegates to Agent A. Agent A may pass `read` to Agent B. `apply` stays with Agent A and waits for the principal. Identifiers `prn_example`, `agt_a`, `agt_b`, and `resource/example` are not organizations. The example policy is `examples/policies/basic-agent-authority.yaml`.

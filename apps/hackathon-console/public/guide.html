@@ -49,7 +49,7 @@ if (!result.executed) {
   // BLOCK ή REQUIRE_HUMAN. Το searchWeb δεν καλέστηκε.
   console.log(result.decision.action, result.decision.ruleId)
 }</pre>
-      <p class="hint">Άλλαξε το <code>WEEKEND_AGENT</code> και το <code>targetAgents</code> στο <code>apps/hackathon-console/src/weekend-gate.ts</code> στο id του agent της ομάδας σου. Κενό ή άγνωστο id γίνεται BLOCK. Δεν υπάρχει κρυφή προεπιλογή.</p>
+      <p class="hint">Χρησιμοποίησε το κοινό demo id <code>agt_hackathon_demo</code> (<code>WEEKEND_AGENT</code>). Δεν χρειάζεται να αλλάξεις source code. Το <code>/api/gate</code> επιστρέφει απόφαση· δεν εκτελεί το εργαλείο σου.</p>
     </section>
     <section class="panel wide">
       <h2>Τι κάνει η πολιτική του Σαββατοκύριακου</h2>
@@ -60,7 +60,7 @@ delete_record, transfer_funds, send_payment, read_secret            → BLOCK
 κάθε εργαλείο με args.amount &gt; 500                                  → BLOCK
 εργαλείο που μόλις εφηύρες                                          → REQUIRE_HUMAN
 άγνωστο, κενό ή κακογραμμένο agent                                   → BLOCK</pre>
-      <p class="hint">Το REQUIRE_HUMAN σημαίνει ότι δείχνεις την απόφαση και περιμένεις. Η συνάρτηση του εργαλείου δεν καλείται. Πρόσθεσε το όνομα του εργαλείου σου στη λίστα μέσα στο <code>weekend-gate.ts</code> αν πρέπει να επιτρέπεται στο demo.</p>
+      <p class="hint">Το REQUIRE_HUMAN σημαίνει ότι δείχνεις την απόφαση και περιμένεις. Η συνάρτηση του εργαλείου δεν καλείται. Για το hackathon χρησιμοποίησε mocked tools (<code>search_web</code> / <code>send_email</code> / <code>delete_record</code>).</p>
     </section>
     <section class="panel wide">
       <h2>Κάθε framework τελειώνει σε ένα tool call</h2>
@@ -141,7 +141,7 @@ if (!result.executed) {
   // BLOCK or REQUIRE_HUMAN. searchWeb was not called.
   console.log(result.decision.action, result.decision.ruleId)
 }</pre>
-      <p class="hint">Change <code>WEEKEND_AGENT</code> and <code>targetAgents</code> in <code>apps/hackathon-console/src/weekend-gate.ts</code> to your team's agent id. A missing or unknown id is BLOCK. There is no hidden default.</p>
+      <p class="hint">Use the shared demo id <code>agt_hackathon_demo</code> (<code>WEEKEND_AGENT</code>). You do not need to edit source code. <code>/api/gate</code> returns a decision; it does not execute your tool.</p>
     </section>
     <section class="panel wide">
       <h2>What the weekend policy does</h2>
@@ -152,7 +152,7 @@ delete_record, transfer_funds, send_payment, read_secret            → BLOCK
 any tool with args.amount &gt; 500                                     → BLOCK
 a tool you just invented                                            → REQUIRE_HUMAN
 unknown, missing, or malformed agent                                → BLOCK</pre>
-      <p class="hint">REQUIRE_HUMAN means you show the decision and wait. The tool function is not called. Add your tool name to the list in <code>weekend-gate.ts</code> if it should be allowed in the demo.</p>
+      <p class="hint">REQUIRE_HUMAN means you show the decision and wait. The tool function is not called. For the hackathon, use mocked tools (<code>search_web</code> / <code>send_email</code> / <code>delete_record</code>).</p>
     </section>
     <section class="panel wide">
       <h2>Every framework ends at a tool call</h2>
@@ -233,7 +233,7 @@ if (!result.executed) {
   // BLOCK ou REQUIRE_HUMAN. searchWeb n’a pas été appelé.
   console.log(result.decision.action, result.decision.ruleId)
 }</pre>
-      <p class="hint">Remplacez <code>WEEKEND_AGENT</code> et <code>targetAgents</code> dans <code>apps/hackathon-console/src/weekend-gate.ts</code> par l’id de l’agent de votre équipe. Un id absent ou inconnu donne BLOCK. Il n’y a pas de valeur cachée.</p>
+      <p class="hint">Utilisez l’id de démo partagé <code>agt_hackathon_demo</code> (<code>WEEKEND_AGENT</code>). Pas besoin de modifier le code source. <code>/api/gate</code> renvoie une décision ; il n’exécute pas votre outil.</p>
     </section>
     <section class="panel wide">
       <h2>Ce que fait la politique du week-end</h2>
@@ -244,7 +244,7 @@ delete_record, transfer_funds, send_payment, read_secret            → BLOCK
 tout outil avec args.amount &gt; 500                                   → BLOCK
 un outil que vous venez d’inventer                                  → REQUIRE_HUMAN
 agent inconnu, absent ou mal formé                                  → BLOCK</pre>
-      <p class="hint">REQUIRE_HUMAN veut dire : montrez la décision et attendez. La fonction de l’outil n’est pas appelée. Ajoutez le nom de votre outil à la liste dans <code>weekend-gate.ts</code> s’il doit être permis pendant la démo.</p>
+      <p class="hint">REQUIRE_HUMAN : montrez la décision et attendez. La fonction de l’outil n’est pas appelée. Pour le hackathon, utilisez des outils mockés (<code>search_web</code> / <code>send_email</code> / <code>delete_record</code>).</p>
     </section>
     <section class="panel wide">
       <h2>Chaque framework finit par un tool call</h2>
@@ -325,7 +325,7 @@ if (!result.executed) {
   // BLOCK oder REQUIRE_HUMAN. searchWeb wurde nicht aufgerufen.
   console.log(result.decision.action, result.decision.ruleId)
 }</pre>
-      <p class="hint">Ersetzt <code>WEEKEND_AGENT</code> und <code>targetAgents</code> in <code>apps/hackathon-console/src/weekend-gate.ts</code> durch die Agent-Id eures Teams. Eine fehlende oder unbekannte Id wird BLOCK. Es gibt keinen versteckten Default.</p>
+      <p class="hint">Nutzt die gemeinsame Demo-Id <code>agt_hackathon_demo</code> (<code>WEEKEND_AGENT</code>). Kein Source-Edit nötig. <code>/api/gate</code> liefert eine Entscheidung und führt euer Tool nicht aus.</p>
     </section>
     <section class="panel wide">
       <h2>Was die Wochenend-Policy tut</h2>
@@ -336,7 +336,7 @@ delete_record, transfer_funds, send_payment, read_secret            → BLOCK
 jedes Werkzeug mit args.amount &gt; 500                                → BLOCK
 ein Werkzeug, das ihr gerade erfunden habt                          → REQUIRE_HUMAN
 unbekannter, fehlender oder fehlerhafter Agent                      → BLOCK</pre>
-      <p class="hint">REQUIRE_HUMAN heißt: Entscheidung zeigen und warten. Die Werkzeugfunktion wird nicht aufgerufen. Tragt den Namen eures Werkzeugs in die Liste in <code>weekend-gate.ts</code> ein, wenn es in der Demo erlaubt sein soll.</p>
+      <p class="hint">REQUIRE_HUMAN heißt: Entscheidung zeigen und warten. Die Werkzeugfunktion wird nicht aufgerufen. Für den Hackathon: gemockte Tools (<code>search_web</code> / <code>send_email</code> / <code>delete_record</code>).</p>
     </section>
     <section class="panel wide">
       <h2>Jedes Framework endet bei einem Tool Call</h2>

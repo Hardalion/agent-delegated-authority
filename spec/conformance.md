@@ -26,7 +26,7 @@ Principal
 | Pass only the verified intent to the executor | `packages/aap/src/path.ts`, `spec/execution.md` |
 | Bind the receipt to each presented delegation by hash, to the intent hash, to the policy pin, the rule id, and the policy content hash, and to the reported execution | `packages/aap/src/verify-published-proof.ts`, `packages/audit-verify/src/authorization-receipt.test.ts` |
 | Check the Ed25519 signature only when the issuer public key is available | `packages/audit-verify/src/cli.ts`, `packages/audit-verify/src/authorization-receipt.test.ts` |
-| Not treat `executed: true` as proof that an external system performed the action | `spec/execution.md`, `THREAT_MODEL.md` |
+| Not treat `executed: true` as proof that an external system performed the action | `spec/execution.md`, `spec/threat-model.md` |
 
 `BLOCK` and a pending human decision do not call the executor. A verifier checks the receipt offline from the issuer public key, the content hash, and, when the verifier also holds them, the delegations, the intent, and the policy document. The published files in `examples/proof/` are one such check: `node examples/verify-proof.mjs`. The six attacks are `pnpm attacks`. Structure and the content hash alone are not signature verification.
 

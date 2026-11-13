@@ -4,7 +4,7 @@
 
 ### Reference gateway and store
 
-`adap-gateway` and `adap-store-postgres` are reference packages in this repository. They are not a protocol requirement and not a production deployment. The gateway's `executionState: unknown` means the downstream result was not observed. The authority path keeps `ALLOW`, sets `execution.executed` to false, records that state on the receipt, and consumes the nonce. `executed: false` is not confirmation that the external system skipped the effect. Local Compose validation is documented in `docs/operations/local-staging.md`. Vault in that drill is dev mode.
+`adap-gateway` and `adap-store-postgres` are reference packages in this repository. They are not a protocol requirement and not a production deployment. The gateway's `executionState: unknown` means the downstream result was not observed. The authority path keeps `ALLOW`, sets `execution.executed` to false, records that state on the receipt, and consumes the nonce. `executed: false` is not confirmation that the external system skipped the effect. See [spec/execution.md](./spec/execution.md).
 
 ### Security remediation (ADAP-001 … ADAP-011)
 
