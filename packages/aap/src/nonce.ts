@@ -1,8 +1,12 @@
+import { randomBytes } from 'node:crypto'
 import { AuthorityError } from './errors.js'
-import { assertValidNonce } from './runtime-validate.js'
+import { assertValidIdentity, assertValidNonce } from './runtime-validate.js'
 
 /**
  * Nonce state machine for single-use intents.
+ *
+ * Rows are keyed by `(actorId, nonce)`. The actor ID comes from the
+ * cryptographically verified intent, never from an unauthenticated header.
  *
  * - `pending` — reserved for human approval, or exclusively claimed for execution
  * - `consumed` — terminal success (or a terminal BLOCK that retires the nonce)
@@ -11,10 +15,8 @@ import { assertValidNonce } from './runtime-validate.js'
  * Every transition is a read followed by a compare-and-swap on the record version.
  * A lost race throws `nonce_in_flight_or_used` and does not execute.
  *
- * `NonceLedger` with its default backend is one process-local map. It is lost on
- * restart and is not replay protection across processes. Cross-process exclusion
- * needs an `AsyncAtomicNonceBackend` whose compare-and-swap is atomic in a shared
- * store, wrapped in `SharedNonceLedger`. This package does not ship such a store.
+ * Newly generated nonces MUST contain at least 128 bits of CSPRNG entropy
+ * (`generateSecureNonce`). Deterministic fixtures are test-only.
  */
 export type NonceStatus = 'pending' | 'consumed' | 'failed'
 
@@ -22,6 +24,7 @@ export interface NonceRecord {
   readonly status: NonceStatus
   readonly intentHash: string
   readonly inFlight: boolean
+  readonly actorId: string
 }
 
 export interface VersionedNonceRecord {
@@ -29,44 +32,54 @@ export interface VersionedNonceRecord {
   readonly record: NonceRecord
 }
 
-/**
- * Synchronous adapter for an in-process store. `expectedVersion === 0` means the
- * nonce must be absent. `compareAndSwap` returns false when the stored version
- * differs and must not apply a partial write.
- */
-export interface AtomicNonceBackend {
-  read(nonce: string): VersionedNonceRecord | undefined
-  compareAndSwap(nonce: string, expectedVersion: number, record: NonceRecord): boolean
+/** Composite ledger key. */
+export function nonceStorageKey(actorId: string, nonce: string): string {
+  return `${assertValidIdentity(actorId, 'nonce.actorId')}\0${assertValidNonce(nonce)}`
+}
+
+/** Generate a nonce with ≥128 bits of cryptographically secure randomness. */
+export function generateSecureNonce(): string {
+  return `n_${randomBytes(16).toString('base64url')}`
 }
 
 /**
- * Adapter contract for a shared store (for example a SQL row with a version column,
- * or a key-value store with a conditional write).
- *
- * - `read` returns the current version and record, or `undefined` when absent.
- * - `compareAndSwap(nonce, 0, record)` succeeds only if no row exists.
- * - `compareAndSwap(nonce, v, record)` succeeds only if the stored version is `v`,
- *   and then stores `record` at version `v + 1`.
- * - A false return means no write happened. A rejected promise means the outcome is
- *   unknown; the authority path treats it as a failure and does not execute.
- * - The compare and the write are one atomic operation in the store, across every
- *   process that shares it. Without that, `SharedNonceLedger` gives no guarantee.
- * - Rows are never deleted while the intent could still be presented.
+ * Synchronous adapter for an in-process store. `expectedVersion === 0` means the
+ * (actor, nonce) pair must be absent. `compareAndSwap` returns false when the
+ * stored version differs and must not apply a partial write.
+ */
+export interface AtomicNonceBackend {
+  read(actorId: string, nonce: string): VersionedNonceRecord | undefined
+  compareAndSwap(
+    actorId: string,
+    nonce: string,
+    expectedVersion: number,
+    record: NonceRecord
+  ): boolean
+}
+
+/**
+ * Adapter contract for a shared store (for example a SQL row with a version column).
+ * Compare-and-swap must be atomic across every process that shares the store.
  */
 export interface AsyncAtomicNonceBackend {
-  read(nonce: string): Promise<VersionedNonceRecord | undefined>
-  compareAndSwap(nonce: string, expectedVersion: number, record: NonceRecord): Promise<boolean>
+  read(actorId: string, nonce: string): Promise<VersionedNonceRecord | undefined>
+  compareAndSwap(
+    actorId: string,
+    nonce: string,
+    expectedVersion: number,
+    record: NonceRecord
+  ): Promise<boolean>
 }
 
 type MaybePromise<T> = T | Promise<T>
 
 /** What the authority path calls. Sync and async stores both satisfy it. */
 export interface NonceStore {
-  assertUsable(nonce: unknown, intentHash: string): MaybePromise<'fresh' | 'pending'>
-  reserve(nonce: unknown, intentHash: string): MaybePromise<void>
-  claimForExecution(nonce: unknown, intentHash: string): MaybePromise<void>
-  consume(nonce: unknown, intentHash: string): MaybePromise<void>
-  fail(nonce: unknown, intentHash: string): MaybePromise<void>
+  assertUsable(actorId: string, nonce: unknown, intentHash: string): MaybePromise<'fresh' | 'pending'>
+  reserve(actorId: string, nonce: unknown, intentHash: string): MaybePromise<void>
+  claimForExecution(actorId: string, nonce: unknown, intentHash: string): MaybePromise<void>
+  consume(actorId: string, nonce: unknown, intentHash: string): MaybePromise<void>
+  fail(actorId: string, nonce: unknown, intentHash: string): MaybePromise<void>
 }
 
 type Transition =
@@ -81,8 +94,11 @@ const replay = (message: string): Transition => ({
   error: new AuthorityError('replay', message, true),
 })
 
-function usability(record: NonceRecord | undefined, intentHash: string): 'fresh' | 'pending' {
+function usability(record: NonceRecord | undefined, actorId: string, intentHash: string): 'fresh' | 'pending' {
   if (!record) return 'fresh'
+  if (record.actorId !== actorId) {
+    throw new AuthorityError('replay', 'nonce actor mismatch', true)
+  }
   if (record.intentHash !== intentHash) {
     throw new AuthorityError('replay', 'nonce already used', true)
   }
@@ -95,23 +111,31 @@ function usability(record: NonceRecord | undefined, intentHash: string): 'fresh'
   return 'pending'
 }
 
-function transition(op: Operation, record: NonceRecord | undefined, intentHash: string): Transition {
+function transition(
+  op: Operation,
+  record: NonceRecord | undefined,
+  actorId: string,
+  intentHash: string
+): Transition {
+  if (record && record.actorId !== actorId) return replay('nonce actor mismatch')
   if (record && record.intentHash !== intentHash) return replay('nonce already used')
   switch (op) {
     case 'reserve':
-      if (!record) return { kind: 'write', record: { status: 'pending', intentHash, inFlight: false } }
+      if (!record) {
+        return { kind: 'write', record: { status: 'pending', intentHash, inFlight: false, actorId } }
+      }
       if (record.status === 'pending' && !record.inFlight) return { kind: 'return' }
       return replay('nonce_in_flight_or_used')
     case 'claim':
       if (record && (record.status !== 'pending' || record.inFlight)) {
         return replay('nonce_in_flight_or_used')
       }
-      return { kind: 'write', record: { status: 'pending', intentHash, inFlight: true } }
+      return { kind: 'write', record: { status: 'pending', intentHash, inFlight: true, actorId } }
     case 'consume':
       if (record?.status === 'consumed') return { kind: 'return' }
-      return { kind: 'write', record: { status: 'consumed', intentHash, inFlight: false } }
+      return { kind: 'write', record: { status: 'consumed', intentHash, inFlight: false, actorId } }
     case 'fail':
-      return { kind: 'write', record: { status: 'failed', intentHash, inFlight: false } }
+      return { kind: 'write', record: { status: 'failed', intentHash, inFlight: false, actorId } }
   }
 }
 
@@ -128,22 +152,29 @@ export class MemoryAtomicNonceBackend implements AtomicNonceBackend {
   beforeCompareAndSwap?: () => void
   private hookUsed = false
 
-  read(nonce: string): VersionedNonceRecord | undefined {
-    const row = this.rows.get(nonce)
+  read(actorId: string, nonce: string): VersionedNonceRecord | undefined {
+    const row = this.rows.get(nonceStorageKey(actorId, nonce))
     return row ? { version: row.version, record: row.record } : undefined
   }
 
-  compareAndSwap(nonce: string, expectedVersion: number, record: NonceRecord): boolean {
+  compareAndSwap(
+    actorId: string,
+    nonce: string,
+    expectedVersion: number,
+    record: NonceRecord
+  ): boolean {
     if (this.beforeCompareAndSwap && !this.hookUsed) {
       this.hookUsed = true
       const hook = this.beforeCompareAndSwap
       this.beforeCompareAndSwap = undefined
       hook()
     }
-    const row = this.rows.get(nonce)
+    const key = nonceStorageKey(actorId, nonce)
+    const row = this.rows.get(key)
     const version = row?.version ?? 0
     if (version !== expectedVersion) return false
-    this.rows.set(nonce, { version: version + 1, record })
+    if (record.actorId !== actorId) return false
+    this.rows.set(key, { version: version + 1, record })
     return true
   }
 }
@@ -151,42 +182,45 @@ export class MemoryAtomicNonceBackend implements AtomicNonceBackend {
 export class NonceAuthority implements NonceStore {
   constructor(private readonly backend: AtomicNonceBackend) {}
 
-  has(nonce: string): boolean {
-    return this.backend.read(assertValidNonce(nonce)) != null
+  has(actorId: string, nonce: string): boolean {
+    return this.backend.read(assertValidIdentity(actorId, 'nonce.actorId'), assertValidNonce(nonce)) != null
   }
 
-  statusOf(nonce: string): NonceStatus | undefined {
-    return this.backend.read(assertValidNonce(nonce))?.record.status
+  statusOf(actorId: string, nonce: string): NonceStatus | undefined {
+    return this.backend.read(assertValidIdentity(actorId, 'nonce.actorId'), assertValidNonce(nonce))?.record
+      .status
   }
 
-  assertUsable(nonce: unknown, intentHash: string): 'fresh' | 'pending' {
-    return usability(this.backend.read(assertValidNonce(nonce))?.record, intentHash)
+  assertUsable(actorId: string, nonce: unknown, intentHash: string): 'fresh' | 'pending' {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
+    return usability(this.backend.read(actor, assertValidNonce(nonce))?.record, actor, intentHash)
   }
 
-  reserve(nonce: unknown, intentHash: string): void {
-    this.mutate('reserve', nonce, intentHash)
+  reserve(actorId: string, nonce: unknown, intentHash: string): void {
+    this.mutate('reserve', actorId, nonce, intentHash)
   }
 
-  claimForExecution(nonce: unknown, intentHash: string): void {
-    this.mutate('claim', nonce, intentHash)
+  claimForExecution(actorId: string, nonce: unknown, intentHash: string): void {
+    this.mutate('claim', actorId, nonce, intentHash)
   }
 
-  consume(nonce: unknown, intentHash: string): void {
-    this.mutate('consume', nonce, intentHash)
+  consume(actorId: string, nonce: unknown, intentHash: string): void {
+    this.mutate('consume', actorId, nonce, intentHash)
   }
 
-  fail(nonce: unknown, intentHash: string): void {
-    this.mutate('fail', nonce, intentHash)
+  fail(actorId: string, nonce: unknown, intentHash: string): void {
+    this.mutate('fail', actorId, nonce, intentHash)
   }
 
-  private mutate(op: Operation, nonce: unknown, intentHash: string): void {
+  private mutate(op: Operation, actorId: string, nonce: unknown, intentHash: string): void {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
     const key = assertValidNonce(nonce)
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const current = this.backend.read(key)
-      const outcome = transition(op, current?.record, intentHash)
+      const current = this.backend.read(actor, key)
+      const outcome = transition(op, current?.record, actor, intentHash)
       if (outcome.kind === 'return') return
       if (outcome.kind === 'throw') throw outcome.error
-      if (this.backend.compareAndSwap(key, current?.version ?? 0, outcome.record)) return
+      if (this.backend.compareAndSwap(actor, key, current?.version ?? 0, outcome.record)) return
     }
     throw new AuthorityError('replay', 'nonce_in_flight_or_used', true)
   }
@@ -206,38 +240,42 @@ export class NonceLedger extends NonceAuthority {
 export class SharedNonceLedger implements NonceStore {
   constructor(private readonly backend: AsyncAtomicNonceBackend) {}
 
-  async statusOf(nonce: string): Promise<NonceStatus | undefined> {
-    return (await this.backend.read(assertValidNonce(nonce)))?.record.status
+  async statusOf(actorId: string, nonce: string): Promise<NonceStatus | undefined> {
+    return (
+      await this.backend.read(assertValidIdentity(actorId, 'nonce.actorId'), assertValidNonce(nonce))
+    )?.record.status
   }
 
-  async assertUsable(nonce: unknown, intentHash: string): Promise<'fresh' | 'pending'> {
-    return usability((await this.backend.read(assertValidNonce(nonce)))?.record, intentHash)
+  async assertUsable(actorId: string, nonce: unknown, intentHash: string): Promise<'fresh' | 'pending'> {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
+    return usability((await this.backend.read(actor, assertValidNonce(nonce)))?.record, actor, intentHash)
   }
 
-  reserve(nonce: unknown, intentHash: string): Promise<void> {
-    return this.mutate('reserve', nonce, intentHash)
+  reserve(actorId: string, nonce: unknown, intentHash: string): Promise<void> {
+    return this.mutate('reserve', actorId, nonce, intentHash)
   }
 
-  claimForExecution(nonce: unknown, intentHash: string): Promise<void> {
-    return this.mutate('claim', nonce, intentHash)
+  claimForExecution(actorId: string, nonce: unknown, intentHash: string): Promise<void> {
+    return this.mutate('claim', actorId, nonce, intentHash)
   }
 
-  consume(nonce: unknown, intentHash: string): Promise<void> {
-    return this.mutate('consume', nonce, intentHash)
+  consume(actorId: string, nonce: unknown, intentHash: string): Promise<void> {
+    return this.mutate('consume', actorId, nonce, intentHash)
   }
 
-  fail(nonce: unknown, intentHash: string): Promise<void> {
-    return this.mutate('fail', nonce, intentHash)
+  fail(actorId: string, nonce: unknown, intentHash: string): Promise<void> {
+    return this.mutate('fail', actorId, nonce, intentHash)
   }
 
-  private async mutate(op: Operation, nonce: unknown, intentHash: string): Promise<void> {
+  private async mutate(op: Operation, actorId: string, nonce: unknown, intentHash: string): Promise<void> {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
     const key = assertValidNonce(nonce)
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const current = await this.backend.read(key)
-      const outcome = transition(op, current?.record, intentHash)
+      const current = await this.backend.read(actor, key)
+      const outcome = transition(op, current?.record, actor, intentHash)
       if (outcome.kind === 'return') return
       if (outcome.kind === 'throw') throw outcome.error
-      if (await this.backend.compareAndSwap(key, current?.version ?? 0, outcome.record)) return
+      if (await this.backend.compareAndSwap(actor, key, current?.version ?? 0, outcome.record)) return
     }
     throw new AuthorityError('replay', 'nonce_in_flight_or_used', true)
   }

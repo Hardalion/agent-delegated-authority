@@ -1,6 +1,11 @@
 import { canonicalJson, importPublicKey, sha256, verifyObject } from './crypto.js'
 import { AuthorityError } from './errors.js'
-import { assertAmountWithinLimit, assertCanonicalAmount, isMaxAmountKey } from './amount.js'
+import { assertCanonicalAmount, assertWithinCeiling, ceilingField, isMaxAmountKey } from './amount.js'
+import {
+  assertUsableDirectoryKey,
+  resolveAuthorityDirectory,
+  type AuthorityDirectory,
+} from './directory.js'
 import { hasOwn, ownEntries } from './safe-object.js'
 import {
   assertCanonicalCurrency,
@@ -19,8 +24,25 @@ import type {
   SignedDelegation,
   SignedIntent,
 } from './protocol.js'
-import { unsignedDelegation, unsignedIntent } from './protocol.js'
+import {
+  isVersionedHumanApproval,
+  isVersionedSignedDelegation,
+  isVersionedSignedIntent,
+  unsignedApproval,
+  unsignedDelegation,
+  unsignedIntent,
+} from './protocol.js'
+import {
+  ADAP_SIGNED_VERSION,
+  constraintProfileForSignedObjectProfile,
+  signedObjectProfileOf,
+  type ConstraintProfile,
+  type SignedObjectProfile,
+  verifyEnvelopeSignature,
+} from './signed-object.js'
 import { cloneSignedDelegation, cloneSignedIntent, deepFreeze } from './snapshot.js'
+
+export type DirectoryInput = AuthorityDirectory | ReadonlyMap<string, string>
 
 export function assertNotExpired(issuedAt: string, expiresAt: string, now = new Date()): void {
   const issued = Date.parse(issuedAt)
@@ -51,7 +73,67 @@ function coveringCapability(parent: readonly Capability[], child: Capability): C
   )
 }
 
+/**
+ * A delegation chain must use one signed-object profile end-to-end.
+ * Mixed legacy / 0.2 links are rejected — there is no silent migration that
+ * could reinterpret a legacy grant under ceilings-v1.
+ */
+export function assertChainProfileConsistency(
+  chain: readonly SignedDelegation[]
+): SignedObjectProfile {
+  if (chain.length === 0) {
+    throw new AuthorityError('profile', 'delegation chain is empty', true)
+  }
+  const profile = signedObjectProfileOf(chain[0]!)
+  for (let index = 0; index < chain.length; index += 1) {
+    const delegation = chain[index]!
+    if (signedObjectProfileOf(delegation) !== profile) {
+      throw new AuthorityError(
+        'profile',
+        'delegation chain mixes signed-object profiles',
+        true
+      )
+    }
+  }
+  return profile
+}
+
+export function assertIntentMatchesAuthorityProfile(
+  intent: SignedIntent,
+  profile: SignedObjectProfile
+): void {
+  if (signedObjectProfileOf(intent) !== profile) {
+    throw new AuthorityError(
+      'profile',
+      'intent signed-object profile does not match delegation chain',
+      true
+    )
+  }
+}
+
+export function assertApprovalMatchesAuthorityProfile(
+  approval: HumanApproval,
+  profile: SignedObjectProfile
+): void {
+  if (signedObjectProfileOf(approval) !== profile) {
+    throw new AuthorityError(
+      'profile',
+      'approval signed-object profile does not match authorization context',
+      true
+    )
+  }
+}
+
 export function validateDelegationNarrowing(parent: SignedDelegation, child: SignedDelegation): void {
+  const parentProfile = signedObjectProfileOf(parent)
+  const childProfile = signedObjectProfileOf(child)
+  if (parentProfile !== childProfile) {
+    throw new AuthorityError(
+      'profile',
+      'child delegation signed-object profile does not match parent',
+      true
+    )
+  }
   if (child.issuer !== parent.subject) {
     throw new AuthorityError('narrowing', 'delegator is not authorized by parent delegation', true)
   }
@@ -77,17 +159,36 @@ export function validateDelegationNarrowing(parent: SignedDelegation, child: Sig
 
   assertConstraintsNarrow(
     normalizeConstraints(parent.constraints, 'parent.constraints'),
-    normalizeConstraints(child.constraints, 'child.constraints')
+    normalizeConstraints(child.constraints, 'child.constraints'),
+    constraintProfileForSignedObjectProfile(parentProfile)
   )
 }
 
-function assertConstraintsNarrow(parent: Constraints, child: Constraints): void {
+/**
+ * Profile-aware constraint narrowing.
+ * Legacy: only `max_amount` may be reduced as a ceiling; every other key
+ * (including `max_quantity`) must match exactly.
+ * ceilings-v1: every canonical `max_<field>` may be reduced, never raised.
+ */
+function assertConstraintsNarrow(
+  parent: Constraints,
+  child: Constraints,
+  profile: ConstraintProfile
+): void {
   for (const [key, parentVal] of ownEntries(parent as Record<string, unknown>)) {
     if (!hasOwn(child, key)) {
       throw new AuthorityError('narrowing', `child drops constraint ${key}`, true)
     }
     const childVal = (child as Record<string, unknown>)[key]
-    if (typeof parentVal === 'number' && typeof childVal === 'number' && isMaxAmountKey(key)) {
+    const reducibleCeiling =
+      profile === 'ceilings-v1'
+        ? isMaxAmountKey(key)
+        : key === 'max_amount'
+    if (
+      reducibleCeiling &&
+      typeof parentVal === 'number' &&
+      typeof childVal === 'number'
+    ) {
       const parentAmount = assertCanonicalAmount(parentVal, `parent.${key}`)
       const childAmount = assertCanonicalAmount(childVal, `child.${key}`)
       if (childAmount > parentAmount) {
@@ -99,6 +200,10 @@ function assertConstraintsNarrow(parent: Constraints, child: Constraints): void 
       throw new AuthorityError('narrowing', `child alters constraint ${key}`, true)
     }
   }
+}
+
+export function constraintProfileForDelegation(delegation: SignedDelegation): ConstraintProfile {
+  return constraintProfileForSignedObjectProfile(signedObjectProfileOf(delegation))
 }
 
 export function assertIntentWithinDelegation(intent: IntentPayload, delegation: SignedDelegation): void {
@@ -119,24 +224,51 @@ export function assertIntentWithinDelegation(intent: IntentPayload, delegation: 
     throw new AuthorityError('capability', `capability not granted: ${intent.action}`, true)
   }
   const constraints = normalizeConstraints(delegation.constraints, 'delegation.constraints')
-  assertParametersWithin(intent.action, intent.parameters, constraints)
+  assertParametersWithin(
+    intent.action,
+    intent.parameters,
+    constraints,
+    constraintProfileForDelegation(delegation)
+  )
 }
 
+/**
+ * Legacy v0.1: `max_amount` is a ceiling on `amount`; every other constraint key
+ * (including `max_quantity`) requires exact equality on that parameter name.
+ * Profile ceilings-v1 (signed-object 0.2): every `max_<field>` is a ceiling on
+ * `parameters.<field>`.
+ */
 function assertParametersWithin(
   action: string,
   parameters: Readonly<Record<string, unknown>>,
-  constraints: Constraints
+  constraints: Constraints,
+  profile: ConstraintProfile
 ): void {
   for (const [key, bound] of ownEntries(constraints as Record<string, unknown>)) {
-    if (key === 'max_amount') {
+    if (profile === 'ceilings-v1') {
+      const field = ceilingField(key)
+      if (field) {
+        const presented = hasOwn(parameters, field) ? parameters[field] : undefined
+        if (presented === undefined) {
+          if (field === 'amount' && (action === 'read' || action === 'search')) continue
+          throw new AuthorityError('constraint', `${field} is required`, true)
+        }
+        assertWithinCeiling(presented, bound, field, key)
+        continue
+      }
+      if (key.startsWith('max_')) {
+        throw new AuthorityError('constraint', `constraint ${key} is not a canonical max_<field> ceiling`, true)
+      }
+    } else if (key === 'max_amount') {
       const amount = hasOwn(parameters, 'amount') ? parameters.amount : undefined
       if (amount === undefined) {
         if (action === 'read' || action === 'search') continue
         throw new AuthorityError('constraint', 'amount is required', true)
       }
-      assertAmountWithinLimit(amount, bound, 'parameters.amount')
+      assertWithinCeiling(amount, bound, 'amount', 'max_amount')
       continue
     }
+
     if (key === 'currency') {
       const presented = parameters[key]
       const expected = assertCanonicalCurrency(bound, 'constraints.currency')
@@ -182,24 +314,68 @@ function assertCanonicalForm(value: unknown, path: string): void {
   }
 }
 
+function verifyDelegationSignature(
+  delegation: SignedDelegation,
+  directory: AuthorityDirectory,
+  now: Date
+): void {
+  if (isVersionedSignedDelegation(delegation)) {
+    const key = assertUsableDirectoryKey(directory.lookup(delegation.issuer, delegation.kid), now, {
+      requireKid: delegation.kid,
+    })
+    const envelope = {
+      adap: ADAP_SIGNED_VERSION,
+      typ: 'delegation' as const,
+      alg: 'Ed25519' as const,
+      kid: delegation.kid!,
+      payload: unsignedDelegation(delegation),
+      signature: delegation.signature,
+    }
+    if (!verifyEnvelopeSignature(envelope, importPublicKey(key.publicKey), 'delegation')) {
+      throw new AuthorityError('signature_invalid', `delegation signature invalid: ${delegation.delegation_id}`)
+    }
+    return
+  }
+  const key = assertUsableDirectoryKey(directory.lookup(delegation.issuer), now)
+  if (!verifyObject(unsignedDelegation(delegation), delegation.signature, importPublicKey(key.publicKey))) {
+    throw new AuthorityError('signature_invalid', `delegation signature invalid: ${delegation.delegation_id}`)
+  }
+}
+
+function verifyIntentSignature(intent: SignedIntent, directory: AuthorityDirectory, now: Date): void {
+  if (isVersionedSignedIntent(intent)) {
+    const key = assertUsableDirectoryKey(directory.lookup(intent.actor, intent.kid), now, {
+      requireKid: intent.kid,
+    })
+    const envelope = {
+      adap: ADAP_SIGNED_VERSION,
+      typ: 'intent' as const,
+      alg: 'Ed25519' as const,
+      kid: intent.kid!,
+      payload: unsignedIntent(intent),
+      signature: intent.signature,
+    }
+    if (!verifyEnvelopeSignature(envelope, importPublicKey(key.publicKey), 'intent')) {
+      throw new AuthorityError('signature_invalid', 'intent signature invalid')
+    }
+    return
+  }
+  const key = assertUsableDirectoryKey(directory.lookup(intent.actor), now)
+  if (!verifyObject(unsignedIntent(intent), intent.signature, importPublicKey(key.publicKey))) {
+    throw new AuthorityError('signature_invalid', 'intent signature invalid')
+  }
+}
+
 function verifySignatures(
   chain: readonly SignedDelegation[],
   intent: SignedIntent,
-  directory: ReadonlyMap<string, string>
+  directory: AuthorityDirectory,
+  now: Date
 ): void {
   for (const delegation of chain) {
-    const issuerKey = directory.get(delegation.issuer)
-    if (
-      !issuerKey ||
-      !verifyObject(unsignedDelegation(delegation), delegation.signature, importPublicKey(issuerKey))
-    ) {
-      throw new AuthorityError('signature_invalid', `delegation signature invalid: ${delegation.delegation_id}`)
-    }
+    verifyDelegationSignature(delegation, directory, now)
   }
-  const actorKey = directory.get(intent.actor)
-  if (!actorKey || !verifyObject(unsignedIntent(intent), intent.signature, importPublicKey(actorKey))) {
-    throw new AuthorityError('signature_invalid', 'intent signature invalid')
-  }
+  verifyIntentSignature(intent, directory, now)
 }
 
 /**
@@ -210,7 +386,8 @@ function verifySignatures(
 export function presentAuthority(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
-  readonly directory: ReadonlyMap<string, string>
+  readonly directory: DirectoryInput
+  readonly now?: Date
 }): { readonly chain: SignedDelegation[]; readonly intent: SignedIntent } {
   if (!Array.isArray(input.chain)) {
     throw new AuthorityError('schema', 'delegation chain must be an array', false)
@@ -224,7 +401,7 @@ export function presentAuthority(input: {
     assertCanonicalForm(unsignedDelegation(delegation), `chain[${index}]`)
   })
   assertCanonicalForm(unsignedIntent(intent), 'intent')
-  verifySignatures(chain, intent, input.directory)
+  verifySignatures(chain, intent, resolveAuthorityDirectory(input.directory), input.now ?? new Date())
   return { chain, intent }
 }
 
@@ -265,7 +442,7 @@ export function authorizePresented(input: {
 export function verifyAuthority(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
-  readonly directory: ReadonlyMap<string, string>
+  readonly directory: DirectoryInput
   readonly now: Date
 }): VerifiedAuthority {
   const presented = presentAuthority(input)
@@ -273,6 +450,9 @@ export function verifyAuthority(input: {
 }
 
 function verifyAuthenticated(chain: readonly SignedDelegation[], intent: SignedIntent, now: Date): void {
+  const authorityProfile = assertChainProfileConsistency(chain)
+  assertIntentMatchesAuthorityProfile(intent, authorityProfile)
+
   for (let index = 0; index < chain.length; index += 1) {
     const delegation = chain[index]
     if (!delegation) throw new AuthorityError('chain', 'missing delegation', true)
@@ -303,10 +483,18 @@ export function verifyHumanApproval(input: {
   readonly policyContentHash: string
   readonly matchedRuleId?: string
   readonly intent: IntentPayload
-  readonly directory: ReadonlyMap<string, string>
+  readonly directory: DirectoryInput
   readonly now: Date
   /** When set, duplicate approval of the same binding is rejected. */
   readonly seenApprovalKeys?: Set<string>
+  /** When set, only this decision is accepted (APPROVE or DENY). */
+  readonly expectedDecision?: 'APPROVE' | 'DENY'
+  /**
+   * Signed-object profile of the authorization context (chain + intent).
+   * Required for profile consistency: a v0.2 context rejects a legacy approval
+   * and a legacy context rejects a v0.2 approval.
+   */
+  readonly authorityProfile: SignedObjectProfile
 }): void {
   const approval = validateHumanApproval(input.approval)
   const {
@@ -317,13 +505,16 @@ export function verifyHumanApproval(input: {
     policyContentHash,
     matchedRuleId,
     intent,
-    directory,
     now,
     seenApprovalKeys,
   } = input
+  const directory = resolveAuthorityDirectory(input.directory)
 
-  if (approval.decision !== 'APPROVE') {
-    throw new AuthorityError('approval', 'approval decision is not APPROVE', true)
+  assertApprovalMatchesAuthorityProfile(approval, input.authorityProfile)
+
+  const expected = input.expectedDecision ?? 'APPROVE'
+  if (approval.decision !== expected) {
+    throw new AuthorityError('approval', `approval decision is not ${expected}`, true)
   }
   if (approval.approver_id !== principalId) {
     throw new AuthorityError('approval', 'approver is not the delegating principal', true)
@@ -354,6 +545,7 @@ export function verifyHumanApproval(input: {
     approval.agent_id,
     approval.delegation_chain_hash,
     approval.policy_content_hash,
+    approval.decision,
     approval.approved_at,
     approval.signature,
   ].join('|')
@@ -361,10 +553,26 @@ export function verifyHumanApproval(input: {
     throw new AuthorityError('approval', 'duplicate approval rejected', true)
   }
 
-  const approverKey = directory.get(approval.approver_id)
-  const { signature, ...payload } = approval
-  if (!approverKey || !verifyObject(payload, signature, importPublicKey(approverKey))) {
-    throw new AuthorityError('approval', 'approval signature invalid', true)
+  if (isVersionedHumanApproval(approval)) {
+    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id, approval.kid), now, {
+      requireKid: approval.kid,
+    })
+    const envelope = {
+      adap: ADAP_SIGNED_VERSION,
+      typ: 'approval' as const,
+      alg: 'Ed25519' as const,
+      kid: approval.kid!,
+      payload: unsignedApproval(approval),
+      signature: approval.signature,
+    }
+    if (!verifyEnvelopeSignature(envelope, importPublicKey(key.publicKey), 'approval')) {
+      throw new AuthorityError('approval', 'approval signature invalid', true)
+    }
+  } else {
+    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now)
+    if (!verifyObject(unsignedApproval(approval), approval.signature, importPublicKey(key.publicKey))) {
+      throw new AuthorityError('approval', 'approval signature invalid', true)
+    }
   }
   const approvedAt = Date.parse(approval.approved_at)
   const issued = Date.parse(intent.issued_at)

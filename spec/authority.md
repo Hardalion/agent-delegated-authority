@@ -18,12 +18,14 @@ An id is not a credential.
 
 | Primitive | Specification |
 | --- | --- |
+| Signed objects | [signed-objects.md](./signed-objects.md) |
 | Delegation | [delegation.md](./delegation.md) |
 | Intent | [intent.md](./intent.md) |
 | Policy decision | [policy-decision.md](./policy-decision.md) |
 | Human approval | [human-approval.md](./human-approval.md) |
 | Authorization receipt | [authorization-receipt.md](./authorization-receipt.md) |
 | Execution boundary | [execution.md](./execution.md) |
+| MCP binding | [mcp-binding.md](./mcp-binding.md) |
 | Conformance | [conformance.md](./conformance.md) |
 
 ## Reference

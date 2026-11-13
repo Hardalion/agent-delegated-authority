@@ -289,8 +289,8 @@ describe('RT-01 immutable authorization snapshot', () => {
     expect(pending.decision).toBe('REQUIRE_HUMAN')
 
     const original = pendingStore.markApproved.bind(pendingStore)
-    pendingStore.markApproved = (nonce, intentHash) => {
-      original(nonce, intentHash)
+    pendingStore.markApproved = (actorId, nonce, intentHash) => {
+      original(actorId, nonce, intentHash)
       meta.dest = 'evil'
       intent.parameters = { amount: 999, note: 'example', meta: { dest: 'evil' } }
     }
@@ -408,7 +408,7 @@ describe('RT-03 authentication before nonce consumption', () => {
     expect(first.receipt).toBeUndefined()
     expect(first.executed).toBe(false)
     expect(first.reason).not.toContain('not-a-signature')
-    expect(ledger.has('rt03-amount')).toBe(false)
+    expect(ledger.has(env.agent.id, 'rt03-amount')).toBe(false)
     expect(calls).toBe(0)
 
     const second = await run(env, good, {
@@ -436,7 +436,7 @@ describe('RT-03 authentication before nonce consumption', () => {
     expect(first.authenticated).toBe(false)
     expect(first.receipt).toBeUndefined()
     expect(first.executed).toBe(false)
-    expect(ledger.has('rt03-valid-looking')).toBe(false)
+    expect(ledger.has(env.agent.id, 'rt03-valid-looking')).toBe(false)
 
     let calls = 0
     const second = await run(env, good, {
@@ -517,7 +517,7 @@ describe('RT-03 authentication before nonce consumption', () => {
       expect(result.receipt).toBeUndefined()
       expect(result.executed).toBe(false)
       if (signature.length > 0) expect(result.reason).not.toContain(signature)
-      expect(ledger.has('rt03-malformed')).toBe(false)
+      expect(ledger.has(env.agent.id, 'rt03-malformed')).toBe(false)
     }
   })
 
@@ -538,7 +538,7 @@ describe('RT-03 authentication before nonce consumption', () => {
     expect(result.executed).toBe(false)
     expect(result.ruleId).toBe('amount')
     expect(calls).toBe(0)
-    expect(ledger.statusOf('rt03-authenticated-amount')).toBe('consumed')
+    expect(ledger.statusOf(env.agent.id, 'rt03-authenticated-amount')).toBe('consumed')
     const receipt = authenticatedReceipt(result)
     expect(receipt.execution?.executed).toBe(false)
     expect(verifyProtocolReceipt(receipt, importPublicKey(env.signer.publicKey)).valid).toBe(true)

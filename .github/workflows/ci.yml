@@ -54,6 +54,9 @@ jobs:
       - name: Attack suite
         run: pnpm attacks
 
+      - name: Canonical JSON cross-check
+        run: python3 scripts/verify-canonical-json.py
+
       - name: Dependency audit
         # High/critical findings fail the job. No suppressions are registered.
         # Re-run with `pnpm audit --audit-level high` locally before raising the floor.

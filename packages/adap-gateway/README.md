@@ -9,6 +9,7 @@ Reference execution gateway. It is a deployment of the ADAP authority path, not 
 - Rail credentials never leave the broker; agents never receive them.
 - Downstream outcomes distinguish `completed`, `accepted`, `failed`, and `unknown`.
 - `unknown` returns from the executor callback. The authority path then reports `executed: true` and consumes the nonce. `executionState: unknown` is the gateway's statement that the downstream result was not observed. It is not proof the external system committed. A later reconcile read does not POST. See [docs/operations/outcome-unknown.md](../../docs/operations/outcome-unknown.md).
+- `executionStatePersistence` is `not_configured`, `not_attempted`, `callback_returned`, `confirmed`, or `failed`. A supplied callback that never runs is `not_attempted`. A callback that returns without `'confirmed'` is `callback_returned`, not proof of durable storage. `confirmed` means every call returned `'confirmed'`. A failed write before the downstream call prevents that call. A failed write after it is reported and the call is not repeated.
 
 ## Production blocker (deployment)
 

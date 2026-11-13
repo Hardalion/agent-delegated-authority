@@ -11,7 +11,9 @@ import {
   type AuthorizationReceiptV1,
 } from './authorization-receipt.js'
 
-const DUMMY_SIG = 'ab'.repeat(64)
+/** Non-demo placeholder: structure/hash checks only. Demo `ab`×64 is rejected as evidence. */
+const DUMMY_SIG = 'cd'.repeat(64)
+const DEMO_SIG = 'ab'.repeat(64)
 
 function sampleBody() {
   return {
@@ -79,8 +81,20 @@ describe('authorization receipt', () => {
     const result = verifyAuthorizationReceipt(receipt)
     expect(result.structureOk).toBe(true)
     expect(result.contentHashOk).toBe(true)
+    expect(result.demoSignature).toBe(false)
+    expect(result.signatureChecked).toBe(false)
     expect(result.valid).toBe(true)
     expect(result.errors).toEqual([])
+  })
+
+  it('rejects the known demo placeholder signature as evidence', () => {
+    const unsigned = buildUnsignedAuthorizationReceipt(sampleBody())
+    const result = verifyAuthorizationReceipt({ ...unsigned, signature: DEMO_SIG })
+    expect(result.structureOk).toBe(true)
+    expect(result.contentHashOk).toBe(true)
+    expect(result.demoSignature).toBe(true)
+    expect(result.valid).toBe(false)
+    expect(result.errors.join(' ')).toMatch(/demo placeholder/)
   })
 
   it('rejects an authority subject that disagrees with the identity chain', () => {

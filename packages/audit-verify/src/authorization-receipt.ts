@@ -6,6 +6,7 @@
 import { createPublicKey, verify as verifyEd25519 } from 'node:crypto'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
+import { canonicalJson } from './canonical-json.js'
 
 export const AUTHORIZATION_RECEIPT_FORMAT_VERSION = 1 as const
 export const AUTHORIZATION_RECEIPT_KIND = 'adap.receipt' as const
@@ -137,12 +138,25 @@ export interface AuthorizationReceiptV1 {
 export type UnsignedAuthorizationReceipt = Omit<AuthorizationReceiptV1, 'signature'>
 
 export interface VerifyAuthorizationReceiptResult {
+  /**
+   * True only when structure and content hash match, the signature is not the
+   * known demo placeholder, and — when `publicKeySpki` is supplied — Ed25519 verifies.
+   */
   readonly valid: boolean
   readonly contentHashOk: boolean
   readonly structureOk: boolean
+  /** True when a public key was supplied and Ed25519 was evaluated. */
+  readonly signatureChecked: boolean
+  /** Present when `signatureChecked` is true. */
+  readonly signatureOk?: boolean
+  /** True when the signature equals the known demo placeholder. */
+  readonly demoSignature: boolean
   readonly errors: readonly string[]
   readonly contentHash?: string
 }
+
+/** Known demo placeholder from emitAuthorizationReceipt({ demo: true }). */
+const DEMO_SIGNATURE_HEX = 'ab'.repeat(64)
 
 const HEX64 = /^[0-9a-f]{64}$/
 const HEX_SIG = /^[0-9a-f]{128}$/i
@@ -170,34 +184,12 @@ const HUMAN_STATUS = new Set<HumanAttestationStatus>([
   'escalated',
 ])
 
-/** Stable canonical JSON (sorted object keys, recursively). */
+/**
+ * Canonical JSON for receipt content hashes and signatures.
+ * Delegates to the single reference-profile serializer.
+ */
 export function canonicalReceiptJson(value: unknown): string {
-  return JSON.stringify(sortKeys(value))
-}
-
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys)
-  if (value != null && typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) {
-      throw new Error('canonicalReceiptJson rejects objects with a non-plain prototype')
-    }
-    const record = value as Record<string, unknown>
-    const sorted: Record<string, unknown> = Object.create(null)
-    for (const key of Object.keys(record).sort()) {
-      if (DANGEROUS_KEYS.has(key)) {
-        throw new Error(`canonicalReceiptJson rejects dangerous key: ${key}`)
-      }
-      sorted[key] = sortKeys(record[key])
-    }
-    return { ...sorted }
-  }
-  if (typeof value === 'number' && !Number.isFinite(value)) {
-    throw new Error('canonicalReceiptJson rejects non-finite numbers')
-  }
-  return value
+  return canonicalJson(value)
 }
 
 function sha256Hex(utf8: string): string {
@@ -520,17 +512,28 @@ export function verifyReceiptSignature(receipt: AuthorizationReceiptV1, publicKe
   return verifyEd25519(null, Buffer.from(canonicalReceiptJson(unsigned)), key, Buffer.from(signature, 'hex'))
 }
 
+export type VerifyAuthorizationReceiptOptions = {
+  /** When set, Ed25519 is checked and `valid` requires a matching signature. */
+  readonly publicKeySpki?: string
+}
+
 /**
- * Offline structural + content-hash verification (no network).
- * Ed25519 verification is `verifyReceiptSignature`, and it requires the issuer public key.
+ * Offline verification (no network).
+ * Separates structure, content-hash, and optional Ed25519 signature checks.
+ * Demo placeholder signatures never count as valid evidence.
  */
-export function verifyAuthorizationReceipt(receipt: unknown): VerifyAuthorizationReceiptResult {
+export function verifyAuthorizationReceipt(
+  receipt: unknown,
+  options?: VerifyAuthorizationReceiptOptions
+): VerifyAuthorizationReceiptResult {
   const structureErrors = validateStructure(receipt)
   if (structureErrors.length > 0) {
     return {
       valid: false,
       contentHashOk: false,
       structureOk: false,
+      signatureChecked: false,
+      demoSignature: false,
       errors: structureErrors,
     }
   }
@@ -539,15 +542,37 @@ export function verifyAuthorizationReceipt(receipt: unknown): VerifyAuthorizatio
   const { signature: _sig, ...unsigned } = r
   const expected = contentHashOfUnsignedReceipt(unsigned)
   const contentHashOk = expected === r.integrity.contentHash
+  const demoSignature = r.signature.toLowerCase() === DEMO_SIGNATURE_HEX
   const errors: string[] = []
   if (!contentHashOk) {
     errors.push('integrity.contentHash mismatch')
   }
+  if (demoSignature) {
+    errors.push('signature is a demo placeholder; cryptographic verification was not performed')
+  }
+
+  let signatureChecked = false
+  let signatureOk: boolean | undefined
+  if (options?.publicKeySpki) {
+    signatureChecked = true
+    signatureOk = !demoSignature && verifyReceiptSignature(r, options.publicKeySpki)
+    if (!signatureOk) {
+      errors.push('ed25519 signature invalid')
+    }
+  }
+
+  const valid =
+    contentHashOk &&
+    !demoSignature &&
+    (!signatureChecked || signatureOk === true)
 
   return {
-    valid: contentHashOk,
+    valid,
     contentHashOk,
     structureOk: true,
+    signatureChecked,
+    signatureOk,
+    demoSignature,
     errors,
     contentHash: expected,
   }

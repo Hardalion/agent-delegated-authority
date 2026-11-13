@@ -8,8 +8,13 @@ import {
 import { evaluateToolCall, type Policy, type PolicyDecision } from 'adap-policy'
 import { publicKeyFingerprint, signHex, verifyHex, sha256 } from './crypto.js'
 import { AuthorityError } from './errors.js'
+import type { DirectoryInput } from './validate.js'
 import type { NonceStore } from './nonce.js'
-import { PendingAuthorizationStore, type PendingStore } from './pending.js'
+import {
+  DEFAULT_MAX_PENDING_APPROVALS,
+  PendingAuthorizationStore,
+  type PendingStore,
+} from './pending.js'
 import {
   ImmutablePolicyResolver,
   assertPolicyContentHash,
@@ -19,7 +24,12 @@ import { resolveTrustedNow, type Clock } from './clock.js'
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
-import { authorizePresented, presentAuthority, verifyHumanApproval } from './validate.js'
+import {
+  assertChainProfileConsistency,
+  authorizePresented,
+  presentAuthority,
+  verifyHumanApproval,
+} from './validate.js'
 
 export interface ExecutionContext {
   readonly action: string
@@ -55,7 +65,7 @@ export function authenticatedReceipt(result: ProtocolResult): AuthorizationRecei
 export interface RunAuthorityPathInput {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
-  readonly directory: ReadonlyMap<string, string>
+  readonly directory: DirectoryInput
   /** Must be the document pinned under `policyUri` in `policyResolver`. */
   readonly policy: Policy
   readonly policyUri: string
@@ -84,6 +94,34 @@ export interface RunAuthorityPathInput {
   readonly seenApprovals?: Set<string>
   readonly receiptSequence?: number
   readonly prevReceiptHash?: string | null
+  /**
+   * Optional operator root-of-authority check. When set, a root whose issuer
+   * is not authorized fails closed (`root_not_authorized`).
+   */
+  readonly rootAuthority?: {
+    readonly mayIssueRoot: (input: {
+      readonly issuerId: string
+      readonly subjectId: string
+      readonly capabilities: readonly { readonly action: string; readonly target: string }[]
+    }) => boolean
+  }
+  /**
+   * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
+   */
+  readonly revocationCheck?: (delegationId: string) => 'active' | 'revoked' | 'unavailable'
+  /**
+   * Optional human-approval identity policy. When set, self-approval and non-human
+   * approvers fail closed.
+   */
+  readonly approvalPolicy?: {
+    readonly isHuman?: (identityId: string) => boolean
+    readonly allowSelfApproval?: boolean
+  }
+  /**
+   * Max concurrent open pending approvals per (principal, agent). Default 5.
+   * Not controllable via request metadata.
+   */
+  readonly maxPendingApprovals?: number
 }
 
 const NONE_EXEC = 'none'
@@ -147,12 +185,43 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       throw new AuthorityError('approval', 'approval is not bound to this intent', true)
     }
 
-    const usability = await input.ledger.assertUsable(presented.intent.nonce, intentHash)
+    const usability = await input.ledger.assertUsable(
+      presented.intent.actor,
+      presented.intent.nonce,
+      intentHash
+    )
     const verified = authorizePresented({
       chain: presented.chain,
       intent: presented.intent,
       now,
     })
+
+    const root = verified.chain[0]
+    if (root && !root.parent_delegation_id && input.rootAuthority) {
+      const allowed = input.rootAuthority.mayIssueRoot({
+        issuerId: root.issuer,
+        subjectId: root.subject,
+        capabilities: root.capabilities.map((capability) => ({
+          action: capability.action,
+          target: capability.target ?? '',
+        })),
+      })
+      if (!allowed) {
+        throw new AuthorityError('root_not_authorized', 'root issuer is not authorized for this grant', true)
+      }
+    }
+    if (input.revocationCheck) {
+      for (const delegation of verified.chain) {
+        const status = input.revocationCheck(delegation.delegation_id)
+        if (status === 'revoked') {
+          throw new AuthorityError('revoked', `delegation ${delegation.delegation_id} is revoked`, true)
+        }
+        if (status === 'unavailable') {
+          throw new AuthorityError('revoked', 'revocation status unavailable', true)
+        }
+      }
+    }
+
     const pendingStore = input.pendingStore
     const seenApprovals = input.seenApprovals
     const view: RunAuthorityPathInput & { now: Date } = {
@@ -183,7 +252,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       }
       if (!principalId) throw new AuthorityError('approval', 'missing principal', true)
 
-      const pending = await pendingStore.get(verified.intent.nonce)
+      const pending = await pendingStore.get(verified.intent.actor, verified.intent.nonce)
       if (!pending) {
         throw new AuthorityError('approval', 'no pending authorization for this nonce', true)
       }
@@ -240,6 +309,21 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         throw new AuthorityError('approval', 'pinned policy rule does not match pending context', true)
       }
 
+      if (input.approvalPolicy) {
+        const approverId = input.approval.approver_id
+        if (input.approvalPolicy.isHuman && !input.approvalPolicy.isHuman(approverId)) {
+          throw new AuthorityError('approval', 'approver is not a human identity', true)
+        }
+        if (input.approvalPolicy.allowSelfApproval !== true) {
+          const subjects = new Set(verified.chain.map((delegation) => delegation.subject))
+          if (subjects.has(approverId) || approverId === verified.intent.actor) {
+            throw new AuthorityError('approval', 'approver cannot approve their own agent action', true)
+          }
+        }
+      }
+
+      const humanDecision = input.approval.decision
+      const authorityProfile = assertChainProfileConsistency(verified.chain)
       verifyHumanApproval({
         approval: input.approval,
         intentHash,
@@ -252,9 +336,38 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         directory: input.directory,
         now,
         seenApprovalKeys: seenApprovals,
+        expectedDecision: humanDecision === 'DENY' ? 'DENY' : 'APPROVE',
+        authorityProfile,
       })
 
-      await pendingStore.markApproved(verified.intent.nonce, intentHash)
+      if (humanDecision === 'DENY') {
+        await pendingStore.markDeclined(verified.intent.actor, verified.intent.nonce, intentHash)
+        await input.ledger.consume(verified.intent.actor, verified.intent.nonce, intentHash)
+        return seal(
+          { ...view, policy },
+          {
+            decision: 'BLOCK',
+            ruleId: pending.matchedRuleId,
+            reason: 'human denied the authorization',
+            alertSeverity: policyDecision.alertSeverity,
+            matched: true,
+            intentHash,
+            delegationHash,
+            policyHash,
+            executed: false,
+            failureMode: 'RULE_VIOLATION',
+            principalId,
+            human: {
+              required: true,
+              status: 'declined',
+              approverId: input.approval.approver_id,
+              decidedAt: input.approval.approved_at,
+            },
+          }
+        )
+      }
+
+      await pendingStore.markApproved(verified.intent.actor, verified.intent.nonce, intentHash)
 
       return await executeBound(
         { ...view, policy },
@@ -286,11 +399,13 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       agentRole: verified.intent.actor,
     })
 
+    // Only ALLOW reaches executeBound. REQUIRE_HUMAN pauses. Every other
+    // action, including one the v0.1 schema cannot produce, is BLOCK.
     if (
       policyDecision.action === 'BLOCK' ||
       (policyDecision.action !== 'ALLOW' && policyDecision.action !== 'REQUIRE_HUMAN')
     ) {
-      await input.ledger.consume(verified.intent.nonce, intentHash)
+      await input.ledger.consume(verified.intent.actor, verified.intent.nonce, intentHash)
       return seal(
         { ...view, policy },
         {
@@ -318,23 +433,51 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
           true
         )
       }
-      await pendingStore.put({
-        intentHash,
-        principalId,
-        agentId: verified.intent.actor,
-        delegationChainHash: delegationHash,
-        policyUri: input.policyUri,
-        policyContentHash: policyHash,
-        policyVersion: policy.version,
-        policyName: policy.policyName,
-        matchedRuleId: policyDecision.ruleId,
-        originalDecision: 'REQUIRE_HUMAN',
-        approvalState: 'pending',
-        expiry: verified.intent.expires_at,
-        nonce: verified.intent.nonce,
-        approverId: principalId,
-      })
-      await input.ledger.reserve(verified.intent.nonce, intentHash)
+      try {
+        await pendingStore.put(
+          {
+            intentHash,
+            principalId,
+            agentId: verified.intent.actor,
+            delegationChainHash: delegationHash,
+            policyUri: input.policyUri,
+            policyContentHash: policyHash,
+            policyVersion: policy.version,
+            policyName: policy.policyName,
+            matchedRuleId: policyDecision.ruleId,
+            originalDecision: 'REQUIRE_HUMAN',
+            approvalState: 'pending',
+            expiry: verified.intent.expires_at,
+            nonce: verified.intent.nonce,
+            approverId: principalId,
+          },
+          {
+            maxPendingApprovals: input.maxPendingApprovals ?? DEFAULT_MAX_PENDING_APPROVALS,
+            now,
+          }
+        )
+      } catch (error) {
+        if (error instanceof AuthorityError && error.code === 'approval_queue_full') {
+          return seal(
+            { ...view, policy },
+            {
+              decision: 'BLOCK',
+              ruleId: 'approval_queue_full',
+              reason: 'pending approval queue is full',
+              alertSeverity: 'CRITICAL',
+              matched: true,
+              intentHash,
+              delegationHash,
+              policyHash,
+              executed: false,
+              failureMode: 'RULE_VIOLATION',
+              principalId,
+            }
+          )
+        }
+        throw error
+      }
+      await input.ledger.reserve(verified.intent.actor, verified.intent.nonce, intentHash)
       return seal(
         { ...view, policy },
         {
@@ -391,7 +534,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     }
     if (error instanceof AuthorityError) {
       if (error.authenticated && error.code !== 'replay' && error.code !== 'approval') {
-        await retireNonce(input.ledger, presented.intent.nonce, intentHash)
+        await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
       }
       return sealOrClosed(view, {
         decision: 'BLOCK',
@@ -407,7 +550,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         principalId,
       })
     }
-    await retireNonce(input.ledger, presented.intent.nonce, intentHash)
+    await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
     return sealOrClosed(view, {
       decision: 'BLOCK',
       ruleId: 'system',
@@ -445,9 +588,14 @@ function sealOrClosed(
   }
 }
 
-async function retireNonce(ledger: NonceStore, nonce: string, intentHash: string): Promise<void> {
+async function retireNonce(
+  ledger: NonceStore,
+  actorId: string,
+  nonce: string,
+  intentHash: string
+): Promise<void> {
   try {
-    await ledger.consume(nonce, intentHash)
+    await ledger.consume(actorId, nonce, intentHash)
   } catch {
     // A store rejection must not escape the authority boundary.
   }
@@ -465,7 +613,7 @@ async function executeBound(
   }
 ): Promise<ProtocolResult> {
   if (!input.execute) {
-    await input.ledger.consume(input.intent.nonce, bound.intentHash)
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
       ...bound,
       decision: 'BLOCK',
@@ -480,7 +628,7 @@ async function executeBound(
 
   // Only ALLOW reaches the executor. Approved REQUIRE_HUMAN is represented as ALLOW.
   if (bound.decision.action !== 'ALLOW' && !bound.approved) {
-    await input.ledger.consume(input.intent.nonce, bound.intentHash)
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
       ...bound,
       decision: 'BLOCK',
@@ -498,7 +646,7 @@ async function executeBound(
     presentedHash !== bound.intentHash ||
     (input.approval != null && input.approval.intent_hash !== bound.intentHash)
   ) {
-    await input.ledger.consume(input.intent.nonce, bound.intentHash)
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
       ...bound,
       decision: 'BLOCK',
@@ -512,7 +660,7 @@ async function executeBound(
   }
 
   try {
-    await input.ledger.claimForExecution(input.intent.nonce, bound.intentHash)
+    await input.ledger.claimForExecution(input.intent.actor, input.intent.nonce, bound.intentHash)
   } catch (error) {
     if (error instanceof AuthorityError && error.code === 'replay') {
       return seal(input, {
@@ -542,7 +690,7 @@ async function executeBound(
   try {
     result = await input.execute(ctx)
   } catch {
-    await input.ledger.fail(input.intent.nonce, bound.intentHash)
+    await input.ledger.fail(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
       decision: 'BLOCK',
       ruleId: 'execution',
@@ -561,12 +709,12 @@ async function executeBound(
   // The callback returned. A later store or seal failure does not rewrite that as
   // "nothing executed". The nonce is still spent so the same intent cannot retry.
   try {
-    await input.ledger.consume(input.intent.nonce, bound.intentHash)
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
   } catch {
     // The claim already spent exclusivity. A consume race must not escape.
   }
   try {
-    await input.pendingStore?.consume(input.intent.nonce, bound.intentHash)
+    await input.pendingStore?.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
   } catch {
     // Pending consume is bookkeeping after the side-effect boundary.
   }
@@ -635,10 +783,11 @@ function seal(
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
   const policy = input.policy
   const executionHash = fields.executed ? sha256(fields.result ?? null) : NONE_EXEC
-  const drafted = emitAuthorizationReceipt({
+  const toolArgs = deepDataClone(input.intent.parameters) as Record<string, unknown>
+  const receipt = emitAuthorizationReceipt({
     agentId: input.intent.actor,
     toolName: input.intent.action,
-    toolArgs: deepDataClone(input.intent.parameters) as Record<string, unknown>,
+    toolArgs,
     action: fields.decision,
     ruleId: fields.ruleId,
     reason: fields.reason,
@@ -676,9 +825,11 @@ function seal(
     failureMode: fields.failureMode,
     sequence: input.receiptSequence,
     prevReceiptHash: input.prevReceiptHash,
-    signatureHex: 'ab'.repeat(64),
+    signer: input.signer.privateKey,
+    // Reference path records authorized parameters for offline review.
+    // Callers that must omit secrets should pass a narrower allowlist via a future hook.
+    includeArgsUnredacted: true,
   })
-  const receipt = signReceipt(drafted, input.signer.privateKey)
   return {
     decision: fields.decision,
     ruleId: fields.ruleId,

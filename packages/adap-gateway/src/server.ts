@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import {
   exportPublicKey,
+  publicKeyFingerprint,
   SharedNonceLedger,
   type Identity,
 } from 'adap'
@@ -43,7 +44,13 @@ function requiredEnv(name: string): string {
 function loadIssuer(pemPath: string): Identity {
   const privateKey = createPrivateKey(readFileSync(pemPath))
   const publicKey = createPublicKey(privateKey)
-  return { id: 'staging-runtime', publicKey: exportPublicKey(publicKey), privateKey }
+  const exported = exportPublicKey(publicKey)
+  return {
+    id: 'staging-runtime',
+    publicKey: exported,
+    privateKey,
+    kid: publicKeyFingerprint(exported),
+  }
 }
 
 function loadDirectory(filePath: string): Map<string, string> {
@@ -279,6 +286,7 @@ export async function startGateway(): Promise<void> {
               state,
               detail: info.detail,
             })
+            return 'confirmed' as const
           },
         })
         console.info(JSON.stringify({
