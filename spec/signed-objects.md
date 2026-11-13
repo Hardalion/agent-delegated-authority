@@ -13,6 +13,23 @@ The reference implementation identifies 0.2 objects when `adap === "0.2"`, `typ`
 
 Do not reinterpret a legacy signature as a 0.2 envelope. Do not apply `ceilings-v1` to an unversioned grant.
 
+## Profile consistency (normative)
+
+A conforming verifier MUST use one signed-object profile for the entire authorization context:
+
+| Context | Required profile rule |
+| --- | --- |
+| Delegation chain | Every link MUST share the same profile. Mixed legacy / 0.2 chains are rejected. |
+| Intent | MUST match the chain profile. |
+| Human approval | MUST match the chain+intent profile for both `APPROVE` and `DENY`. |
+
+There is no silent migration from legacy to 0.2. A legacy root followed by a 0.2 child is rejected. A 0.2 context cannot be continued with a legacy approval, and a legacy context cannot be continued with a 0.2 approval.
+
+Constraint narrowing is also profile-aware:
+
+- Legacy: only `max_amount` may be reduced as a ceiling; other keys (including `max_quantity`) remain exact-match and cannot be reinterpreted as ceilings by a child.
+- 0.2 / `ceilings-v1`: every canonical `max_<field>` may be reduced, never raised.
+
 ## Envelope
 
 | Field | Meaning |

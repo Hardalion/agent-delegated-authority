@@ -24,7 +24,12 @@ import { resolveTrustedNow, type Clock } from './clock.js'
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
-import { authorizePresented, presentAuthority, verifyHumanApproval } from './validate.js'
+import {
+  assertChainProfileConsistency,
+  authorizePresented,
+  presentAuthority,
+  verifyHumanApproval,
+} from './validate.js'
 
 export interface ExecutionContext {
   readonly action: string
@@ -318,6 +323,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       }
 
       const humanDecision = input.approval.decision
+      const authorityProfile = assertChainProfileConsistency(verified.chain)
       verifyHumanApproval({
         approval: input.approval,
         intentHash,
@@ -331,6 +337,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         now,
         seenApprovalKeys: seenApprovals,
         expectedDecision: humanDecision === 'DENY' ? 'DENY' : 'APPROVE',
+        authorityProfile,
       })
 
       if (humanDecision === 'DENY') {

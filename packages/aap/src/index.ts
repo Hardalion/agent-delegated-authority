@@ -38,7 +38,10 @@ export {
   verifyEnvelopeSignature,
   signedObjectPreimage,
   constraintProfileOf,
+  signedObjectProfileOf,
+  constraintProfileForSignedObjectProfile,
   type ConstraintProfile,
+  type SignedObjectProfile,
   type SignedEnvelope,
   type SignedObjectType,
 } from './signed-object.js'
@@ -103,6 +106,9 @@ export {
   verifyAuthority,
   verifyHumanApproval,
   constraintProfileForDelegation,
+  assertChainProfileConsistency,
+  assertIntentMatchesAuthorityProfile,
+  assertApprovalMatchesAuthorityProfile,
   type DirectoryInput,
 } from './validate.js'
 export {

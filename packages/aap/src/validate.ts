@@ -32,7 +32,14 @@ import {
   unsignedDelegation,
   unsignedIntent,
 } from './protocol.js'
-import { ADAP_SIGNED_VERSION, type ConstraintProfile, verifyEnvelopeSignature } from './signed-object.js'
+import {
+  ADAP_SIGNED_VERSION,
+  constraintProfileForSignedObjectProfile,
+  signedObjectProfileOf,
+  type ConstraintProfile,
+  type SignedObjectProfile,
+  verifyEnvelopeSignature,
+} from './signed-object.js'
 import { cloneSignedDelegation, cloneSignedIntent, deepFreeze } from './snapshot.js'
 
 export type DirectoryInput = AuthorityDirectory | ReadonlyMap<string, string>
@@ -66,7 +73,67 @@ function coveringCapability(parent: readonly Capability[], child: Capability): C
   )
 }
 
+/**
+ * A delegation chain must use one signed-object profile end-to-end.
+ * Mixed legacy / 0.2 links are rejected — there is no silent migration that
+ * could reinterpret a legacy grant under ceilings-v1.
+ */
+export function assertChainProfileConsistency(
+  chain: readonly SignedDelegation[]
+): SignedObjectProfile {
+  if (chain.length === 0) {
+    throw new AuthorityError('profile', 'delegation chain is empty', true)
+  }
+  const profile = signedObjectProfileOf(chain[0]!)
+  for (let index = 0; index < chain.length; index += 1) {
+    const delegation = chain[index]!
+    if (signedObjectProfileOf(delegation) !== profile) {
+      throw new AuthorityError(
+        'profile',
+        'delegation chain mixes signed-object profiles',
+        true
+      )
+    }
+  }
+  return profile
+}
+
+export function assertIntentMatchesAuthorityProfile(
+  intent: SignedIntent,
+  profile: SignedObjectProfile
+): void {
+  if (signedObjectProfileOf(intent) !== profile) {
+    throw new AuthorityError(
+      'profile',
+      'intent signed-object profile does not match delegation chain',
+      true
+    )
+  }
+}
+
+export function assertApprovalMatchesAuthorityProfile(
+  approval: HumanApproval,
+  profile: SignedObjectProfile
+): void {
+  if (signedObjectProfileOf(approval) !== profile) {
+    throw new AuthorityError(
+      'profile',
+      'approval signed-object profile does not match authorization context',
+      true
+    )
+  }
+}
+
 export function validateDelegationNarrowing(parent: SignedDelegation, child: SignedDelegation): void {
+  const parentProfile = signedObjectProfileOf(parent)
+  const childProfile = signedObjectProfileOf(child)
+  if (parentProfile !== childProfile) {
+    throw new AuthorityError(
+      'profile',
+      'child delegation signed-object profile does not match parent',
+      true
+    )
+  }
   if (child.issuer !== parent.subject) {
     throw new AuthorityError('narrowing', 'delegator is not authorized by parent delegation', true)
   }
@@ -92,17 +159,36 @@ export function validateDelegationNarrowing(parent: SignedDelegation, child: Sig
 
   assertConstraintsNarrow(
     normalizeConstraints(parent.constraints, 'parent.constraints'),
-    normalizeConstraints(child.constraints, 'child.constraints')
+    normalizeConstraints(child.constraints, 'child.constraints'),
+    constraintProfileForSignedObjectProfile(parentProfile)
   )
 }
 
-function assertConstraintsNarrow(parent: Constraints, child: Constraints): void {
+/**
+ * Profile-aware constraint narrowing.
+ * Legacy: only `max_amount` may be reduced as a ceiling; every other key
+ * (including `max_quantity`) must match exactly.
+ * ceilings-v1: every canonical `max_<field>` may be reduced, never raised.
+ */
+function assertConstraintsNarrow(
+  parent: Constraints,
+  child: Constraints,
+  profile: ConstraintProfile
+): void {
   for (const [key, parentVal] of ownEntries(parent as Record<string, unknown>)) {
     if (!hasOwn(child, key)) {
       throw new AuthorityError('narrowing', `child drops constraint ${key}`, true)
     }
     const childVal = (child as Record<string, unknown>)[key]
-    if (typeof parentVal === 'number' && typeof childVal === 'number' && isMaxAmountKey(key)) {
+    const reducibleCeiling =
+      profile === 'ceilings-v1'
+        ? isMaxAmountKey(key)
+        : key === 'max_amount'
+    if (
+      reducibleCeiling &&
+      typeof parentVal === 'number' &&
+      typeof childVal === 'number'
+    ) {
       const parentAmount = assertCanonicalAmount(parentVal, `parent.${key}`)
       const childAmount = assertCanonicalAmount(childVal, `child.${key}`)
       if (childAmount > parentAmount) {
@@ -117,7 +203,7 @@ function assertConstraintsNarrow(parent: Constraints, child: Constraints): void 
 }
 
 export function constraintProfileForDelegation(delegation: SignedDelegation): ConstraintProfile {
-  return isVersionedSignedDelegation(delegation) ? 'ceilings-v1' : 'legacy-v0.1'
+  return constraintProfileForSignedObjectProfile(signedObjectProfileOf(delegation))
 }
 
 export function assertIntentWithinDelegation(intent: IntentPayload, delegation: SignedDelegation): void {
@@ -364,6 +450,9 @@ export function verifyAuthority(input: {
 }
 
 function verifyAuthenticated(chain: readonly SignedDelegation[], intent: SignedIntent, now: Date): void {
+  const authorityProfile = assertChainProfileConsistency(chain)
+  assertIntentMatchesAuthorityProfile(intent, authorityProfile)
+
   for (let index = 0; index < chain.length; index += 1) {
     const delegation = chain[index]
     if (!delegation) throw new AuthorityError('chain', 'missing delegation', true)
@@ -400,6 +489,12 @@ export function verifyHumanApproval(input: {
   readonly seenApprovalKeys?: Set<string>
   /** When set, only this decision is accepted (APPROVE or DENY). */
   readonly expectedDecision?: 'APPROVE' | 'DENY'
+  /**
+   * Signed-object profile of the authorization context (chain + intent).
+   * Required for profile consistency: a v0.2 context rejects a legacy approval
+   * and a legacy context rejects a v0.2 approval.
+   */
+  readonly authorityProfile: SignedObjectProfile
 }): void {
   const approval = validateHumanApproval(input.approval)
   const {
@@ -414,6 +509,8 @@ export function verifyHumanApproval(input: {
     seenApprovalKeys,
   } = input
   const directory = resolveAuthorityDirectory(input.directory)
+
+  assertApprovalMatchesAuthorityProfile(approval, input.authorityProfile)
 
   const expected = input.expectedDecision ?? 'APPROVE'
   if (approval.decision !== expected) {

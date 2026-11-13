@@ -21,7 +21,7 @@ Isolation assumption: **READ COMMITTED** with transactional compare-and-swap and
 
 ### Migration 003
 
-`migrations/003_actor_nonce_and_pending.sql` adds `actor_id`, replaces primary keys with `(tenant_id, actor_id, nonce)`, expands pending `approval_state` for `declined` / `expired`, and is idempotent. Legacy nonce rows keep `actor_id = ''` and remain non-replayable. Do not delete them. Deploy order: migrate, then roll out writers that always set `actor_id`. Rollback is not lossless once new actor-scoped rows exist.
+`migrations/003_actor_nonce_and_pending.sql` adds `actor_id`, replaces primary keys with `(tenant_id, actor_id, nonce)`, expands pending `approval_state` for `declined` / `expired`, and is idempotent. Legacy nonce rows keep `actor_id = ''` as **global tombstones**. The adapter refuses actor-scoped reuse of those nonces for every actor; primary key alone is not sufficient. Tombstones are retained indefinitely (no automatic expiry). Deploy order: migrate, then roll out writers that always set `actor_id` and enforce tombstones. Rollback is not lossless once new actor-scoped rows exist.
 
 ## Migrate
 

@@ -20,6 +20,7 @@ Constraint meaning depends on the signed-object profile. See [signed-objects.md]
 - `max_amount` is a per-intent ceiling on `parameters.amount`.
 - Every other constraint key, including `max_quantity`, requires **exact equality** on that parameter name.
 - A legacy grant with `max_quantity: 5` does **not** authorize `quantity: 3` as a ceiling. Treating it as a ceiling after a verifier upgrade would silently widen authority and is forbidden.
+- When narrowing, a legacy child may only **lower** `max_amount`. Changing `max_quantity` (or any non-amount key) is rejected as altering an exact-match constraint. A child cannot introduce 0.2 ceiling semantics under a legacy parent.
 
 ### Signed-object 0.2 (`ceilings-v1`)
 

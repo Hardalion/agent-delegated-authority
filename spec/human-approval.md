@@ -17,6 +17,8 @@ An approval or denial is bound to that full context. It does not widen a delegat
 
 Versioned approvals (`adap: 0.2`) also bind object version, type, algorithm, and `kid` under [signed-objects.md](./signed-objects.md).
 
+The approval's signed-object profile MUST match the delegation chain and intent profile. A v0.2 authorization context rejects a legacy approval; a legacy context rejects a v0.2 approval.
+
 ## Decisions
 
 ### `APPROVE`

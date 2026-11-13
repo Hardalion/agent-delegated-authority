@@ -20,6 +20,30 @@ export type SignedObjectAlg = 'Ed25519'
 /** Constraint interpretation bound to the signed-object profile. */
 export type ConstraintProfile = 'legacy-v0.1' | 'ceilings-v1'
 
+/** Wire/signature profile for signed objects (delegations, intents, approvals). */
+export type SignedObjectProfile = 'legacy' | '0.2'
+
+export function constraintProfileForSignedObjectProfile(
+  profile: SignedObjectProfile
+): ConstraintProfile {
+  return profile === '0.2' ? 'ceilings-v1' : 'legacy-v0.1'
+}
+
+/**
+ * Resolve the signed-object profile from envelope fields.
+ * Only `adap === "0.2"` with a typ and kid counts as versioned.
+ */
+export function signedObjectProfileOf(value: {
+  readonly adap?: string
+  readonly typ?: string
+  readonly kid?: string
+}): SignedObjectProfile {
+  if (value.adap === ADAP_SIGNED_VERSION && value.typ != null && value.kid != null) {
+    return '0.2'
+  }
+  return 'legacy'
+}
+
 export interface SignedEnvelopeFields {
   readonly adap: AdapSignedVersion
   readonly typ: SignedObjectType

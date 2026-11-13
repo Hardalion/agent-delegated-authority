@@ -4,11 +4,15 @@
 -- Deployment order:
 -- 1. Stop writers OR deploy application build that understands both schemas.
 -- 2. Apply this migration.
--- 3. Deploy application that always writes actor_id.
+-- 3. Deploy application that always writes actor_id and enforces legacy tombstones.
 --
--- Legacy rows (actor_id = '') remain non-replayable: the primary key still
--- includes nonce, and new actor-scoped rows use a different actor_id value.
--- Rollback is not lossless once new actor-scoped rows exist.
+-- Legacy rows keep actor_id = '' as *global nonce tombstones*. The application
+-- MUST treat them as blocking reuse of that nonce by any actor (see
+-- PostgresAtomicNonceBackend). Primary key alone is not enough: a new
+-- (tenant, actor, nonce) row could otherwise coexist with (tenant, '', nonce).
+-- Tombstones are retained indefinitely; do not auto-expire them without an
+-- explicit replay-protection rule. Rollback is not lossless once new
+-- actor-scoped rows exist.
 
 BEGIN;
 

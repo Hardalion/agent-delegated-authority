@@ -75,6 +75,111 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     }
   })
 
+  it('blocks reuse of a legacy empty-actor tombstone for every actor (#20)', async () => {
+    const pool = await freshPool()
+    try {
+      await pool.query(
+        `INSERT INTO adap_nonces (tenant_id, actor_id, nonce, version, status, intent_hash, in_flight)
+         VALUES ('default', '', 'legacy-tombstone', 1, 'consumed', 'ih-legacy', false)`,
+      )
+      const backend = new PostgresAtomicNonceBackend({ pool })
+      const seen = await backend.read('agt_a', 'legacy-tombstone')
+      expect(seen?.record.actorId).toBe('')
+      expect(seen?.record.status).toBe('consumed')
+
+      const ledger = new SharedNonceLedger(backend)
+      await expect(ledger.assertUsable('agt_a', 'legacy-tombstone', 'ih-new')).rejects.toBeInstanceOf(
+        AuthorityError,
+      )
+      await expect(ledger.assertUsable('agt_b', 'legacy-tombstone', 'ih-new')).rejects.toBeInstanceOf(
+        AuthorityError,
+      )
+      await expect(
+        ledger.claimForExecution('agt_a', 'legacy-tombstone', 'ih-new'),
+      ).rejects.toBeInstanceOf(AuthorityError)
+      await expect(
+        ledger.claimForExecution('agt_b', 'legacy-tombstone', 'ih-new'),
+      ).rejects.toBeInstanceOf(AuthorityError)
+
+      expect(
+        await backend.compareAndSwap('agt_a', 'legacy-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'ih-new',
+          inFlight: true,
+          actorId: 'agt_a',
+        }),
+      ).toBe(false)
+      expect(
+        await backend.compareAndSwap('agt_b', 'legacy-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'ih-new',
+          inFlight: true,
+          actorId: 'agt_b',
+        }),
+      ).toBe(false)
+
+      const { rows } = await pool.query(
+        `SELECT actor_id FROM adap_nonces WHERE nonce = 'legacy-tombstone' ORDER BY actor_id`,
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.actor_id).toBe('')
+
+      // A different nonce still works for either actor.
+      expect(
+        await backend.compareAndSwap('agt_a', 'fresh-after-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'ih-fresh',
+          inFlight: false,
+          actorId: 'agt_a',
+        }),
+      ).toBe(true)
+      expect(
+        await backend.compareAndSwap('agt_b', 'fresh-after-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'ih-fresh-b',
+          inFlight: false,
+          actorId: 'agt_b',
+        }),
+      ).toBe(true)
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('concurrent inserts against a legacy tombstone all fail closed (#20)', async () => {
+    const pool = await freshPool()
+    try {
+      await pool.query(
+        `INSERT INTO adap_nonces (tenant_id, actor_id, nonce, version, status, intent_hash, in_flight)
+         VALUES ('default', '', 'race-tombstone', 1, 'failed', 'ih-race', false)`,
+      )
+      const a = new PostgresAtomicNonceBackend({ pool })
+      const b = new PostgresAtomicNonceBackend({ pool })
+      const results = await Promise.all([
+        a.compareAndSwap('agt_a', 'race-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'a',
+          inFlight: true,
+          actorId: 'agt_a',
+        }),
+        b.compareAndSwap('agt_b', 'race-tombstone', 0, {
+          status: 'pending',
+          intentHash: 'b',
+          inFlight: true,
+          actorId: 'agt_b',
+        }),
+      ])
+      expect(results.every((ok) => ok === false)).toBe(true)
+      const { rows } = await pool.query(
+        `SELECT actor_id FROM adap_nonces WHERE nonce = 'race-tombstone'`,
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.actor_id).toBe('')
+    } finally {
+      await pool.end()
+    }
+  })
+
   it('isolates the same nonce string across actors (#20)', async () => {
     const pool = await freshPool()
     try {
