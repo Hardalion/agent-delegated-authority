@@ -10,7 +10,7 @@ export interface VaultCredentialBrokerOptions {
   readonly token: string
   /** Vault KV v2 data path, for example `secret/data/adap/rail`. */
   readonly secretPath: string
-  /** writeUrl must start with this prefix. Rejects a tampered vault value. */
+  /** HTTPS URL whose origin and path scope constrain the downstream write URL. */
   readonly writeUrlPrefix: string
   readonly timeoutMs?: number
 }
@@ -41,6 +41,7 @@ export class VaultCredentialBroker implements CredentialBroker {
     try {
       const res = await fetch(secret.writeUrl, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           'content-type': 'application/json',
           authorization: `Bearer ${secret.token}`,
@@ -79,6 +80,7 @@ export class VaultCredentialBroker implements CredentialBroker {
     const url = new URL('/ledger', secret.writeUrl)
     url.searchParams.set('intentHash', intentHash)
     const res = await fetch(url, {
+      redirect: 'error',
       headers: { authorization: `Bearer ${secret.token}` },
       signal: AbortSignal.timeout(this.options.timeoutMs ?? 10_000),
     })
@@ -103,9 +105,44 @@ export class VaultCredentialBroker implements CredentialBroker {
     const token = payload.data?.data?.token
     const writeUrl = payload.data?.data?.writeUrl
     if (typeof token !== 'string' || token.length < 16) throw new Error('credential store unavailable')
-    if (typeof writeUrl !== 'string' || !writeUrl.startsWith(this.options.writeUrlPrefix)) {
+    if (typeof writeUrl !== 'string' || !isAllowedDownstreamUrl(writeUrl, this.options.writeUrlPrefix)) {
       throw new Error('downstream url rejected')
     }
-    return { token, writeUrl }
+    return { token, writeUrl: new URL(writeUrl).toString() }
+  }
+}
+
+/**
+ * Treat the configured value as an HTTPS origin + path scope, not as a
+ * string prefix. URL parsing also normalizes host casing and default ports.
+ */
+function isAllowedDownstreamUrl(writeUrl: string, configuredPrefix: string): boolean {
+  try {
+    const destination = new URL(writeUrl)
+    const allowed = new URL(configuredPrefix)
+
+    if (
+      destination.protocol !== 'https:' ||
+      allowed.protocol !== 'https:' ||
+      destination.origin !== allowed.origin ||
+      destination.username !== '' ||
+      destination.password !== '' ||
+      destination.hash !== '' ||
+      destination.search !== '' ||
+      allowed.username !== '' ||
+      allowed.password !== '' ||
+      allowed.hash !== '' ||
+      allowed.search !== ''
+    ) {
+      return false
+    }
+
+    const allowedPath = allowed.pathname.endsWith('/') ? allowed.pathname.replace(/\/+$/, '') || '/' : allowed.pathname
+    const destinationPath = destination.pathname
+    return allowedPath === '/'
+      ? destinationPath.startsWith('/')
+      : destinationPath === allowedPath || destinationPath.startsWith(`${allowedPath}/`)
+  } catch {
+    return false
   }
 }
