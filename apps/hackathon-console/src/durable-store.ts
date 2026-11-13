@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import {
   AuthorityError,
+  DEFAULT_MAX_PENDING_APPROVALS,
   assertValidIdentity,
   assertValidNonce,
   createIdentity,
@@ -15,6 +16,7 @@ import {
   type NonceRecord,
   type PendingAuthorization,
   type PendingContinuation,
+  type PendingPutOptions,
   type PendingStore,
   type VersionedNonceRecord,
 } from 'adap'
@@ -428,53 +430,128 @@ class SqliteNonceBackend implements AtomicNonceBackend {
   }
 }
 
-class SqlitePendingStore implements PendingStore {
-  constructor(private readonly database: DatabaseSync) {}
+function assertPositiveSafeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new AuthorityError('approval', `${label} must be a positive safe integer`, true)
+  }
+  return value
+}
 
-  put(record: PendingAuthorization): void {
+function isActivePendingRecord(record: PendingAuthorization, now: Date): boolean {
+  if (record.approvalState !== 'pending') return false
+  return Date.parse(record.expiry) > now.getTime()
+}
+
+class SqlitePendingStore implements PendingStore {
+  constructor(
+    private readonly database: DatabaseSync,
+    private readonly defaults?: { readonly maxPendingApprovals?: number },
+  ) {}
+
+  put(record: PendingAuthorization, options?: PendingPutOptions): void {
     const actorId = assertValidIdentity(record.agentId, 'pending.agentId')
     const nonce = assertValidNonce(record.nonce)
+    const principalId = assertValidIdentity(record.principalId, 'pending.principalId')
     const normalized: PendingAuthorization = {
       ...record,
+      principalId,
+      agentId: actorId,
       nonce,
       approverId: assertValidIdentity(record.approverId, 'pending.approverId'),
       approvalState: 'pending',
     }
-    const existing = this.get(actorId, nonce)
-    if (existing) {
-      if (
-        existing.intentHash !== normalized.intentHash ||
-        existing.approvalState !== 'pending' ||
-        existing.policyContentHash !== normalized.policyContentHash
-      ) {
+    const max = assertPositiveSafeInteger(
+      options?.maxPendingApprovals ??
+        this.defaults?.maxPendingApprovals ??
+        DEFAULT_MAX_PENDING_APPROVALS,
+      'maxPendingApprovals',
+    )
+    const now = options?.now ?? new Date()
+
+    transaction(this.database, () => {
+      const existing = this.#getUnlocked(actorId, nonce)
+      if (existing) {
+        if (
+          existing.intentHash !== normalized.intentHash ||
+          existing.approvalState !== 'pending' ||
+          existing.policyContentHash !== normalized.policyContentHash
+        ) {
+          throw pendingConflict()
+        }
+        return
+      }
+
+      this.#expireStaleUnlocked(principalId, actorId, now)
+      const active = this.#countActiveUnlocked(principalId, actorId, now)
+      if (active >= max) {
+        throw new AuthorityError('approval_queue_full', 'pending approval queue is full', true)
+      }
+
+      try {
+        this.database
+          .prepare('INSERT INTO pending_auth (actor_id, nonce, json) VALUES (?, ?, ?)')
+          .run(actorId, nonce, JSON.stringify(normalized))
+      } catch {
         throw pendingConflict()
       }
-      return
-    }
-    try {
-      this.database
-        .prepare('INSERT INTO pending_auth (actor_id, nonce, json) VALUES (?, ?, ?)')
-        .run(actorId, nonce, JSON.stringify(normalized))
-    } catch {
-      const raced = this.get(actorId, nonce)
-      if (
-        !raced ||
-        raced.intentHash !== normalized.intentHash ||
-        raced.approvalState !== 'pending' ||
-        raced.policyContentHash !== normalized.policyContentHash
-      ) {
-        throw pendingConflict()
-      }
-    }
+    })
   }
 
   get(actorId: string, nonce: string): PendingAuthorization | undefined {
+    return this.#getUnlocked(actorId, nonce)
+  }
+
+  countActivePending(principalId: string, agentId: string, now = new Date()): number {
+    const principal = assertValidIdentity(principalId, 'pending.principalId')
+    const agent = assertValidIdentity(agentId, 'pending.agentId')
+    this.#expireStaleUnlocked(principal, agent, now)
+    return this.#countActiveUnlocked(principal, agent, now)
+  }
+
+  #getUnlocked(actorId: string, nonce: string): PendingAuthorization | undefined {
     const actor = assertValidIdentity(actorId, 'pending.agentId')
     const key = assertValidNonce(nonce)
     const row = this.database
       .prepare('SELECT json FROM pending_auth WHERE actor_id = ? AND nonce = ?')
       .get(actor, key) as { json: string } | undefined
     return row ? parseJson<PendingAuthorization>(row.json) : undefined
+  }
+
+  #countActiveUnlocked(principalId: string, agentId: string, now: Date): number {
+    const rows = this.database
+      .prepare(
+        `SELECT json FROM pending_auth
+         WHERE json_extract(json, '$.principalId') = ?
+           AND json_extract(json, '$.agentId') = ?
+           AND json_extract(json, '$.approvalState') = 'pending'`,
+      )
+      .all(principalId, agentId) as Array<{ json: string }>
+    let count = 0
+    for (const row of rows) {
+      const record = parseJson<PendingAuthorization>(row.json)
+      if (isActivePendingRecord(record, now)) count += 1
+    }
+    return count
+  }
+
+  #expireStaleUnlocked(principalId: string, agentId: string, now: Date): void {
+    const rows = this.database
+      .prepare(
+        `SELECT actor_id, nonce, json FROM pending_auth
+         WHERE json_extract(json, '$.principalId') = ?
+           AND json_extract(json, '$.agentId') = ?
+           AND json_extract(json, '$.approvalState') = 'pending'`,
+      )
+      .all(principalId, agentId) as Array<{ actor_id: string; nonce: string; json: string }>
+    const update = this.database.prepare(
+      'UPDATE pending_auth SET json = ? WHERE actor_id = ? AND nonce = ?',
+    )
+    for (const row of rows) {
+      const record = parseJson<PendingAuthorization>(row.json)
+      if (record.approvalState === 'pending' && Date.parse(record.expiry) <= now.getTime()) {
+        update.run(JSON.stringify({ ...record, approvalState: 'expired' }), row.actor_id, row.nonce)
+      }
+    }
   }
 
   requireContinuation(input: PendingContinuation): PendingAuthorization {

@@ -40,7 +40,7 @@ Principal
 
 | Hook | MUST when present | Reference |
 | --- | --- | --- |
-| `rootAuthority` | Reject unauthorized roots (`root_not_authorized`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
+| Root trust policy | Executable path requires `trustedRootIssuers` and/or `rootAuthority`; empty allow-list and missing policy fail closed (`root_not_authorized`, unauthenticated) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
 | `revocationCheck` | `revoked` / `unavailable` → `BLOCK` | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#revocation) |
 | `approvalPolicy` | Reject non-human / self-approval when configured | `packages/aap/src/path.ts`, [human-approval.md](./human-approval.md#who-may-approve) |
 

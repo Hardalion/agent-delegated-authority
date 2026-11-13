@@ -95,8 +95,9 @@ export interface RunAuthorityPathInput {
   readonly receiptSequence?: number
   readonly prevReceiptHash?: string | null
   /**
-   * Optional operator root-of-authority check. When set, a root whose issuer
-   * is not authorized fails closed (`root_not_authorized`).
+   * Operator root-of-authority callback. Either this or a non-absent
+   * `trustedRootIssuers` value (including an empty list) is required.
+   * A directory key alone never authorizes root issuance.
    */
   readonly rootAuthority?: {
     readonly mayIssueRoot: (input: {
@@ -106,9 +107,9 @@ export interface RunAuthorityPathInput {
     }) => boolean
   }
   /**
-   * Optional allow-list of identities that may issue a root delegation.
-   * Participant / demo callers use this; equivalent to a `rootAuthority` that
-   * only checks issuer membership. When set, an absent or empty list fails closed.
+   * Allow-list of identities that may issue a root delegation.
+   * Provide this and/or `rootAuthority`. Omitting both fails closed.
+   * An empty list rejects every root. Directory membership is not trust.
    */
   readonly trustedRootIssuers?: ReadonlySet<string> | readonly string[]
   /**
@@ -159,6 +160,62 @@ function unauthenticatedRejection(error: unknown): ProtocolResult {
   }
 }
 
+function hasRootTrustPolicy(input: RunAuthorityPathInput): boolean {
+  return input.trustedRootIssuers != null || input.rootAuthority != null
+}
+
+/**
+ * Executable path root trust. Signature verification is separate: a directory
+ * key never authorizes root issuance by itself. Failures are unauthenticated
+ * (`authenticated: false`) so nonce and pending state are not created.
+ */
+function assertExecutableRootTrust(
+  root: SignedDelegation | undefined,
+  input: RunAuthorityPathInput
+): void {
+  if (!hasRootTrustPolicy(input)) {
+    throw new AuthorityError(
+      'root_not_authorized',
+      'executable authority path requires trustedRootIssuers or rootAuthority',
+      false
+    )
+  }
+  if (!root || root.parent_delegation_id) {
+    throw new AuthorityError('chain', 'delegation chain must begin with a root grant', false)
+  }
+  if (input.trustedRootIssuers != null) {
+    const trusted = new Set(
+      Array.isArray(input.trustedRootIssuers)
+        ? input.trustedRootIssuers
+        : [...input.trustedRootIssuers]
+    )
+    if (trusted.size === 0 || !trusted.has(root.issuer)) {
+      throw new AuthorityError(
+        'root_not_authorized',
+        'root issuer is not an operator-trusted authority',
+        false
+      )
+    }
+  }
+  if (input.rootAuthority) {
+    const allowed = input.rootAuthority.mayIssueRoot({
+      issuerId: root.issuer,
+      subjectId: root.subject,
+      capabilities: root.capabilities.map((capability) => ({
+        action: capability.action,
+        target: capability.target ?? '',
+      })),
+    })
+    if (!allowed) {
+      throw new AuthorityError(
+        'root_not_authorized',
+        'root issuer is not authorized for this grant',
+        false
+      )
+    }
+  }
+}
+
 export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<ProtocolResult> {
   let signatureVerified = false
   let intentHash = ''
@@ -173,13 +230,22 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     if (!hasResolver(input.policyResolver)) {
       throw new AuthorityError('policy', 'a trusted policy resolver is required', false)
     }
+    if (!hasRootTrustPolicy(input)) {
+      throw new AuthorityError(
+        'root_not_authorized',
+        'executable authority path requires trustedRootIssuers or rootAuthority',
+        false
+      )
+    }
+    // Signature verification only. Root trust is evaluated next and must not be
+    // conflated with directory key resolution inside presentAuthority.
     presented = presentAuthority({
       chain: input.chain,
       intent: input.intent,
       directory: input.directory,
       now,
-      trustedRootIssuers: input.trustedRootIssuers,
     })
+    assertExecutableRootTrust(presented.chain[0], input)
     signatureVerified = true
     intentHash = sha256(unsignedIntent(presented.intent))
     delegationHash = sha256(presented.chain.map(unsignedDelegation))
@@ -203,41 +269,6 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       intent: presented.intent,
       now,
     })
-
-    const root = verified.chain[0]
-    if (root && !root.parent_delegation_id) {
-      if (input.trustedRootIssuers != null) {
-        const trusted = new Set(
-          Array.isArray(input.trustedRootIssuers)
-            ? input.trustedRootIssuers
-            : [...input.trustedRootIssuers]
-        )
-        if (trusted.size === 0 || !trusted.has(root.issuer)) {
-          throw new AuthorityError(
-            'root_not_authorized',
-            'root issuer is not authorized for this grant',
-            true
-          )
-        }
-      }
-      if (input.rootAuthority) {
-        const allowed = input.rootAuthority.mayIssueRoot({
-          issuerId: root.issuer,
-          subjectId: root.subject,
-          capabilities: root.capabilities.map((capability) => ({
-            action: capability.action,
-            target: capability.target ?? '',
-          })),
-        })
-        if (!allowed) {
-          throw new AuthorityError(
-            'root_not_authorized',
-            'root issuer is not authorized for this grant',
-            true
-          )
-        }
-      }
-    }
     if (input.revocationCheck) {
       for (const delegation of verified.chain) {
         const status = input.revocationCheck(delegation.delegation_id)
@@ -538,7 +569,12 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       }
     )
   } catch (error) {
-    if (!signatureVerified || !presented) {
+    if (
+      !signatureVerified ||
+      !presented ||
+      (error instanceof AuthorityError &&
+        (!error.authenticated || error.code === 'root_not_authorized' || error.code === 'trust'))
+    ) {
       return unauthenticatedRejection(error)
     }
     if (!intentHash) {

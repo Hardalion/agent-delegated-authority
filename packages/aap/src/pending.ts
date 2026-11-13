@@ -109,6 +109,9 @@ export class PendingAuthorizationStore implements PendingStore {
       options?.maxPendingApprovals ??
       this.defaults?.maxPendingApprovals ??
       DEFAULT_MAX_PENDING_APPROVALS
+    if (!Number.isSafeInteger(max) || max < 1) {
+      throw new AuthorityError('approval', 'maxPendingApprovals must be a positive safe integer', true)
+    }
     this.expireStale(record.principalId, record.agentId, now)
     const active = this.countActivePending(record.principalId, record.agentId, now)
     if (active >= max) {

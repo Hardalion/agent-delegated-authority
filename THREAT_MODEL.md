@@ -116,7 +116,7 @@ The property holds only when the operator's network gives the agent no other rou
 
 | Finding | Classification | Disposition |
 | --- | --- | --- |
-| Root of authority / self-issued roots | Confirmed limitation | Normative requirements + optional `rootAuthority` hook in [spec/delegation.md](spec/delegation.md) |
+| Root of authority / self-issued roots | Mitigated on executable path | `runAuthorityPath` requires `trustedRootIssuers` and/or `rootAuthority`; directory keys alone are not root trust ([spec/delegation.md](spec/delegation.md)) |
 | Self-approval via agent key | Confirmed limitation | Normative approver binding in [spec/human-approval.md](spec/human-approval.md) |
 | Caller-chosen governing policy | Confirmed limitation | Normative selection rules in [spec/policy-decision.md](spec/policy-decision.md) |
 | No per-delegation revocation | Confirmed limitation | Normative + optional `revocationCheck` hook in [spec/delegation.md](spec/delegation.md) |

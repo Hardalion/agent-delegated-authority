@@ -65,7 +65,12 @@ A conforming runtime that enforces root of authority:
 3. Rejects a root whose issuer is also its subject, unless the configuration explicitly allows that for the namespace.
 4. Distinguishes identity kinds (`human`, `agent`, `service`) when verifying approvals and roots.
 
-The reference path accepts an optional `rootAuthority` hook on `runAuthorityPath`. When the hook is absent, root checks are deployment-owned and out of band. When present, a failed check is fail-closed `BLOCK`.
+The reference executable path (`runAuthorityPath` / `executeAuthorized`) **requires** an explicit root trust policy:
+
+1. a `trustedRootIssuers` allow-list (an empty list rejects every root), and/or
+2. a `rootAuthority.mayIssueRoot` callback.
+
+Omitting both fails closed before the executor runs. A verified signature from a directory key is not root authorization. Trust failures are unauthenticated (`authenticated: false`) and must not create nonce or pending-approval state. Offline `verifyAuthority` may still take an optional allow-list for signature-time checks; the executable path does not rely on that alone.
 
 ## Revocation
 

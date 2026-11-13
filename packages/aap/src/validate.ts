@@ -406,8 +406,9 @@ export function presentAuthority(input: {
   readonly directory: DirectoryInput
   readonly now?: Date
   /**
-   * Optional operator allow-list for root issuers. Checked before the result is
-   * treated as authenticated. A directory key alone is not enough.
+   * Optional operator allow-list for offline / helper verification.
+   * The executable path (`runAuthorityPath`) requires its own root trust policy
+   * and does not rely on this optional argument alone.
    */
   readonly trustedRootIssuers?: ReadonlySet<string> | readonly string[]
 }): { readonly chain: SignedDelegation[]; readonly intent: SignedIntent } {
