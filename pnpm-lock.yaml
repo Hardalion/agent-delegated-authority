@@ -133,6 +133,9 @@ importers:
 
   packages/policy-engine:
     dependencies:
+      adap-receipt:
+        specifier: workspace:*
+        version: link:../audit-verify
       yaml:
         specifier: ^2.8.3
         version: 2.9.0

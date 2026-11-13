@@ -137,6 +137,227 @@ LEGIT
 
 See [SECURITY.md](./SECURITY.md). Do not commit Team tokens, private keys, or production credentials.
 
+The same path refuses six further cases. `pnpm attacks` prints them. Each refusal is `BLOCK`, the executor is not called, and the receipt verifies with the issuer public key. See [examples/attacks/](./examples/attacks/).
+
+## Receipt
+
+Every consequential agent action can leave a portable, independently verifiable proof of authority.
+
+Not a log. A cryptographically verifiable authorization receipt. The signature does not, by itself, prove that an external system performed the action. `executed: true` means the reference runtime's executor callback returned. It is not an independent observation of that system.
+
+```
+AUTHORIZATION RECEIPT
+
+WHO
+  agt_a
+  on behalf of prn_alex
+
+WHAT
+  purchase €420
+  currency EUR
+  route ATH-LON
+
+UNDER
+  book-flight@1.0.0
+
+DECISION
+  ALLOW
+
+HUMAN APPROVAL
+  yes
+
+EXECUTED
+  yes, as reported by the reference runtime
+
+VERIFICATION
+  signature, when the issuer public key is held
+  policy document, when its canonical hash is recomputed
+  intent, when the unsigned intent is held
+  authority, when the unsigned delegations are held
+```
+
+The receipt binds the principal, the agent, each presented delegation by hash, the intent hash at the execution boundary, the policy pin, the rule id, and the canonical hash of the policy document that was loaded. That hash is of the document, not of one file's raw bytes. A verifier checks it offline. No hosted service is required.
+
+A refused action gets a receipt too. `executed` is false. Specification: [spec/authorization-receipt.md](./spec/authorization-receipt.md).
+
+## Two-minute map: ADAP vs this repo vs Nexus
+
+| Piece | What it is | What it is not |
+| --- | --- | --- |
+| **ADAP** (`spec/`) | Open delegated-authority protocol (Apache 2.0) | Hardalion Nexus, a hosted control plane, or a vendor SDK |
+| **Reference packages** (`adap`, `adap-policy`, `adap-receipt`, `adap-gateway`) | One conforming implementation of the protocol | Required to use ADAP; not native SAP/Stripe/AWS connectors |
+| **Policy-only helpers** (`McpToolGate`, `integrations/`) | Evaluate tool args against a policy document | Full ADAP (no signed intent, delegation, capability, or receipt) |
+| **Hackathon `/api/gate`** (event branch `hackathon/participants`) | Local demo console for summit participants | Normative ADAP or production enforcement |
+| **Hardalion Nexus** | Separate commercial product that can *implement* ADAP semantics | Part of this protocol repository |
+
+If Nexus says no, the action does not happen — that is a product claim about a correctly deployed customer network, not a universal proof about every network. This repository stays protocol-first.
+
+## Where ADAP sits
+
+There is already work on agent identity, authorization, attenuated delegation, and receipts. ADAP does not claim to be the first project in that space. The primitive this draft specifies is the combination: delegated authority, a signed intent, a deterministic policy decision, an authorization boundary before the side effect, and a portable receipt of that decision and of the reported execution.
+
+The cells below describe this draft's reference path, and the job of the other layers. They are not a claim that no one else has considered a cell. Here is the problem this draft chooses to specify.
+
+| Question | OAuth 2.0 | Agent identity | A policy engine | ADAP |
+| --- | --- | --- | --- | --- |
+| Who is the caller? | No. OpenID Connect does this. | Yes | No | No. The id is opaque. |
+| May this action happen? | Yes, as scopes | No | Yes | Yes, as capabilities |
+| May authority be passed on? | Yes. A person delegates to a client. RFC 8693 can also record an actor and a chain. | Naming the agent is a different job. | No | Yes. An agent may delegate on. |
+| Can the child raise the parent's bound? | Token exchange can narrow scope. Attenuated delegation is also an active standards topic. | No | No | This draft rejects a child that raises `max_amount`. |
+| Is the attempt bound to a signed intent? | No | No | No | Yes |
+| Does one agent delegate authority to another? | A client can act for a person, and token exchange can chain actors. That chain is not a signed agent intent under a parent bound. | No | No | Yes |
+| Is the decision deterministic for the same policy and input? | The server's policy is deployment-defined. | No | Yes | Yes |
+| Does a refusal skip execution? | The resource server enforces the token. OAuth does not record whether the action ran. | No | The caller enforces the decision. | Yes. `BLOCK` and `REQUIRE_HUMAN` do not call the executor. |
+| Is there a portable record of the decision and of the reported execution? | No | No | No | Yes. The receipt verifies offline when the issuer public key is available. |
+
+## Threat model
+
+The reference path refuses over-delegation, re-delegation of a non-delegable capability, a sub-agent acting outside its grant, replay (including concurrent in-flight reuse), execution after `BLOCK` or `REQUIRE_HUMAN`, and instruction text that tries to raise a bound.
+
+ADAP authorization correctness is not complete agent security. A stolen key, a runtime that skips the path when the agent holds rail credentials, a verifier that ignores a failure, and a resource server that acts without a receipt are outside this draft. Keeping credentials away from the agent is a deployment property, described in the threat model. What the draft guarantees, and what it does not: [THREAT_MODEL.md](./THREAT_MODEL.md).
+
+## Boundary
+
+The repository contains the open protocol and reference implementations. Production deployment, identity infrastructure, connectors, hosted services and other implementation-specific components are outside the scope of this repository.
+
+The protocol does not require the reference packages.
+
+### Open protocol vs enforcement gateway
+
+ADAP is the authority semantics. It does not, by itself, stop an agent that already holds the rail credential from calling the API. The in-process `execute` callback in this repo is for local testing.
+
+A deployment that needs the boundary to hold runs the check **out of process**: a sidecar, an MCP server gateway, or a commercial enforcement gateway. The agent signs intents and holds no rail credential. The credential stays in the operator's vault, behind a write endpoint that accepts a request only from the gateway after `ALLOW`.
+
+```
+Agent (signing key only)
+        │ signed intent
+        ▼
+ADAP gateway / sidecar ──ALLOW──► operator write endpoint (credential in vault)
+        │
+        └── BLOCK / REQUIRE_HUMAN → no side effect
+```
+
+That holds only when the operator's network gives the agent no other route to the endpoint or the credential. `packages/adap-gateway` is a reference process for this boundary. It does not supply the operator's network policy. The protocol does not require that package.
+
+`max_amount` is a per-intent ceiling on the terminal grant. It is not cumulative spend across the life of a delegation. Optional receipt fields `sequence` and `prevReceiptHash` form a hash chain that `verifyReceiptChain` checks for gaps and reordering. Standalone receipts without those fields remain valid individually.
+
+The example policy `basic-agent-authority` is synthetic. Identifiers such as `prn_example`, `agt_a`, and `resource/example` are not organizations.
+
+```yaml
+version: "1.0.0"
+policyName: basic-agent-authority
+targetAgents: ["*"]
+defaultAction: BLOCK
+rules:
+  - ruleId: block_over_cap
+    action: BLOCK
+    condition: "tool.name == 'apply' && args.amount > 500"
+    alertSeverity: CRITICAL
+  - ruleId: apply_needs_human
+    action: REQUIRE_HUMAN
+    condition: "tool.name == 'apply'"
+    alertSeverity: MEDIUM
+  - ruleId: read_allow
+    action: ALLOW
+    condition: "tool.name == 'read'"
+    alertSeverity: LOW
+```
+
+## Repository
+
+```
+agent-delegated-authority/
+├── spec/
+├── packages/
+│   ├── aap/                  adap
+│   ├── policy-engine/        adap-policy
+│   ├── audit-verify/         adap-receipt
+│   ├── adap-gateway/
+│   └── adap-store-postgres/
+├── examples/
+├── integrations/
+├── staging/                  local Compose drill
+├── docs/
+├── tests/
+├── README.md
+├── THREAT_MODEL.md
+├── SECURITY.md
+├── CONTRIBUTING.md
+└── LICENSE
+```
+
+| Path | Role |
+| --- | --- |
+| [spec/](./spec/) | Protocol requirements |
+| `adap-policy` | Reference evaluator, CLI `adap-policy` |
+| `adap-receipt` | Offline Authorization Receipt verification |
+| `adap` | Reference authority path in `packages/aap`. Not normative. The caller supplies the execution callback. |
+| `adap-store-postgres` | Reference PostgreSQL nonce, pending, policy, and execution-log adapters. Not a hosted database. |
+| `adap-gateway` | Reference process that runs the authority path and a credential broker. Not required by the protocol. |
+| [examples/](./examples/) | Illustrations, plus `examples/proof/` which verifies offline |
+| [integrations/](./integrations/) | One hook before a tool runs |
+| [docs/](./docs/) | Architecture, security status, and local operations |
+| [staging/](./staging/) | Local Compose drill. Not a production deployment |
+| [THREAT_MODEL.md](./THREAT_MODEL.md) | What this draft guarantees, and what it does not |
+| [SECURITY.md](./SECURITY.md) | How to report a vulnerability |
+
+A policy pin is `{policy-id}@{semver}`. A URI scheme is implementation-defined and is not part of this draft. How a pin becomes a document is implementation-defined.
+
+## Verify it yourself
+
+The receipt is independently verifiable offline when the issuer public key is available. No hosted service is required.
+
+`adap-receipt` checks structure and the content hash. It checks the Ed25519 signature only when the issuer public key is passed:
+
+```bash
+node packages/audit-verify/dist/cli.js examples/receipt.json --public-key examples/issuer-public-key.txt --verbose
+```
+
+`examples/proof/` is one reference run: the parent delegation, the child that raises the bound, the intent, the policy document, and the receipts for the refused grant and the refused instruction. The receipt's `policy.contentHash` is the canonical hash of that document.
+
+```bash
+node examples/verify-proof.mjs
+```
+
+That command checks the signatures, the delegation hashes inside the receipts, the policy content hash, and that the raised child grant is rejected.
+
+`pnpm attacks` runs the six refusals in `examples/attacks/`. Each one is an execution of the reference path.
+
+## Quick start
+
+The reference packages are not currently published to npm. Clone the repository and run the proof.
+
+```bash
+git clone https://github.com/hardalion/agent-delegated-authority.git
+cd agent-delegated-authority
+pnpm install && pnpm test && pnpm build && pnpm demo && pnpm attacks
+```
+
+```bash
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args "{\"amount\":800}" --json
+node packages/audit-verify/dist/cli.js examples/receipt.json --public-key examples/issuer-public-key.txt
+```
+
+```typescript
+import { evaluateToolCall } from 'adap-policy'
+
+const decision = evaluateToolCall({
+  policy: 'basic-agent-authority',
+  toolName: 'apply',
+  toolArgs: { amount: 800 },
+  agentRole: 'agt_reader',
+})
+
+console.log(decision.action) // BLOCK
+console.log(decision.ruleId)
+```
+
+Framework hooks: [integrations/README.md](./integrations/README.md). Authority: [spec/authority.md](./spec/authority.md). Conformance: [spec/conformance.md](./spec/conformance.md). Reference packages and local staging: [docs/README.md](./docs/README.md).
+
+An omitted `--agent` is out of scope for `basic-agent-authority`. The commands above pass `agt_reader`. `amount: 800` is `BLOCK` (`block_over_cap`). A `read` with that role is `ALLOW`.
+
+For the GenAI Summit event experience, use the [hackathon section](#genai-summit-hackathon) at the top of this file (`pnpm hackathon:start` on branch `hackathon/participants`).
+
 ## License
 
 Apache License 2.0. See [LICENSE](./LICENSE).

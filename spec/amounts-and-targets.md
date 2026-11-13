@@ -14,7 +14,11 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Non-finite | `NaN`, `+Infinity`, `-Infinity` are rejected before authorization. |
 | Zero | Allowed for both amounts and `max_*` caps. |
 | Comparison | Deterministic numeric compare on canonical values only. |
-| Scope | `max_amount` (and `max_*` keys) are **per-intent** ceilings, not cumulative spend. |
+| Scope | Profile-dependent. Legacy v0.1: only `max_amount` is a ceiling; other keys (including `max_quantity`) are exact-match. Signed-object 0.2 (`ceilings-v1`): every canonical `max_<field>` is a **per-intent** ceiling on `parameters.<field>`. See [signed-objects.md](./signed-objects.md) and [delegation.md](./delegation.md). Not cumulative spend. |
+
+### Cumulative budgets (non-normative future)
+
+Issue #13: silent multi-turn / cumulative spend accounting across intents is **out of scope for v0.1**. Receipt chains prove integrity of supplied receipts only. Operators that need cumulative limits must implement them outside this schema and state the semantics separately. Unknown downstream outcomes after an authorized attempt keep the nonce consumed; reconcile with idempotency at the resource.
 
 Policy evaluation and terminal constraint enforcement must use the same normalized representation.
 

@@ -26,13 +26,23 @@ export {
   type PolicyRef,
   type ReceiptIntegrity,
   type UnsignedAuthorizationReceipt,
+  type VerifyAuthorizationReceiptOptions,
   type VerifyAuthorizationReceiptResult,
 } from './authorization-receipt.js'
 
+export { canonicalJson, CanonicalJsonError } from './canonical-json.js'
+
 export {
+  AuthorizationReceiptLog,
+  DEMO_SIGNATURE_HEX,
   emitAuthorizationReceipt,
   emitAuthorizationReceiptFromDecision,
+  generateReceiptKeyPair,
   hashToolArgs,
+  isDemoSignatureHex,
+  signReceipt,
+  signReceiptBytes,
   type EmitAuthorizationReceiptInput,
   type DecisionLike,
+  type ReceiptSigner,
 } from './emit-authorization-receipt.js'

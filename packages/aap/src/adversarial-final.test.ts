@@ -51,22 +51,33 @@ class SharedMemoryBackend implements AsyncAtomicNonceBackend {
   beforeCompareAndSwap?: () => Promise<void> | void
   private hookUsed = false
 
-  async read(nonce: string): Promise<VersionedNonceRecord | undefined> {
-    const row = this.rows.get(nonce)
+  private key(actorId: string, nonce: string): string {
+    return `${actorId}\0${nonce}`
+  }
+
+  async read(actorId: string, nonce: string): Promise<VersionedNonceRecord | undefined> {
+    const row = this.rows.get(this.key(actorId, nonce))
     return row ? { version: row.version, record: row.record } : undefined
   }
 
-  async compareAndSwap(nonce: string, expectedVersion: number, record: NonceRecord): Promise<boolean> {
+  async compareAndSwap(
+    actorId: string,
+    nonce: string,
+    expectedVersion: number,
+    record: NonceRecord
+  ): Promise<boolean> {
     if (this.beforeCompareAndSwap && !this.hookUsed) {
       this.hookUsed = true
       const hook = this.beforeCompareAndSwap
       this.beforeCompareAndSwap = undefined
       await hook()
     }
-    const row = this.rows.get(nonce)
+    const storage = this.key(actorId, nonce)
+    const row = this.rows.get(storage)
     const version = row?.version ?? 0
     if (version !== expectedVersion) return false
-    this.rows.set(nonce, { version: version + 1, record })
+    if (record.actorId !== actorId) return false
+    this.rows.set(storage, { version: version + 1, record })
     return true
   }
 }
@@ -114,23 +125,30 @@ function intent(agent: ReturnType<typeof createIdentity>, root: ReturnType<typeo
 }
 
 describe('shared nonce adapter', () => {
+  const actor = 'agt_shared'
+
   it('lets only one SharedNonceLedger claim win across a scripted async race', async () => {
     const backend = new SharedMemoryBackend()
     const first = new SharedNonceLedger(backend)
     const second = new SharedNonceLedger(backend)
     backend.beforeCompareAndSwap = async () => {
-      await second.claimForExecution('shared-async', 'hash-1')
+      await second.claimForExecution(actor, 'shared-async', 'hash-1')
     }
-    await expect(first.claimForExecution('shared-async', 'hash-1')).rejects.toThrow(/nonce_in_flight_or_used/)
-    expect(await second.statusOf('shared-async')).toBe('pending')
-    await expect(second.claimForExecution('shared-async', 'hash-1')).rejects.toThrow(/nonce_in_flight_or_used/)
+    await expect(first.claimForExecution(actor, 'shared-async', 'hash-1')).rejects.toThrow(
+      /nonce_in_flight_or_used/,
+    )
+    expect(await second.statusOf(actor, 'shared-async')).toBe('pending')
+    await expect(second.claimForExecution(actor, 'shared-async', 'hash-1')).rejects.toThrow(
+      /nonce_in_flight_or_used/,
+    )
   })
 
   it('does not coordinate two process-local MemoryAtomicNonceBackend instances', () => {
     const left = new MemoryAtomicNonceBackend()
     const right = new MemoryAtomicNonceBackend()
-    expect(left.compareAndSwap('split', 0, { status: 'pending', intentHash: 'h', inFlight: true })).toBe(true)
-    expect(right.compareAndSwap('split', 0, { status: 'pending', intentHash: 'h', inFlight: true })).toBe(true)
+    const record = { status: 'pending' as const, intentHash: 'h', inFlight: true, actorId: actor }
+    expect(left.compareAndSwap(actor, 'split', 0, record)).toBe(true)
+    expect(right.compareAndSwap(actor, 'split', 0, record)).toBe(true)
   })
 })
 
@@ -159,7 +177,7 @@ describe('executor boundary', () => {
     expect(failed.decision).toBe('BLOCK')
     expect(failed.executed).toBe(false)
     expect(failed.ruleId).toBe('execution')
-    expect(await ledger.statusOf(signed.nonce)).toBe('failed')
+    expect(await ledger.statusOf(signed.actor, signed.nonce)).toBe('failed')
     const retry = await runAuthorityPath({
       chain: [env.root],
       intent: signed,
@@ -205,7 +223,7 @@ describe('executor boundary', () => {
     expect(result.authenticated).toBe(true)
     expect(result.receipt).toBeUndefined()
     expect(result.executionHash).toBe('unhashable')
-    expect(await ledger.statusOf(signed.nonce)).toBe('consumed')
+    expect(await ledger.statusOf(signed.actor, signed.nonce)).toBe('consumed')
   })
 })
 

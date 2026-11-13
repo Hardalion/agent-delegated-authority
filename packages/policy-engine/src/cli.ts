@@ -92,8 +92,8 @@ Options:
   --json                  Print full decision JSON
 
 Examples:
-  adap-policy --tool apply --args "{\\"amount\\":800}"
-  adap-policy --tool read
+  adap-policy --tool apply --agent agt_reader --args "{\\"amount\\":800}"
+  adap-policy --tool read --agent agt_reader
   adap-policy --policy-file ./my-policy.yaml --tool apply
   adap-policy --policy-uri basic-agent-authority@1.0.0 --tool read`)
   process.exit(2)

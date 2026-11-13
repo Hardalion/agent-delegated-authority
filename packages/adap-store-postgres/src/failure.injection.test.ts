@@ -20,7 +20,7 @@ describe.skipIf(!RUN)('PostgreSQL failure injection', () => {
     })
     const backend = new PostgresAtomicNonceBackend({ pool })
     await expect(
-      backend.compareAndSwap('x', 0, { status: 'pending', intentHash: 'h', inFlight: false }),
+      backend.compareAndSwap('agt_a', 'x', 0, { status: 'pending', intentHash: 'h', inFlight: false, actorId: 'agt_a' }),
     ).rejects.toBeTruthy()
     await pool.end().catch(() => undefined)
   })
@@ -46,10 +46,10 @@ describe.skipIf(!RUN)('PostgreSQL failure injection', () => {
       await applyMigrations(pool)
       await pool.query('TRUNCATE adap_nonces')
       const ledger = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
-      await ledger.claimForExecution('dup', 'h')
-      await ledger.consume('dup', 'h')
-      await ledger.consume('dup', 'h') // idempotent consume
-      await expect(ledger.claimForExecution('dup', 'h')).rejects.toBeInstanceOf(AuthorityError)
+      await ledger.claimForExecution('agt_a', 'dup', 'h')
+      await ledger.consume('agt_a', 'dup', 'h')
+      await ledger.consume('agt_a', 'dup', 'h') // idempotent consume
+      await expect(ledger.claimForExecution('agt_a', 'dup', 'h')).rejects.toBeInstanceOf(AuthorityError)
     } finally {
       await pool.end()
     }
@@ -78,8 +78,8 @@ describe.skipIf(!RUN)('PostgreSQL failure injection', () => {
         approverId: 'approver',
       })
       const results = await Promise.allSettled([
-        store.markApproved('appr', 'ih'),
-        store.markApproved('appr', 'ih'),
+        store.markApproved('a', 'appr', 'ih'),
+        store.markApproved('a', 'appr', 'ih'),
       ])
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
       expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1)

@@ -11,3 +11,5 @@ oss/
 !.env.example
 *.pem
 *.key
+**/__pycache__/
+*.pyc

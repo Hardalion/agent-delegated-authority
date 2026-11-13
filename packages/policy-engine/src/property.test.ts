@@ -10,14 +10,12 @@ import {
   type Policy,
 } from './index.js'
 
-const ACTIONS = ['ALLOW', 'BLOCK', 'REQUIRE_HUMAN', 'DEFER', 'SIMULATE'] as const
+const ACTIONS = ['ALLOW', 'BLOCK', 'REQUIRE_HUMAN'] as const
 type Action = (typeof ACTIONS)[number]
 
 const PRIORITY: Record<Action, number> = {
-  BLOCK: 5,
-  REQUIRE_HUMAN: 4,
-  DEFER: 3,
-  SIMULATE: 2,
+  BLOCK: 3,
+  REQUIRE_HUMAN: 2,
   ALLOW: 1,
 }
 
@@ -56,8 +54,8 @@ describe('policy property-based CI', () => {
             condition: "tool.name == 'read' && args.amount > 10000",
           },
           {
-            ruleId: 'r_defer',
-            action: 'DEFER',
+            ruleId: 'r_human_ping',
+            action: 'REQUIRE_HUMAN',
             condition: "tool.name == 'ping'",
           },
         ])

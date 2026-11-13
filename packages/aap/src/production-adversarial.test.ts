@@ -234,10 +234,11 @@ describe('production adversarial suite', () => {
     const backend = new MemoryAtomicNonceBackend()
     const la = new NonceLedger(backend)
     const lb = new NonceLedger(backend)
-    la.reserve('race', 'h')
+    const actor = 'agt_race'
+    la.reserve(actor, 'race', 'h')
     backend.beforeCompareAndSwap = () => {
-      lb.claimForExecution('race', 'h')
+      lb.claimForExecution(actor, 'race', 'h')
     }
-    expect(() => la.claimForExecution('race', 'h')).toThrow(AuthorityError)
+    expect(() => la.claimForExecution(actor, 'race', 'h')).toThrow(AuthorityError)
   })
 })
