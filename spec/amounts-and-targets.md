@@ -16,6 +16,10 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Comparison | Deterministic numeric compare on canonical values only. |
 | Scope | Every `max_<field>` key is a **per-intent** ceiling on `parameters.<field>`, not cumulative spend. `max_amount` bounds `amount`. `max_quantity` bounds `quantity`. A key that starts with `max_` but is not `max_<field>` is rejected. |
 
+### Cumulative budgets (non-normative future)
+
+Issue #13: silent multi-turn / cumulative spend accounting across intents is **out of scope for v0.1**. Receipt chains prove integrity of supplied receipts only. Operators that need cumulative limits must implement them outside this schema and state the semantics separately. Unknown downstream outcomes after an authorized attempt keep the nonce consumed; reconcile with idempotency at the resource.
+
 Policy evaluation and terminal constraint enforcement must use the same normalized representation.
 
 ## Currency

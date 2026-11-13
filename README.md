@@ -243,6 +243,18 @@ The receipt binds the principal, the agent, each presented delegation by hash, t
 
 A refused action gets a receipt too. `executed` is false. Specification: [spec/authorization-receipt.md](./spec/authorization-receipt.md).
 
+## Two-minute map: ADAP vs this repo vs Nexus
+
+| Piece | What it is | What it is not |
+| --- | --- | --- |
+| **ADAP** (`spec/`) | Open delegated-authority protocol (Apache 2.0) | Hardalion Nexus, a hosted control plane, or a vendor SDK |
+| **Reference packages** (`adap`, `adap-policy`, `adap-receipt`, `adap-gateway`) | One conforming implementation of the protocol | Required to use ADAP; not native SAP/Stripe/AWS connectors |
+| **Policy-only helpers** (`McpToolGate`, `integrations/`) | Evaluate tool args against a policy document | Full ADAP (no signed intent, delegation, capability, or receipt) |
+| **Hackathon `/api/gate`** (event branch `hackathon/participants`) | Local demo console for summit participants | Normative ADAP or production enforcement |
+| **Hardalion Nexus** | Separate commercial product that can *implement* ADAP semantics | Part of this protocol repository |
+
+If Nexus says no, the action does not happen — that is a product claim about a correctly deployed customer network, not a universal proof about every network. This repository stays protocol-first.
+
 ## Where ADAP sits
 
 There is already work on agent identity, authorization, attenuated delegation, and receipts. ADAP does not claim to be the first project in that space. The primitive this draft specifies is the combination: delegated authority, a signed intent, a deterministic policy decision, an authorization boundary before the side effect, and a portable receipt of that decision and of the reported execution.

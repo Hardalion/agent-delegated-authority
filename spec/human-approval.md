@@ -34,6 +34,17 @@ Policy substitution that turns `REQUIRE_HUMAN` into `ALLOW` without a valid boun
 
 Duplicate approval of the same binding is rejected when a seen-approval set is configured. Expired pending records and approvals outside the intent lifetime fail closed.
 
+## Who may approve
+
+Approving a hash is not informed consent by itself. A conforming runtime that enforces human identity binding:
+
+1. Requires the approver's directory entry to be of kind `human` when identity kinds are configured.
+2. Rejects an approver who appears as `subject` anywhere in the presented chain, or as the intent `actor` (no self-approval through the agent key).
+3. Requires the root issuer to be authorized for the namespace (see [delegation.md](./delegation.md#root-of-authority)) before treating that issuer as the sole allowed approver.
+4. Binds the approval to the intent hash of a canonical rendering of action, target, and every parameter the runtime will execute.
+
+The reference path accepts an optional `approvalPolicy` hook for steps 1–3. When absent, the path still requires `approver_id` to match the root issuer and a verifiable signature.
+
 ## Reference
 
 `packages/aap/src/pending.ts`, `packages/aap/src/path.ts`, `packages/aap/src/agents.test.ts`, `packages/aap/src/security-adversarial.test.ts`.

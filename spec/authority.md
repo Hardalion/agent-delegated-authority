@@ -24,6 +24,7 @@ An id is not a credential.
 | Human approval | [human-approval.md](./human-approval.md) |
 | Authorization receipt | [authorization-receipt.md](./authorization-receipt.md) |
 | Execution boundary | [execution.md](./execution.md) |
+| MCP binding | [mcp-binding.md](./mcp-binding.md) |
 | Conformance | [conformance.md](./conformance.md) |
 
 ## Reference

@@ -337,4 +337,91 @@ describe('unsupported policy actions', () => {
     expect(allowed.executed).toBe(true)
     expect(executions).toBe(1)
   })
+
+  it('fails closed when rootAuthority or revocationCheck rejects', async () => {
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_example')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+      [signer.id, signer.publicKey],
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*', delegable: true }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal,
+    )
+    const policyResolver = new ImmutablePolicyResolver()
+    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
+
+    const rootDenied = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_hooks',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-hooks-root',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver,
+      signer,
+      rootAuthority: { mayIssueRoot: () => false },
+      execute: () => ({ ok: true }),
+    })
+    expect(rootDenied.decision).toBe('BLOCK')
+    expect(rootDenied.ruleId).toBe('root_not_authorized')
+    expect(rootDenied.executed).toBe(false)
+
+    const revoked = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_hooks_rev',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-hooks-rev',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver,
+      signer,
+      revocationCheck: () => 'revoked',
+      execute: () => ({ ok: true }),
+    })
+    expect(revoked.decision).toBe('BLOCK')
+    expect(revoked.ruleId).toBe('revoked')
+    expect(revoked.executed).toBe(false)
+  })
 })

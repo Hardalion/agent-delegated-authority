@@ -43,6 +43,38 @@ Constraints are normalized to own-property data-only objects before narrowing an
 
 A target `resource/*` covers `resource/example`. It does not cover a deeper path.
 
+## Root of authority
+
+A signature from a key in a directory does not, by itself, make its holder a principal. An id-to-key map is not a root-of-authority policy.
+
+A conforming runtime that enforces root of authority:
+
+1. Holds an operator-owned **root-of-authority** configuration: which identities may issue a root delegation, and for which `action` / `target` namespaces.
+2. Rejects a root whose issuer is not authorized for every capability it grants (`root_not_authorized`).
+3. Rejects a root whose issuer is also its subject, unless the configuration explicitly allows that for the namespace.
+4. Distinguishes identity kinds (`human`, `agent`, `service`) when verifying approvals and roots.
+
+The reference path accepts an optional `rootAuthority` hook on `runAuthorityPath`. When the hook is absent, root checks are deployment-owned and out of band. When present, a failed check is fail-closed `BLOCK`.
+
+## Revocation
+
+A delegation is valid until `expires_at` unless revoked earlier. Key rotation withdraws every grant from that issuer; per-delegation revocation is finer-grained.
+
+A conforming runtime that supports revocation:
+
+1. Checks each `delegation_id` in the presented chain against an operator-owned revocation status at decision time.
+2. Checks again before continuing an approved `REQUIRE_HUMAN`.
+3. Treats a revoked link as `BLOCK` with rule `revoked`.
+4. Fails closed when revocation status cannot be read.
+
+The reference path accepts an optional `revocationCheck` hook. When absent, only expiry applies. When present, `revoked` and `unavailable` fail closed.
+
+## Constraint scope
+
+In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them. A future revision may attach constraints per capability and support `closed: true` (any unnamed parameter is `BLOCK`).
+
+`max_<field>` ceilings remain **per-intent**, not cumulative spend across the life of a grant. Cumulative multi-turn accounting is non-normative future work (issue #13).
+
 ## Reference
 
-`packages/aap/src/validate.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/validate.test.ts`, `packages/aap/src/security-adversarial.test.ts`.
+`packages/aap/src/validate.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/path.ts`, `packages/aap/src/validate.test.ts`, `packages/aap/src/security-adversarial.test.ts`.

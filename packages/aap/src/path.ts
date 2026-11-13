@@ -84,6 +84,29 @@ export interface RunAuthorityPathInput {
   readonly seenApprovals?: Set<string>
   readonly receiptSequence?: number
   readonly prevReceiptHash?: string | null
+  /**
+   * Optional operator root-of-authority check. When set, a root whose issuer
+   * is not authorized fails closed (`root_not_authorized`).
+   */
+  readonly rootAuthority?: {
+    readonly mayIssueRoot: (input: {
+      readonly issuerId: string
+      readonly subjectId: string
+      readonly capabilities: readonly { readonly action: string; readonly target: string }[]
+    }) => boolean
+  }
+  /**
+   * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
+   */
+  readonly revocationCheck?: (delegationId: string) => 'active' | 'revoked' | 'unavailable'
+  /**
+   * Optional human-approval identity policy. When set, self-approval and non-human
+   * approvers fail closed.
+   */
+  readonly approvalPolicy?: {
+    readonly isHuman?: (identityId: string) => boolean
+    readonly allowSelfApproval?: boolean
+  }
 }
 
 const NONE_EXEC = 'none'
@@ -153,6 +176,33 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       intent: presented.intent,
       now,
     })
+
+    const root = verified.chain[0]
+    if (root && !root.parent_delegation_id && input.rootAuthority) {
+      const allowed = input.rootAuthority.mayIssueRoot({
+        issuerId: root.issuer,
+        subjectId: root.subject,
+        capabilities: root.capabilities.map((capability) => ({
+          action: capability.action,
+          target: capability.target,
+        })),
+      })
+      if (!allowed) {
+        throw new AuthorityError('root_not_authorized', 'root issuer is not authorized for this grant', true)
+      }
+    }
+    if (input.revocationCheck) {
+      for (const delegation of verified.chain) {
+        const status = input.revocationCheck(delegation.delegation_id)
+        if (status === 'revoked') {
+          throw new AuthorityError('revoked', `delegation ${delegation.delegation_id} is revoked`, true)
+        }
+        if (status === 'unavailable') {
+          throw new AuthorityError('revoked', 'revocation status unavailable', true)
+        }
+      }
+    }
+
     const pendingStore = input.pendingStore
     const seenApprovals = input.seenApprovals
     const view: RunAuthorityPathInput & { now: Date } = {
@@ -238,6 +288,19 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       }
       if (policyDecision.ruleId !== pending.matchedRuleId) {
         throw new AuthorityError('approval', 'pinned policy rule does not match pending context', true)
+      }
+
+      if (input.approvalPolicy) {
+        const approverId = input.approval.approver_id
+        if (input.approvalPolicy.isHuman && !input.approvalPolicy.isHuman(approverId)) {
+          throw new AuthorityError('approval', 'approver is not a human identity', true)
+        }
+        if (input.approvalPolicy.allowSelfApproval !== true) {
+          const subjects = new Set(verified.chain.map((delegation) => delegation.subject))
+          if (subjects.has(approverId) || approverId === verified.intent.actor) {
+            throw new AuthorityError('approval', 'approver cannot approve their own agent action', true)
+          }
+        }
       }
 
       verifyHumanApproval({

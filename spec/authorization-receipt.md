@@ -224,6 +224,25 @@ When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form
 
 Standalone receipts without those fields remain conforming. They do not, by themselves, prove that none were omitted.
 
+### 7.1 What the chain proves
+
+`verifyReceiptChain` proves integrity of the **supplied** ordered segment: structure, content hashes, sequence links, and optional Ed25519. It does not prove:
+
+- that the issuer never produced a conflicting fork (the issuer key can sign a new consistent chain)
+- that a dropped tail was never issued (the verifier needs an expected head from elsewhere)
+- cumulative spend or multi-turn budgets across intents (issue #13; non-normative future)
+
+When a downstream write outcome is unknown after an authorized attempt, the reference path keeps the nonce consumed and relies on reconcile/idempotency at the resource. The receipt records the runtime's reported execution binding; it is not an independent observation of the external system.
+
+### 7.2 Emitter safety
+
+A conforming emitter:
+
+- Requires a real signature or signer. Known demo placeholders MUST NOT verify as valid evidence.
+- Redacts `argsRedacted` deny-by-default (allowlist or explicit unredacted opt-in).
+- Uses collision-resistant `receiptId` values.
+- Serializes chain appends when claiming `sequence` / `prevReceiptHash` (see `AuthorizationReceiptLog` in `adap-receipt`).
+
 ---
 
 ## 8. Conformance
@@ -232,10 +251,10 @@ A conforming emitter:
 
 1. Uses this schema with `kind: adap.receipt` and `v: 1`
 2. Binds the intent, the policy pin and `ruleId`, the decision, and human approval when a person was required
-3. Signs under a stated profile. The reference profile is §5
+3. Signs under a stated profile. The reference profile is §5. Demo placeholders are not conforming production signatures
 4. Does not execute a consequential tool when the governing receipt is `BLOCK` or an unresolved `REQUIRE_HUMAN` / `DEFER`
 
-A conforming verifier returns `{ valid, errors[] }` without network calls. `verifyAuthorizationReceipt` checks structure and the content hash. The Ed25519 signature is checked by a verifier that holds the issuer public key (`verifyReceiptSignature`, and `verifyProtocolReceipt` on the reference path). The `adap-receipt` CLI checks the signature only when `--public-key` is set. A check without that key has not completed §5 step 3.
+A conforming verifier returns `{ valid, structureOk, contentHashOk, signatureChecked, demoSignature, errors[] }` without network calls. `verifyAuthorizationReceipt` checks structure and the content hash and rejects the known demo placeholder. The Ed25519 signature is checked when the issuer public key is supplied. The `adap-receipt` CLI checks the signature only when `--public-key` is set. A check without that key has not completed §5 step 3.
 
 ---
 

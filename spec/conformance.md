@@ -29,7 +29,18 @@ Principal
 | Bind the receipt to each presented delegation by hash, to the intent hash, to the policy pin, the rule id, and the policy content hash, and to the reported execution | `packages/aap/src/verify-published-proof.ts`, `packages/audit-verify/src/authorization-receipt.test.ts` |
 | Check the Ed25519 signature only when the issuer public key is available | `packages/audit-verify/src/cli.ts`, `packages/audit-verify/src/authorization-receipt.test.ts` |
 | Not treat `executed: true` as proof that an external system performed the action | `spec/execution.md`, `THREAT_MODEL.md` |
+| Reject known demo placeholder receipt signatures as evidence | `packages/audit-verify/src/emit-authorization-receipt.test.ts` |
+| Redact receipt `argsRedacted` deny-by-default unless allowlisted or explicitly unredacted | `packages/audit-verify/src/emit-authorization-receipt.test.ts` |
+| Label policy-only MCP helpers as not full ADAP; authority-enforcing MCP follows [mcp-binding.md](./mcp-binding.md) | `packages/policy-engine/src/integrations/mcp.test.ts`, `examples/conformance/mcp-vectors.json` |
 
-`BLOCK` and a pending human decision do not call the executor. A verifier checks the receipt offline from the issuer public key, the content hash, and, when the verifier also holds them, the delegations, the intent, and the policy document. The published files in `examples/proof/` are one such check: `node examples/verify-proof.mjs`. The six attacks are `pnpm attacks`. Structure and the content hash alone are not signature verification.
+## Optional operator hooks (fail closed when configured)
+
+| Hook | MUST when present | Reference |
+| --- | --- | --- |
+| `rootAuthority` | Reject unauthorized roots (`root_not_authorized`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
+| `revocationCheck` | `revoked` / `unavailable` → `BLOCK` | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#revocation) |
+| `approvalPolicy` | Reject non-human / self-approval when configured | `packages/aap/src/path.ts`, [human-approval.md](./human-approval.md#who-may-approve) |
+
+`BLOCK` and a pending human decision do not call the executor. A verifier checks the receipt offline from the issuer public key, the content hash, and, when the verifier also holds them, the delegations, the intent, and the policy document. The published files in `examples/proof/` are one such check: `node examples/verify-proof.mjs`. The six attacks are `pnpm attacks`. Structure and the content hash alone are not signature verification. MCP vectors: `examples/conformance/`.
 
 Synthetic identifiers in the examples (`resource/example`, `prn_example`, `agt_a`, `agt_b`) are not organizations.

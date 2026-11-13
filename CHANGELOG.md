@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Backlog consolidation
+
+Recovered PR #12 onto `main` (canonical JSON, `max_<field>`, executable `DEFER`/`SIMULATE` removal, fail-closed evaluator, execution-state reporting, Python verifier). Receipt emitter requires a real signer; demo placeholders never verify as evidence (#15). Ported Vault HTTPS/origin hardening (#2), CLI/policy-pin tests (#17), policy-only `McpToolGate` (#14), and retained #5 fixtures. Spec adds MCP binding claim levels, root/revocation/approval/policy-selection requirements, optional fail-closed hooks, conformance vectors, and README clarity vs Nexus / hackathon gate. Cumulative multi-turn budgets remain non-normative (issue #13).
+
 ### Verified issues 3, 4, 6, and 7
 
 Canonical JSON now follows RFC 8785. Integer-like object keys are lexicographic. `examples/receipt.json` keeps content hash `35a2f27d1d11b306fbbfa81d0345afe66db6c9087d760eec7f20644744f2511c`. Hashes that covered integer-like keys under the old numeric order must be re-issued.

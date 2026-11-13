@@ -110,8 +110,23 @@ The property holds only when the operator's network gives the agent no other rou
 - Executor that returns after a partial external write and then throws: the path records `executed: false` and spends the nonce. Operators must make the write idempotent or reconcilable.
 - Executor that returns a value that cannot be hashed: the path still reports `executed: true` with `executionHash: unhashable` and no receipt body. The nonce is spent.
 
+## Review findings classification (PR #9)
+
+| Finding | Classification | Disposition |
+| --- | --- | --- |
+| Root of authority / self-issued roots | Confirmed limitation | Normative requirements + optional `rootAuthority` hook in [spec/delegation.md](spec/delegation.md) |
+| Self-approval via agent key | Confirmed limitation | Normative approver binding in [spec/human-approval.md](spec/human-approval.md) |
+| Caller-chosen governing policy | Confirmed limitation | Normative selection rules in [spec/policy-decision.md](spec/policy-decision.md) |
+| No per-delegation revocation | Confirmed limitation | Normative + optional `revocationCheck` hook in [spec/delegation.md](spec/delegation.md) |
+| `max_*` only `max_amount` | **Superseded** | Generic `max_<field>` ceilings landed with PR #12 |
+| Missing numeric operands coerce | Partially addressed | Ordered comparisons fail closed on non-finite / non-numeric in the reference evaluator |
+| Receipt chain / demo signature | Confirmed defects | Fixed in `adap-receipt` emit path (#15); chain limits documented in [spec/authorization-receipt.md](spec/authorization-receipt.md) |
+| MCP binding missing | Confirmed gap | Normative + policy-only distinction in [spec/mcp-binding.md](spec/mcp-binding.md) |
+| Cumulative / session spend | Confirmed out of scope for v0.1 | Non-normative future (issue #13) |
+| Agent key in model process | Deployment boundary | Remains a deployment property, not a protocol claim |
+
 ## Out of scope
 
 Physical-world safety, model alignment, and business logic beyond delegation constraints and the evaluated policy.
 
-Normative narrowing: [spec/delegation.md](spec/delegation.md). Amounts/targets: [spec/amounts-and-targets.md](spec/amounts-and-targets.md). Human approval: [spec/human-approval.md](spec/human-approval.md). Policy schema: [spec/policy-schema.md](spec/policy-schema.md). Receipts: [spec/authorization-receipt.md](spec/authorization-receipt.md). Reference path: `packages/aap/src/path.ts`, `packages/aap/src/validate.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/nonce.ts`.
+Normative narrowing: [spec/delegation.md](spec/delegation.md). Amounts/targets: [spec/amounts-and-targets.md](spec/amounts-and-targets.md). Human approval: [spec/human-approval.md](spec/human-approval.md). Policy schema: [spec/policy-schema.md](spec/policy-schema.md). Receipts: [spec/authorization-receipt.md](spec/authorization-receipt.md). MCP: [spec/mcp-binding.md](spec/mcp-binding.md). Reference path: `packages/aap/src/path.ts`, `packages/aap/src/validate.ts`, `packages/aap/src/runtime-validate.ts`, `packages/aap/src/nonce.ts`.
