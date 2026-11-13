@@ -6,11 +6,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> 1/3 Policy eval: apply over the cap should BLOCK"
-node examples/smoke-policy.mjs block || test $? -eq 1
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args '{"amount":800}' --json || test $? -eq 1
 
 echo ""
 echo "==> 2/3 Policy eval: read should ALLOW"
-node examples/smoke-policy.mjs allow
+node packages/policy-engine/dist/cli.js --tool read --agent agt_reader --json
 
 echo ""
 echo "==> 3/3 Authorization Receipt verify (offline)"

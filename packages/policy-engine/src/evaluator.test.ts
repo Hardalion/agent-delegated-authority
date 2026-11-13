@@ -90,6 +90,31 @@ describe('boolean and null literals', () => {
     expect(evaluateCondition('args.token == null', { args: { token: null } })).toBe(true)
     expect(evaluateCondition('args.token == null', { args: { token: 'active' } })).toBe(false)
   })
+
+  // Fixtures retained from external PR #5 (Podugboch); evaluator already covers these paths.
+  it('evaluates inequality against boolean and null literals', () => {
+    expect(evaluateCondition('args.sandbox != true', { args: { sandbox: false } })).toBe(true)
+    expect(evaluateCondition('args.is_admin != false', { args: { is_admin: true } })).toBe(true)
+    expect(evaluateCondition('args.token != null', { args: { token: 'active' } })).toBe(true)
+  })
+
+  it('evaluates contains on tool.target and nested email paths', () => {
+    expect(
+      evaluateCondition("tool.target.contains('admin')", {
+        tool: { target: 'service/internal-admin/users' },
+      }),
+    ).toBe(true)
+    expect(
+      evaluateCondition("tool.target.contains('admin')", {
+        tool: { target: 'service/public/items' },
+      }),
+    ).toBe(false)
+    expect(
+      evaluateCondition("args.user.email.contains('@corp.internal')", {
+        args: { user: { email: 'alice@corp.internal' } },
+      }),
+    ).toBe(true)
+  })
 })
 
 describe('ordered numeric comparisons fail closed', () => {

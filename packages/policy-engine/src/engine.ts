@@ -68,7 +68,7 @@ export function listBundledPolicyNames(): string[] {
 }
 
 const AGENT_ROLE_PATTERN = /^[A-Za-z0-9:_./@-]{1,128}$/
-const POLICY_ACTIONS = new Set(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN', 'DEFER', 'SIMULATE'])
+const POLICY_ACTIONS = new Set(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN'])
 
 /** A present identity. Omitted, empty, whitespace, and malformed values are not in scope. */
 export function isWellFormedAgentRole(agentRole: unknown): agentRole is string {
@@ -88,14 +88,12 @@ function agentMatchesPolicy(policy: Policy, agentRole: unknown): boolean {
 }
 
 const ACTION_PRIORITY: Record<PolicyAction, number> = {
-  BLOCK: 5,
-  REQUIRE_HUMAN: 4,
-  DEFER: 3,
-  SIMULATE: 2,
+  BLOCK: 3,
+  REQUIRE_HUMAN: 2,
   ALLOW: 1,
 }
 
-/** Evaluate all rules; highest-priority matching action wins (BLOCK > REQUIRE_HUMAN > DEFER > SIMULATE > ALLOW). */
+/** Evaluate all rules; highest-priority matching action wins (BLOCK > REQUIRE_HUMAN > ALLOW). */
 export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
   const policy = resolvePolicy(input.policy)
 

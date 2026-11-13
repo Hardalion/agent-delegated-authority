@@ -1,6 +1,12 @@
 import { z } from 'zod'
 
-export const ruleActionSchema = z.enum(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN', 'DEFER', 'SIMULATE'])
+/**
+ * v0.1 executable actions. DEFER and SIMULATE are not in this schema: the
+ * reference protocol has no deferred-execution state machine and no simulation
+ * interface. Receipt records may still carry those verbs for already issued
+ * receipts. They are not policy decisions this evaluator can produce.
+ */
+export const ruleActionSchema = z.enum(['ALLOW', 'BLOCK', 'REQUIRE_HUMAN'])
 
 export const alertSeveritySchema = z.enum(['LOW', 'MEDIUM', 'CRITICAL'])
 

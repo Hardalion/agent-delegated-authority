@@ -1,46 +1,20 @@
 import {
   createHash,
   createPrivateKey,
+  createPublicKey,
   generateKeyPairSync,
   sign,
   verify,
-  createPublicKey,
   type KeyObject,
 } from 'node:crypto'
-
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+import { canonicalJson as canonicalJsonProfile } from 'adap-receipt'
 
 /**
- * Same canonical form as authorization receipts: JSON.stringify over recursively sorted keys.
- * Uses Object.create(null) so an own `__proto__` key cannot mutate Object.prototype or the
- * intermediate object prototype. Dangerous keys are rejected rather than silently dropped.
+ * Reference-profile canonical JSON. One implementation, shared with receipt hashes and signatures.
+ * Dangerous keys and non-plain prototypes are rejected rather than silently dropped.
  */
 export function canonicalJson(value: unknown): string {
-  return JSON.stringify(sortKeys(value))
-}
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys)
-  if (value != null && typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) {
-      throw new Error('canonicalJson rejects objects with a non-plain prototype')
-    }
-    const record = value as Record<string, unknown>
-    const sorted: Record<string, unknown> = Object.create(null)
-    for (const key of Object.keys(record).sort()) {
-      if (DANGEROUS_KEYS.has(key)) {
-        throw new Error(`canonicalJson rejects dangerous key: ${key}`)
-      }
-      sorted[key] = sortKeys(record[key])
-    }
-    // JSON.stringify enumerates own enumerable keys of null-prototype objects.
-    return { ...sorted }
-  }
-  if (typeof value === 'number' && !Number.isFinite(value)) {
-    throw new Error('canonicalJson rejects non-finite numbers')
-  }
-  return value
+  return canonicalJsonProfile(value)
 }
 
 export function sha256(value: unknown): string {

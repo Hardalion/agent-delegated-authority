@@ -3,12 +3,13 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 Write-Host "==> 1/3 Policy eval: apply over the cap should BLOCK"
-node examples/smoke-policy.mjs block
+# PowerShell strips unescaped quotes from '{"amount":800}' before Node sees them.
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args '{\"amount\":800}' --json
 if ($LASTEXITCODE -ne 1) { throw "Expected exit code 1 for BLOCK" }
 
 Write-Host ""
 Write-Host "==> 2/3 Policy eval: read should ALLOW"
-node examples/smoke-policy.mjs allow
+node packages/policy-engine/dist/cli.js --tool read --agent agt_reader --json
 if ($LASTEXITCODE -ne 0) { throw "Expected exit code 0 for ALLOW" }
 
 Write-Host ""

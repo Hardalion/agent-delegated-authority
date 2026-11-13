@@ -27,8 +27,11 @@
     }
   },
   "scripts": {
+    "prebuild": "pnpm --dir ../.. --filter adap-receipt build",
     "build": "tsc && node scripts/verify-built-policy.mjs",
+    "pretypecheck": "pnpm --dir ../.. --filter adap-receipt build",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --dir ../.. --filter adap-receipt build",
     "test": "vitest run",
     "test:pbt": "vitest run src/property.test.ts",
     "test:coverage": "vitest run --coverage",
@@ -36,6 +39,7 @@
     "lint": "echo Skipping lint"
   },
   "dependencies": {
+    "adap-receipt": "workspace:*",
     "yaml": "^2.8.3",
     "zod": "^4.6.6"
   },

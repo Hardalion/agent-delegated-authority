@@ -5,6 +5,7 @@ import { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-poli
 import { NonceLedger } from './nonce.js'
 import { PendingAuthorizationStore } from './pending.js'
 import { ImmutablePolicyResolver } from './policy-resolver.js'
+import { PolicySchema, evaluateToolCall, type Policy } from 'adap-policy'
 import { runAuthorityPath, type ExecutionContext } from './path.js'
 import {
   createIdentity,
@@ -213,8 +214,34 @@ describe('exclusive nonce claim before execution', () => {
   })
 })
 
-describe('unknown downstream result', () => {
-  it('seals ALLOW with executed false, spends the nonce, and does not call the executor again', async () => {
+describe('unsupported policy actions', () => {
+  it('rejects DEFER and SIMULATE before any executor and executes only ALLOW', async () => {
+    expect(() =>
+      PolicySchema.parse({
+        version: '1.0.0',
+        policyName: 'defer-doc',
+        targetAgents: ['*'],
+        defaultAction: 'BLOCK',
+        rules: [
+          { ruleId: 'd', action: 'DEFER', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+        ],
+      }),
+    ).toThrow()
+
+    const bypass = {
+      version: '1.0.0',
+      policyName: 'defer-doc',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        { ruleId: 'd', action: 'DEFER', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+      ],
+    } as unknown as Policy
+    expect(evaluateToolCall({ policy: bypass, toolName: 'read', agentRole: 'agt_reader' }).action).toBe(
+      'BLOCK',
+    )
+    expect(() => new ImmutablePolicyResolver().register(bypass, 'defer-doc@1')).toThrow()
+
     const principal = createIdentity('prn_example')
     const agent = createIdentity('agt_reader')
     const signer = createIdentity('reference-runtime')
@@ -232,55 +259,176 @@ describe('unknown downstream result', () => {
         issued_at: ISSUED,
         expires_at: EXPIRES,
       },
-      principal
+      principal,
     )
     const intent = signIntent(
       {
-        intent_id: 'int_unknown',
+        intent_id: 'int_actions',
         actor: agent.id,
         delegation_chain: [root.delegation_id],
         action: 'read',
         target: 'resource/example',
         parameters: {},
-        nonce: 'nonce-unknown',
+        nonce: 'nonce-actions',
         issued_at: ISSUED,
         expires_at: EXPIRES,
       },
-      agent
+      agent,
     )
-    const ledger = new NonceLedger()
-    const pendingStore = new PendingAuthorizationStore()
-    const policyResolver = new ImmutablePolicyResolver()
-    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
-    let calls = 0
-    const input = {
+    let executions = 0
+    const blocked = await runAuthorityPath({
       chain: [root],
       intent,
+      directory,
+      trustedRootIssuers: [principal.id],
+      policy: bypass,
+      policyUri: 'defer-doc@1',
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver: new ImmutablePolicyResolver(),
+      signer,
+      execute: () => {
+        executions += 1
+        return { ok: true }
+      },
+    })
+    expect(blocked.decision).toBe('BLOCK')
+    expect(blocked.executed).toBe(false)
+    expect(executions).toBe(0)
+
+    const allowPolicy: Policy = {
+      version: '1.0.0',
+      policyName: 'allow-read-only',
+      targetAgents: ['*'],
+      defaultAction: 'BLOCK',
+      rules: [
+        { ruleId: 'allow_read', action: 'ALLOW', condition: "tool.name == 'read'", alertSeverity: 'LOW' },
+      ],
+    }
+    const resolver = new ImmutablePolicyResolver()
+    resolver.register(allowPolicy, 'allow-read-only@1')
+    const allowed = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_allow',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-allow-only',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      trustedRootIssuers: [principal.id],
+      policy: allowPolicy,
+      policyUri: 'allow-read-only@1',
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver: resolver,
+      signer,
+      execute: () => {
+        executions += 1
+        return { ok: true }
+      },
+    })
+    expect(allowed.decision).toBe('ALLOW')
+    expect(allowed.executed).toBe(true)
+    expect(executions).toBe(1)
+  })
+
+  it('fails closed when rootAuthority or revocationCheck rejects', async () => {
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_example')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+      [signer.id, signer.publicKey],
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*', delegable: true }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal,
+    )
+    const policyResolver = new ImmutablePolicyResolver()
+    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
+
+    const rootDenied = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_hooks',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-hooks-root',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
       directory,
       trustedRootIssuers: [principal.id],
       policy: BASIC_AGENT_AUTHORITY,
       policyUri: BASIC_AGENT_AUTHORITY_URI,
       clock: new FixedClock(NOW),
-      ledger,
-      pendingStore,
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
       policyResolver,
       signer,
-      execute: () => {
-        calls += 1
-        return { executionState: 'unknown' as const, error: 'downstream_timeout' }
-      },
-    }
-    const first = await runAuthorityPath(input)
-    const second = await runAuthorityPath(input)
+      rootAuthority: { mayIssueRoot: () => false },
+      execute: () => ({ ok: true }),
+    })
+    expect(rootDenied.decision).toBe('BLOCK')
+    expect(rootDenied.ruleId).toBe('root_not_authorized')
+    expect(rootDenied.executed).toBe(false)
 
-    expect(first.decision).toBe('ALLOW')
-    expect(first.executed).toBe(false)
-    expect(first.receipt.execution?.executed).toBe(false)
-    expect(first.receipt.decision.failureMode).toBe('SYSTEM_ERROR')
-    expect(first.receipt.extensions?.executionState).toBe('unknown')
-    expect(first.reason).toMatch(/not confirmed/i)
-    expect(second.decision).toBe('BLOCK')
-    expect(second.executed).toBe(false)
-    expect(calls).toBe(1)
+    const revoked = await runAuthorityPath({
+      chain: [root],
+      intent: signIntent(
+        {
+          intent_id: 'int_hooks_rev',
+          actor: agent.id,
+          delegation_chain: [root.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-hooks-rev',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      trustedRootIssuers: [principal.id],
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver,
+      signer,
+      revocationCheck: () => 'revoked',
+      execute: () => ({ ok: true }),
+    })
+    expect(revoked.decision).toBe('BLOCK')
+    expect(revoked.ruleId).toBe('revoked')
+    expect(revoked.executed).toBe(false)
   })
 })

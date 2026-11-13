@@ -55,7 +55,32 @@ rules:
     expect(decision.ruleId).toBe('agent_not_in_scope')
   })
 
-  it('lets BLOCK outrank REQUIRE_HUMAN, DEFER, SIMULATE, and ALLOW', () => {
+  it('rejects DEFER and SIMULATE and lets BLOCK outrank REQUIRE_HUMAN and ALLOW', () => {
+    expect(() =>
+      parsePolicyDocument(`version: "1.0"
+policyName: defer-priority-test
+targetAgents: ["*"]
+defaultAction: BLOCK
+rules:
+  - ruleId: defer_ping
+    action: DEFER
+    condition: "tool.name == 'ping'"
+    alertSeverity: MEDIUM
+`)
+    ).toThrow()
+    expect(() =>
+      parsePolicyDocument(`version: "1.0"
+policyName: simulate-priority-test
+targetAgents: ["*"]
+defaultAction: SIMULATE
+rules:
+  - ruleId: allow_ping
+    action: ALLOW
+    condition: "tool.name == 'ping'"
+    alertSeverity: LOW
+`)
+    ).toThrow()
+
     const policy = parsePolicyDocument(`version: "1.0"
 policyName: priority-test
 targetAgents: ["*"]
@@ -85,14 +110,6 @@ rules:
     action: REQUIRE_HUMAN
     condition: "tool.name == 'ping'"
     alertSeverity: MEDIUM
-  - ruleId: defer_ping
-    action: DEFER
-    condition: "tool.name == 'ping'"
-    alertSeverity: MEDIUM
-  - ruleId: simulate_ping
-    action: SIMULATE
-    condition: "tool.name == 'ping'"
-    alertSeverity: LOW
   - ruleId: allow_ping
     action: ALLOW
     condition: "tool.name == 'ping'"
