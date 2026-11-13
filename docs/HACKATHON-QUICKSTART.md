@@ -1,6 +1,6 @@
 # ADAP Hackathon Quickstart
 
-**Branch:** `hackathon/participant-release-2026-11-11`
+**Branch:** `hackathon/participants`
 **Full guide:** [HACKATHON-PARTICIPANT-GUIDE.md](./HACKATHON-PARTICIPANT-GUIDE.md)
 **Connect any agent:** [ADAP-FRAMEWORK-INTEGRATION.md](./ADAP-FRAMEWORK-INTEGRATION.md)
 **Protocol:** [../spec/](../spec/)
@@ -14,7 +14,7 @@ Synthetic sandbox only (`sandbox: true`, `realMoney: false`). No real payment ra
 Node.js 22+ and [pnpm](https://pnpm.io/) 10+:
 
 ```bash
-git clone --branch hackathon/participant-release-2026-11-11 --single-branch https://github.com/Hardalion/agent-delegated-authority.git
+git clone --branch hackathon/participants --single-branch https://github.com/Hardalion/agent-delegated-authority.git
 cd agent-delegated-authority
 pnpm install --frozen-lockfile
 pnpm hackathon:start

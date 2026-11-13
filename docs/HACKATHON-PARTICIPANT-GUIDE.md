@@ -18,7 +18,7 @@ For this event, **ADAP and your agent both run on your machine**.
 ## Setup
 
 ```bash
-git clone --branch hackathon/participant-release-2026-11-11 --single-branch https://github.com/Hardalion/agent-delegated-authority.git
+git clone --branch hackathon/participants --single-branch https://github.com/Hardalion/agent-delegated-authority.git
 cd agent-delegated-authority
 pnpm install --frozen-lockfile
 pnpm hackathon:start

@@ -13,7 +13,7 @@ Apache 2.0 · Public Draft v0.1 · Maintained by Hardalion
 ADAP runs **on your machine** next to your agent. Outcomes: `ALLOW` · `REQUIRE_HUMAN` · `BLOCK`.
 
 ```bash
-git clone --branch hackathon/participant-release-2026-11-11 --single-branch https://github.com/Hardalion/agent-delegated-authority.git
+git clone --branch hackathon/participants --single-branch https://github.com/Hardalion/agent-delegated-authority.git
 cd agent-delegated-authority
 pnpm install --frozen-lockfile
 pnpm hackathon:start
