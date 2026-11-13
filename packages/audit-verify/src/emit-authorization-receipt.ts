@@ -61,6 +61,8 @@ export type EmitAuthorizationReceiptInput = {
   readonly sequence?: number
   /** SHA-256 content hash of the previous receipt, or null for the first in a chain. */
   readonly prevReceiptHash?: string | null
+  /** Verifier-ignored metadata. Included in the signed content hash when present. */
+  readonly extensions?: Readonly<Record<string, unknown>>
   /**
    * Ed25519 signature over canonical unsigned JSON (128 hex chars).
    * Required unless `signer` or `demo: true` is set.
@@ -260,6 +262,7 @@ export function emitAuthorizationReceipt(
     },
     ...(input.sequence != null ? { sequence: input.sequence } : {}),
     ...(input.prevReceiptHash !== undefined ? { prevReceiptHash: input.prevReceiptHash } : {}),
+    ...(input.extensions ? { extensions: input.extensions } : {}),
   })
 
   return {

@@ -19,7 +19,9 @@ import {
   type VersionedNonceRecord,
 } from 'adap'
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
+/** Pre–actor-scoped SQLite rows use empty actor_id as a global tombstone. */
+const LEGACY_NONCE_ACTOR_ID = ''
 const KEY_BYTES = 32
 const IV_BYTES = 12
 const AUTH_TAG_BYTES = 16
@@ -258,9 +260,47 @@ function migrate(database: DatabaseSync): void {
       `)
       database
         .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
-        .run(String(SCHEMA_VERSION))
+        .run('1')
       database.exec('COMMIT')
       version = 1
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+  if (version < 2) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      database.exec(`
+        CREATE TABLE nonces_v2 (
+          actor_id TEXT NOT NULL DEFAULT '',
+          nonce TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'consumed', 'failed')),
+          intent_hash TEXT NOT NULL,
+          in_flight INTEGER NOT NULL CHECK (in_flight IN (0, 1)),
+          PRIMARY KEY (actor_id, nonce)
+        ) STRICT;
+        INSERT INTO nonces_v2 (actor_id, nonce, version, status, intent_hash, in_flight)
+          SELECT '', nonce, version, status, intent_hash, in_flight FROM nonces;
+        DROP TABLE nonces;
+        ALTER TABLE nonces_v2 RENAME TO nonces;
+        CREATE TABLE pending_auth_v2 (
+          actor_id TEXT NOT NULL,
+          nonce TEXT NOT NULL,
+          json TEXT NOT NULL,
+          PRIMARY KEY (actor_id, nonce)
+        ) STRICT;
+        INSERT INTO pending_auth_v2 (actor_id, nonce, json)
+          SELECT COALESCE(json_extract(json, '$.agentId'), ''), nonce, json FROM pending_auth;
+        DROP TABLE pending_auth;
+        ALTER TABLE pending_auth_v2 RENAME TO pending_auth;
+      `)
+      database
+        .prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
+        .run(String(SCHEMA_VERSION))
+      database.exec('COMMIT')
+      version = 2
     } catch (error) {
       database.exec('ROLLBACK')
       throw error
@@ -291,28 +331,80 @@ function pendingConflict(): AuthorityError {
 class SqliteNonceBackend implements AtomicNonceBackend {
   constructor(private readonly database: DatabaseSync) {}
 
-  read(nonce: string): VersionedNonceRecord | undefined {
-    const row = this.database
-      .prepare('SELECT version, status, intent_hash, in_flight FROM nonces WHERE nonce = ?')
-      .get(nonce) as
-      | { version: number; status: NonceRecord['status']; intent_hash: string; in_flight: number }
+  read(actorId: string, nonce: string): VersionedNonceRecord | undefined {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
+    const key = assertValidNonce(nonce)
+    const scoped = this.database
+      .prepare(
+        'SELECT version, status, intent_hash, in_flight, actor_id FROM nonces WHERE actor_id = ? AND nonce = ?',
+      )
+      .get(actor, key) as
+      | {
+          version: number
+          status: NonceRecord['status']
+          intent_hash: string
+          in_flight: number
+          actor_id: string
+        }
       | undefined
-    if (!row) return undefined
+    if (scoped) {
+      return {
+        version: Number(scoped.version),
+        record: {
+          status: scoped.status,
+          intentHash: scoped.intent_hash,
+          inFlight: scoped.in_flight === 1,
+          actorId: scoped.actor_id,
+        },
+      }
+    }
+    const legacy = this.database
+      .prepare(
+        'SELECT version, status, intent_hash, in_flight, actor_id FROM nonces WHERE actor_id = ? AND nonce = ?',
+      )
+      .get(LEGACY_NONCE_ACTOR_ID, key) as
+      | {
+          version: number
+          status: NonceRecord['status']
+          intent_hash: string
+          in_flight: number
+          actor_id: string
+        }
+      | undefined
+    if (!legacy) return undefined
     return {
-      version: Number(row.version),
-      record: { status: row.status, intentHash: row.intent_hash, inFlight: row.in_flight === 1 },
+      version: Number(legacy.version),
+      record: {
+        status: legacy.status,
+        intentHash: legacy.intent_hash,
+        inFlight: legacy.in_flight === 1,
+        actorId: LEGACY_NONCE_ACTOR_ID,
+      },
     }
   }
 
-  compareAndSwap(nonce: string, expectedVersion: number, record: NonceRecord): boolean {
+  compareAndSwap(
+    actorId: string,
+    nonce: string,
+    expectedVersion: number,
+    record: NonceRecord,
+  ): boolean {
+    const actor = assertValidIdentity(actorId, 'nonce.actorId')
+    const key = assertValidNonce(nonce)
+    if (record.actorId !== actor) return false
+    if (actor === LEGACY_NONCE_ACTOR_ID) return false
     if (expectedVersion === 0) {
+      const tombstone = this.database
+        .prepare('SELECT 1 FROM nonces WHERE actor_id = ? AND nonce = ?')
+        .get(LEGACY_NONCE_ACTOR_ID, key)
+      if (tombstone) return false
       return (
         Number(
           this.database
             .prepare(
-              'INSERT INTO nonces (nonce, version, status, intent_hash, in_flight) VALUES (?, 1, ?, ?, ?) ON CONFLICT (nonce) DO NOTHING',
+              'INSERT INTO nonces (actor_id, nonce, version, status, intent_hash, in_flight) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT (actor_id, nonce) DO NOTHING',
             )
-            .run(nonce, record.status, record.intentHash, record.inFlight ? 1 : 0).changes,
+            .run(actor, key, record.status, record.intentHash, record.inFlight ? 1 : 0).changes,
         ) === 1
       )
     }
@@ -320,9 +412,17 @@ class SqliteNonceBackend implements AtomicNonceBackend {
       Number(
         this.database
           .prepare(
-            'UPDATE nonces SET version = version + 1, status = ?, intent_hash = ?, in_flight = ? WHERE nonce = ? AND version = ?',
+            'UPDATE nonces SET version = version + 1, status = ?, intent_hash = ?, in_flight = ? WHERE actor_id = ? AND nonce = ? AND version = ? AND actor_id <> ?',
           )
-          .run(record.status, record.intentHash, record.inFlight ? 1 : 0, nonce, expectedVersion).changes,
+          .run(
+            record.status,
+            record.intentHash,
+            record.inFlight ? 1 : 0,
+            actor,
+            key,
+            expectedVersion,
+            LEGACY_NONCE_ACTOR_ID,
+          ).changes,
       ) === 1
     )
   }
@@ -332,6 +432,7 @@ class SqlitePendingStore implements PendingStore {
   constructor(private readonly database: DatabaseSync) {}
 
   put(record: PendingAuthorization): void {
+    const actorId = assertValidIdentity(record.agentId, 'pending.agentId')
     const nonce = assertValidNonce(record.nonce)
     const normalized: PendingAuthorization = {
       ...record,
@@ -339,7 +440,7 @@ class SqlitePendingStore implements PendingStore {
       approverId: assertValidIdentity(record.approverId, 'pending.approverId'),
       approvalState: 'pending',
     }
-    const existing = this.get(nonce)
+    const existing = this.get(actorId, nonce)
     if (existing) {
       if (
         existing.intentHash !== normalized.intentHash ||
@@ -352,10 +453,10 @@ class SqlitePendingStore implements PendingStore {
     }
     try {
       this.database
-        .prepare('INSERT INTO pending_auth (nonce, json) VALUES (?, ?)')
-        .run(nonce, JSON.stringify(normalized))
+        .prepare('INSERT INTO pending_auth (actor_id, nonce, json) VALUES (?, ?, ?)')
+        .run(actorId, nonce, JSON.stringify(normalized))
     } catch {
-      const raced = this.get(nonce)
+      const raced = this.get(actorId, nonce)
       if (
         !raced ||
         raced.intentHash !== normalized.intentHash ||
@@ -367,16 +468,17 @@ class SqlitePendingStore implements PendingStore {
     }
   }
 
-  get(nonce: string): PendingAuthorization | undefined {
+  get(actorId: string, nonce: string): PendingAuthorization | undefined {
+    const actor = assertValidIdentity(actorId, 'pending.agentId')
     const key = assertValidNonce(nonce)
-    const row = this.database.prepare('SELECT json FROM pending_auth WHERE nonce = ?').get(key) as
-      | { json: string }
-      | undefined
+    const row = this.database
+      .prepare('SELECT json FROM pending_auth WHERE actor_id = ? AND nonce = ?')
+      .get(actor, key) as { json: string } | undefined
     return row ? parseJson<PendingAuthorization>(row.json) : undefined
   }
 
   requireContinuation(input: PendingContinuation): PendingAuthorization {
-    const record = this.get(input.nonce)
+    const record = this.get(input.agentId, input.nonce)
     if (!record) throw new AuthorityError('approval', 'no pending authorization for this nonce', true)
     if (record.approvalState !== 'pending') {
       throw new AuthorityError('approval', 'pending authorization is not open', true)
@@ -404,30 +506,47 @@ class SqlitePendingStore implements PendingStore {
     return record
   }
 
-  markApproved(nonce: string, intentHash: string): void {
-    const key = assertValidNonce(nonce)
-    const record = this.get(key)
-    if (!record || record.intentHash !== intentHash || record.approvalState !== 'pending') {
-      throw new AuthorityError('approval', 'cannot mark approval on this pending context', true)
-    }
-    const next = { ...record, approvalState: 'approved' as const }
-    const result = this.database
-      .prepare(
-        "UPDATE pending_auth SET json = ? WHERE nonce = ? AND json_extract(json, '$.intentHash') = ? AND json_extract(json, '$.approvalState') = 'pending'",
-      )
-      .run(JSON.stringify(next), key, intentHash)
-    if (Number(result.changes) !== 1) {
-      throw new AuthorityError('approval', 'cannot mark approval on this pending context', true)
-    }
+  markApproved(actorId: string, nonce: string, intentHash: string): void {
+    this.#transition(actorId, nonce, intentHash, 'approved')
   }
 
-  consume(nonce: string, intentHash: string): void {
+  markDeclined(actorId: string, nonce: string, intentHash: string): void {
+    this.#transition(actorId, nonce, intentHash, 'declined')
+  }
+
+  consume(actorId: string, nonce: string, intentHash: string): void {
+    const actor = assertValidIdentity(actorId, 'pending.agentId')
     const key = assertValidNonce(nonce)
-    const record = this.get(key)
+    const record = this.get(actor, key)
     if (!record || record.intentHash !== intentHash) return
     this.database
-      .prepare("UPDATE pending_auth SET json = ? WHERE nonce = ? AND json_extract(json, '$.intentHash') = ?")
-      .run(JSON.stringify({ ...record, approvalState: 'consumed' }), key, intentHash)
+      .prepare(
+        'UPDATE pending_auth SET json = ? WHERE actor_id = ? AND nonce = ? AND json_extract(json, \'$.intentHash\') = ?',
+      )
+      .run(JSON.stringify({ ...record, approvalState: 'consumed' }), actor, key, intentHash)
+  }
+
+  #transition(
+    actorId: string,
+    nonce: string,
+    intentHash: string,
+    nextState: 'approved' | 'declined',
+  ): void {
+    const actor = assertValidIdentity(actorId, 'pending.agentId')
+    const key = assertValidNonce(nonce)
+    const record = this.get(actor, key)
+    if (!record || record.intentHash !== intentHash || record.approvalState !== 'pending') {
+      throw new AuthorityError('approval', `cannot mark ${nextState} on this pending context`, true)
+    }
+    const next = { ...record, approvalState: nextState }
+    const result = this.database
+      .prepare(
+        "UPDATE pending_auth SET json = ? WHERE actor_id = ? AND nonce = ? AND json_extract(json, '$.intentHash') = ? AND json_extract(json, '$.approvalState') = 'pending'",
+      )
+      .run(JSON.stringify(next), actor, key, intentHash)
+    if (Number(result.changes) !== 1) {
+      throw new AuthorityError('approval', `cannot mark ${nextState} on this pending context`, true)
+    }
   }
 }
 

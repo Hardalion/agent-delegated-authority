@@ -177,6 +177,8 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       chain: input.chain,
       intent: input.intent,
       directory: input.directory,
+      now,
+      trustedRootIssuers: input.trustedRootIssuers,
     })
     signatureVerified = true
     intentHash = sha256(unsignedIntent(presented.intent))
@@ -732,8 +734,11 @@ async function executeBound(
     })
   }
 
-  // The callback returned. A later store or seal failure does not rewrite that as
-  // "nothing executed". The nonce is still spent so the same intent cannot retry.
+  // The callback returned. A later store or seal failure does not rewrite an
+  // observed result as "nothing executed". The nonce is still spent so the same
+  // intent cannot retry. An explicit unknown downstream state is not a confirmed
+  // side effect and is not rewritten as BLOCK.
+  const outcomeUnknown = isUnknownExecutionReport(result)
   try {
     await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
   } catch {
@@ -745,22 +750,27 @@ async function executeBound(
     // Pending consume is bookkeeping after the side-effect boundary.
   }
 
+  const reason = outcomeUnknown
+    ? 'Downstream outcome is unknown. The nonce is consumed. The side effect was not confirmed and the call was not repeated.'
+    : bound.approved
+      ? `Human approval bound to intent ${bound.intentHash}`
+      : bound.decision.reason
+
   try {
     return seal(input, {
       decision: 'ALLOW',
       ruleId: bound.decision.ruleId,
-      reason: bound.approved
-        ? `Human approval bound to intent ${bound.intentHash}`
-        : bound.decision.reason,
-      alertSeverity: bound.decision.alertSeverity,
+      reason,
+      alertSeverity: outcomeUnknown ? 'CRITICAL' : bound.decision.alertSeverity,
       matched: bound.decision.matched,
       intentHash: bound.intentHash,
       delegationHash: bound.delegationHash,
       policyHash: bound.policyHash,
-      executed: true,
+      executed: !outcomeUnknown,
       result,
-      failureMode: 'NONE',
+      failureMode: outcomeUnknown ? 'SYSTEM_ERROR' : 'NONE',
       principalId: bound.principalId,
+      extensions: outcomeUnknown ? { executionState: 'unknown' } : undefined,
       human: bound.approved
         ? {
             required: true,
@@ -774,18 +784,25 @@ async function executeBound(
     return {
       decision: 'ALLOW',
       ruleId: bound.decision.ruleId,
-      reason: bound.approved
-        ? `Human approval bound to intent ${bound.intentHash}`
-        : bound.decision.reason,
+      reason,
       intentHash: bound.intentHash,
       delegationHash: bound.delegationHash,
       policyHash: bound.policyHash,
       executionHash: UNHASHABLE_EXEC,
-      executed: true,
+      executed: !outcomeUnknown,
       authenticated: true,
       result,
     }
   }
+}
+
+function isUnknownExecutionReport(result: unknown): boolean {
+  return (
+    result != null &&
+    typeof result === 'object' &&
+    !Array.isArray(result) &&
+    (result as { executionState?: unknown }).executionState === 'unknown'
+  )
 }
 
 function seal(
@@ -804,6 +821,7 @@ function seal(
     readonly failureMode: 'NONE' | 'RULE_VIOLATION' | 'SYSTEM_ERROR'
     readonly principalId?: string
     readonly human?: HumanAttestation
+    readonly extensions?: Readonly<Record<string, unknown>>
   }
 ): ProtocolResult {
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
@@ -849,6 +867,7 @@ function seal(
     },
     human: fields.human,
     failureMode: fields.failureMode,
+    extensions: fields.extensions,
     sequence: input.receiptSequence,
     prevReceiptHash: input.prevReceiptHash,
     signer: input.signer.privateKey,

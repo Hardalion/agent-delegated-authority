@@ -33,13 +33,14 @@ afterEach(async () => {
 describe('team durable store', () => {
   it('performs nonce compare-and-swap atomically', async () => {
     const store = open(await temporaryDirectory())
-    const first = { status: 'pending', intentHash: 'intent-a', inFlight: false } as const
-    const second = { status: 'pending', intentHash: 'intent-a', inFlight: true } as const
+    const actor = 'agt_treasury'
+    const first = { status: 'pending', intentHash: 'intent-a', inFlight: false, actorId: actor } as const
+    const second = { status: 'pending', intentHash: 'intent-a', inFlight: true, actorId: actor } as const
 
-    expect(store.nonceBackend.compareAndSwap('nonce-a', 0, first)).toBe(true)
-    expect(store.nonceBackend.compareAndSwap('nonce-a', 0, second)).toBe(false)
-    expect(store.nonceBackend.compareAndSwap('nonce-a', 1, second)).toBe(true)
-    expect(store.nonceBackend.read('nonce-a')).toEqual({ version: 2, record: second })
+    expect(store.nonceBackend.compareAndSwap(actor, 'nonce-a', 0, first)).toBe(true)
+    expect(store.nonceBackend.compareAndSwap(actor, 'nonce-a', 0, second)).toBe(false)
+    expect(store.nonceBackend.compareAndSwap(actor, 'nonce-a', 1, second)).toBe(true)
+    expect(store.nonceBackend.read(actor, 'nonce-a')).toEqual({ version: 2, record: second })
   })
 
   it('roundtrips pending authorization state', async () => {
@@ -62,11 +63,11 @@ describe('team durable store', () => {
     }
 
     store.pendingStore.put(pending)
-    expect(store.pendingStore.get(pending.nonce)).toEqual(pending)
-    store.pendingStore.markApproved(pending.nonce, pending.intentHash)
-    expect(store.pendingStore.get(pending.nonce)?.approvalState).toBe('approved')
-    store.pendingStore.consume(pending.nonce, pending.intentHash)
-    expect(store.pendingStore.get(pending.nonce)?.approvalState).toBe('consumed')
+    expect(store.pendingStore.get(pending.agentId, pending.nonce)).toEqual(pending)
+    store.pendingStore.markApproved(pending.agentId, pending.nonce, pending.intentHash)
+    expect(store.pendingStore.get(pending.agentId, pending.nonce)?.approvalState).toBe('approved')
+    store.pendingStore.consume(pending.agentId, pending.nonce, pending.intentHash)
+    expect(store.pendingStore.get(pending.agentId, pending.nonce)?.approvalState).toBe('consumed')
   })
 
   it('roundtrips encrypted identities across reopen', async () => {
