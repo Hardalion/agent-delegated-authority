@@ -1,4 +1,12 @@
-import { createHash, generateKeyPairSync, sign, verify, createPublicKey, type KeyObject } from 'node:crypto'
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign,
+  verify,
+  type KeyObject,
+} from 'node:crypto'
 import { canonicalJson as canonicalJsonProfile } from 'adap-receipt'
 
 /**
@@ -23,6 +31,14 @@ export function exportPublicKey(publicKey: KeyObject): string {
 
 export function importPublicKey(spki: string): KeyObject {
   return createPublicKey({ key: Buffer.from(spki, 'base64url'), type: 'spki', format: 'der' })
+}
+
+export function exportPrivateKeyPkcs8(privateKey: KeyObject): Buffer {
+  return Buffer.from(privateKey.export({ type: 'pkcs8', format: 'der' }))
+}
+
+export function importPrivateKeyPkcs8(pkcs8: Buffer): KeyObject {
+  return createPrivateKey({ key: pkcs8, type: 'pkcs8', format: 'der' })
 }
 
 export function publicKeyFingerprint(spki: string): string {

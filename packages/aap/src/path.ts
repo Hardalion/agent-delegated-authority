@@ -106,6 +106,12 @@ export interface RunAuthorityPathInput {
     }) => boolean
   }
   /**
+   * Optional allow-list of identities that may issue a root delegation.
+   * Participant / demo callers use this; equivalent to a `rootAuthority` that
+   * only checks issuer membership. When set, an absent or empty list fails closed.
+   */
+  readonly trustedRootIssuers?: ReadonlySet<string> | readonly string[]
+  /**
    * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
    */
   readonly revocationCheck?: (delegationId: string) => 'active' | 'revoked' | 'unavailable'
@@ -197,17 +203,37 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     })
 
     const root = verified.chain[0]
-    if (root && !root.parent_delegation_id && input.rootAuthority) {
-      const allowed = input.rootAuthority.mayIssueRoot({
-        issuerId: root.issuer,
-        subjectId: root.subject,
-        capabilities: root.capabilities.map((capability) => ({
-          action: capability.action,
-          target: capability.target ?? '',
-        })),
-      })
-      if (!allowed) {
-        throw new AuthorityError('root_not_authorized', 'root issuer is not authorized for this grant', true)
+    if (root && !root.parent_delegation_id) {
+      if (input.trustedRootIssuers != null) {
+        const trusted = new Set(
+          Array.isArray(input.trustedRootIssuers)
+            ? input.trustedRootIssuers
+            : [...input.trustedRootIssuers]
+        )
+        if (trusted.size === 0 || !trusted.has(root.issuer)) {
+          throw new AuthorityError(
+            'root_not_authorized',
+            'root issuer is not authorized for this grant',
+            true
+          )
+        }
+      }
+      if (input.rootAuthority) {
+        const allowed = input.rootAuthority.mayIssueRoot({
+          issuerId: root.issuer,
+          subjectId: root.subject,
+          capabilities: root.capabilities.map((capability) => ({
+            action: capability.action,
+            target: capability.target ?? '',
+          })),
+        })
+        if (!allowed) {
+          throw new AuthorityError(
+            'root_not_authorized',
+            'root issuer is not authorized for this grant',
+            true
+          )
+        }
       }
     }
     if (input.revocationCheck) {

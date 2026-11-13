@@ -1,4 +1,4 @@
-import type { KeyObject } from 'node:crypto'
+import { createPublicKey, type KeyObject } from 'node:crypto'
 import { exportPublicKey, generateEd25519, publicKeyFingerprint, signObject } from './crypto.js'
 import { assertValidIdentity } from './runtime-validate.js'
 import {
@@ -116,6 +116,21 @@ export function createIdentity(id: string): Identity {
     publicKey,
     privateKey: keys.privateKey,
     kid: publicKeyFingerprint(publicKey),
+  }
+}
+
+/** Rebuild an identity from a stored SPKI public key and PKCS#8 private key. */
+export function identityFromKeys(id: string, publicKeySpki: string, privateKey: KeyObject): Identity {
+  assertValidIdentity(id, 'identity.id')
+  const derivedPublicKey = exportPublicKey(createPublicKey(privateKey))
+  if (derivedPublicKey !== publicKeySpki) {
+    throw new Error('identity public key does not match private key')
+  }
+  return {
+    id,
+    publicKey: publicKeySpki,
+    privateKey,
+    kid: publicKeyFingerprint(publicKeySpki),
   }
 }
 
