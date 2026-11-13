@@ -637,10 +637,11 @@ function seal(
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
   const policy = input.policy
   const executionHash = fields.executed ? sha256(fields.result ?? null) : NONE_EXEC
-  const drafted = emitAuthorizationReceipt({
+  const toolArgs = deepDataClone(input.intent.parameters) as Record<string, unknown>
+  const receipt = emitAuthorizationReceipt({
     agentId: input.intent.actor,
     toolName: input.intent.action,
-    toolArgs: deepDataClone(input.intent.parameters) as Record<string, unknown>,
+    toolArgs,
     action: fields.decision,
     ruleId: fields.ruleId,
     reason: fields.reason,
@@ -678,9 +679,11 @@ function seal(
     failureMode: fields.failureMode,
     sequence: input.receiptSequence,
     prevReceiptHash: input.prevReceiptHash,
-    signatureHex: 'ab'.repeat(64),
+    signer: input.signer.privateKey,
+    // Reference path records authorized parameters for offline review.
+    // Callers that must omit secrets should pass a narrower allowlist via a future hook.
+    includeArgsUnredacted: true,
   })
-  const receipt = signReceipt(drafted, input.signer.privateKey)
   return {
     decision: fields.decision,
     ruleId: fields.ruleId,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { verifyAuthorizationReceipt, verifyReceiptSignature, type AuthorizationReceiptV1 } from './authorization-receipt.js'
+import { verifyAuthorizationReceipt, type AuthorizationReceiptV1 } from './authorization-receipt.js'
 
 function usage(): never {
   console.error(`Usage: adap-receipt <receipt.json> [--public-key <spki.txt>] [--verbose]
@@ -10,6 +10,7 @@ Verifies an Authorization Receipt offline.
 No network access.
 
 Without --public-key, verification checks structure and the content hash.
+Demo placeholder signatures are never accepted as valid evidence.
 The Ed25519 signature is checked only when the issuer public key is supplied.
 The key file is the SPKI public key, base64url, one line.`)
   process.exit(2)
@@ -33,39 +34,38 @@ async function main() {
 
   const path = resolve(fileArg)
   const receipt = JSON.parse(readFileSync(path, 'utf8')) as AuthorizationReceiptV1
-  const result = verifyAuthorizationReceipt(receipt)
-  const errors = [...result.errors]
-  let signatureChecked = false
-  let signatureOk = false
-  if (result.valid && publicKeyPath) {
-    signatureChecked = true
-    try {
-      signatureOk = verifyReceiptSignature(receipt, readFileSync(resolve(publicKeyPath), 'utf8'))
-      if (!signatureOk) errors.push('ed25519 signature invalid')
-    } catch {
-      errors.push('issuer public key rejected')
-    }
+  let result
+  try {
+    result = verifyAuthorizationReceipt(
+      receipt,
+      publicKeyPath
+        ? { publicKeySpki: readFileSync(resolve(publicKeyPath), 'utf8') }
+        : undefined
+    )
+  } catch {
+    console.error('INVALID: issuer public key rejected')
+    process.exit(1)
   }
-  const valid = result.valid && (!signatureChecked || signatureOk)
 
   if (verbose) {
-    console.log(`valid: ${valid}`)
+    console.log(`valid: ${result.valid}`)
     console.log(`structure_ok: ${result.structureOk}`)
     console.log(`content_hash_ok: ${result.contentHashOk}`)
-    console.log(`signature_checked: ${signatureChecked}`)
-    if (signatureChecked) console.log(`signature_ok: ${signatureOk}`)
-    if (errors.length > 0) {
-      console.log(`errors: ${errors.join('; ')}`)
+    console.log(`demo_signature: ${result.demoSignature}`)
+    console.log(`signature_checked: ${result.signatureChecked}`)
+    if (result.signatureChecked) console.log(`signature_ok: ${result.signatureOk}`)
+    if (result.errors.length > 0) {
+      console.log(`errors: ${result.errors.join('; ')}`)
     }
-  } else if (valid && signatureChecked) {
+  } else if (result.valid && result.signatureChecked) {
     console.log('OK signature verified with the issuer public key')
-  } else if (valid) {
+  } else if (result.valid) {
     console.log('OK structure and content hash. Signature not checked.')
   } else {
-    console.error(`INVALID: ${errors.join('; ') || 'receipt failed verification'}`)
+    console.error(`INVALID: ${result.errors.join('; ') || 'receipt failed verification'}`)
   }
 
-  process.exit(valid ? 0 : 1)
+  process.exit(result.valid ? 0 : 1)
 }
 
 main().catch((error) => {

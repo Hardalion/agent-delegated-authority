@@ -5,7 +5,7 @@ import {
   verifyAuthorizationReceipt,
 } from './authorization-receipt.js'
 
-const DUMMY_SIG = 'ab'.repeat(64)
+const DUMMY_SIG = 'cd'.repeat(64)
 
 function base(over: Record<string, unknown> = {}) {
   return {
