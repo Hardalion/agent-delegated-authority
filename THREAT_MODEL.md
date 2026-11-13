@@ -61,7 +61,9 @@ In the reference path:
 | Amounts are non-negative safe integers | Protocol + reference |
 | Missing policy `defaultAction` is not ALLOW | Protocol + reference |
 | Omitted agent identity is not in scope | Protocol + reference |
-| Exclusive nonce claim across processes | Deployment (shared atomic store). Production adapter: `packages/adap-store-postgres` (`PostgresAtomicNonceBackend` + `SharedNonceLedger`). Exclusion holds only when every gateway instance shares that database. |
+| Exclusive nonce claim across processes | Deployment (shared atomic store). Production adapter: `packages/adap-store-postgres` (`PostgresAtomicNonceBackend` + `SharedNonceLedger`). Rows are keyed by `(actor_id, nonce)`. Exclusion holds only when every gateway instance shares that database. |
+| Signed-object version / type confusion | Protocol + reference (`adap: 0.2` domain separation). Legacy objects keep exact legacy constraint semantics. |
+| Human DENY without execution | Protocol + reference. Pending queue cap is reference + shared store. |
 | Agent cannot call the write API with a rail credential | Deployment (credential isolation) |
 | Wall-clock equals the evaluation clock | Deployment (gateway host clock). Tests inject `FixedClock`. |
 | External system performed the side effect | Outside ADAP. Receipts attest the authority decision and the callback report. |

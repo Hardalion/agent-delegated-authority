@@ -84,6 +84,38 @@ function assertHexSignature(value: unknown, path: string): string {
   return value
 }
 
+function readEnvelopeFields(
+  raw: Record<string, unknown>,
+  path: string
+): {
+  readonly adap?: '0.2'
+  readonly typ?: 'delegation' | 'intent' | 'approval'
+  readonly alg?: 'Ed25519'
+  readonly kid?: string
+} {
+  const hasAdap = hasOwn(raw, 'adap') && raw.adap != null
+  const hasTyp = hasOwn(raw, 'typ') && raw.typ != null
+  const hasAlg = hasOwn(raw, 'alg') && raw.alg != null
+  const hasKid = hasOwn(raw, 'kid') && raw.kid != null
+  if (!hasAdap && !hasTyp && !hasAlg && !hasKid) return {}
+  if (!(hasAdap && hasTyp && hasAlg && hasKid)) {
+    throw new AuthorityError('schema', `${path} versioned envelope fields must all be present together`, true)
+  }
+  if (raw.adap !== '0.2') {
+    throw new AuthorityError('schema', `${path}.adap version is unsupported`, true)
+  }
+  if (raw.alg !== 'Ed25519') {
+    throw new AuthorityError('schema', `${path}.alg is unsupported`, true)
+  }
+  if (typeof raw.kid !== 'string' || raw.kid.length === 0 || raw.kid.length > 128) {
+    throw new AuthorityError('schema', `${path}.kid is invalid`, true)
+  }
+  if (raw.typ !== 'delegation' && raw.typ !== 'intent' && raw.typ !== 'approval') {
+    throw new AuthorityError('schema', `${path}.typ is invalid`, true)
+  }
+  return { adap: '0.2', typ: raw.typ, alg: 'Ed25519', kid: raw.kid }
+}
+
 export function normalizeConstraints(raw: unknown, path = 'constraints'): Constraints {
   const record = toDataRecord(raw, path)
   const out: Record<string, string | number | boolean> = Object.create(null)
@@ -222,8 +254,20 @@ export function validateSignedIntent(raw: unknown): SignedIntent {
     throw new AuthorityError('schema', 'intent.signature is required')
   }
   const payload = validateIntentPayload(raw)
+  const envelope = readEnvelopeFields(raw, 'intent')
+  if (envelope.typ != null && envelope.typ !== 'intent') {
+    throw new AuthorityError('schema', 'intent.typ must be intent', true)
+  }
   return {
     ...payload,
+    ...(envelope.adap != null
+      ? {
+          adap: envelope.adap,
+          typ: 'intent' as const,
+          alg: envelope.alg,
+          kid: envelope.kid,
+        }
+      : {}),
     signature: assertHexSignature(raw.signature, 'intent.signature'),
   }
 }
@@ -259,8 +303,20 @@ export function validateSignedDelegation(raw: unknown, path = 'delegation'): Sig
   if (!hasOwn(raw, 'signature') || raw.signature == null) {
     throw new AuthorityError('schema', `${path}.signature is required`)
   }
+  const envelope = readEnvelopeFields(raw, path)
+  if (envelope.typ != null && envelope.typ !== 'delegation') {
+    throw new AuthorityError('schema', `${path}.typ must be delegation`, true)
+  }
   return {
     ...payload,
+    ...(envelope.adap != null
+      ? {
+          adap: envelope.adap,
+          typ: 'delegation' as const,
+          alg: envelope.alg,
+          kid: envelope.kid,
+        }
+      : {}),
     signature: assertHexSignature(raw.signature, `${path}.signature`),
   }
 }
@@ -285,8 +341,8 @@ export function validateHumanApproval(raw: unknown): HumanApproval {
       throw new AuthorityError('schema', `approval.${key} is required`, true)
     }
   }
-  if (raw.decision !== 'APPROVE') {
-    throw new AuthorityError('approval', 'approval decision is not APPROVE', true)
+  if (raw.decision !== 'APPROVE' && raw.decision !== 'DENY') {
+    throw new AuthorityError('approval', 'approval decision must be APPROVE or DENY', true)
   }
   const hex64 = /^[0-9a-f]{64}$/
   if (typeof raw.intent_hash !== 'string' || !hex64.test(raw.intent_hash)) {
@@ -302,13 +358,26 @@ export function validateHumanApproval(raw: unknown): HumanApproval {
     intent_hash: raw.intent_hash,
     approver_id: assertValidIdentity(raw.approver_id, 'approval.approver_id'),
     approved_at: assertIsoTimestamp(raw.approved_at, 'approval.approved_at'),
-    decision: 'APPROVE',
+    decision: raw.decision,
     agent_id: assertValidIdentity(raw.agent_id, 'approval.agent_id'),
     delegation_chain_hash: raw.delegation_chain_hash,
     policy_content_hash: raw.policy_content_hash,
     ...(hasOwn(raw, 'matched_rule_id') && raw.matched_rule_id != null
       ? { matched_rule_id: assertStringField(raw.matched_rule_id, 'approval.matched_rule_id', 1, 256) }
       : {}),
+    ...(() => {
+      const envelope = readEnvelopeFields(raw, 'approval')
+      if (envelope.typ != null && envelope.typ !== 'approval') {
+        throw new AuthorityError('schema', 'approval.typ must be approval', true)
+      }
+      if (envelope.adap == null) return {}
+      return {
+        adap: envelope.adap,
+        typ: 'approval' as const,
+        alg: envelope.alg,
+        kid: envelope.kid,
+      }
+    })(),
     signature: assertHexSignature(raw.signature, 'approval.signature'),
   }
 }

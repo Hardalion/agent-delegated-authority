@@ -14,7 +14,7 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Non-finite | `NaN`, `+Infinity`, `-Infinity` are rejected before authorization. |
 | Zero | Allowed for both amounts and `max_*` caps. |
 | Comparison | Deterministic numeric compare on canonical values only. |
-| Scope | Every `max_<field>` key is a **per-intent** ceiling on `parameters.<field>`, not cumulative spend. `max_amount` bounds `amount`. `max_quantity` bounds `quantity`. A key that starts with `max_` but is not `max_<field>` is rejected. |
+| Scope | Profile-dependent. Legacy v0.1: only `max_amount` is a ceiling; other keys (including `max_quantity`) are exact-match. Signed-object 0.2 (`ceilings-v1`): every canonical `max_<field>` is a **per-intent** ceiling on `parameters.<field>`. See [signed-objects.md](./signed-objects.md) and [delegation.md](./delegation.md). Not cumulative spend. |
 
 ### Cumulative budgets (non-normative future)
 

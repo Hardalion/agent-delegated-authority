@@ -11,7 +11,17 @@ A delegation is a signed grant from an issuer to a subject.
 | `issued_at`, `expires_at` | Lifetime |
 | `parent_delegation_id` | Present when this grant narrows a parent |
 
-## `max_<field>` ceilings
+## Constraint profiles
+
+Constraint meaning depends on the signed-object profile. See [signed-objects.md](./signed-objects.md).
+
+### Legacy v0.1
+
+- `max_amount` is a per-intent ceiling on `parameters.amount`.
+- Every other constraint key, including `max_quantity`, requires **exact equality** on that parameter name.
+- A legacy grant with `max_quantity: 5` does **not** authorize `quantity: 3` as a ceiling. Treating it as a ceiling after a verifier upgrade would silently widen authority and is forbidden.
+
+### Signed-object 0.2 (`ceilings-v1`)
 
 A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 
@@ -21,7 +31,7 @@ A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 | `max_quantity` | `quantity` |
 | `max_records` | `records` |
 
-`<field>` matches `^[A-Za-z][A-Za-z0-9_]*$`. The same rule applies to every such key. The value is a canonical non-negative safe integer. The intent parameter must be present and must be less than or equal to the ceiling. Echoing the ceiling as its own parameter does not satisfy it: `{ quantity: 999, max_quantity: 5 }` is outside a grant of `max_quantity: 5`. A missing bounded parameter fails closed.
+`<field>` matches `^[A-Za-z][A-Za-z0-9_]*$`. The value is a canonical non-negative safe integer. The intent parameter must be present and must be less than or equal to the ceiling. Echoing the ceiling as its own parameter does not satisfy it: `{ quantity: 999, max_quantity: 5 }` is outside a grant of `max_quantity: 5`. A missing bounded parameter fails closed.
 
 `read` and `search` may omit `amount` when the only ceiling in question is `max_amount`. That exception does not apply to other actions or to other `max_<field>` keys.
 

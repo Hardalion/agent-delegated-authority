@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Security remediation (#19, #3, #20, #21)
+
+- **#19 — Signed-object versioning:** Introduces `adap: 0.2` envelopes with domain-separated preimage `ADAP/0.2/<typ>\0` + JCS of `{ adap, typ, alg, kid, payload }` for delegations, intents, and approvals. Legacy unversioned objects keep v0.1 constraint semantics (`max_amount` ceiling; other keys including `max_quantity` exact-match). Generic `max_<field>` ceilings apply only under the versioned `ceilings-v1` profile. Authority directory is keyed by `(identityId, kid)` with rotation and revocation. See `spec/signed-objects.md`.
+- **#3 — RFC 8785 Python/JS parity:** Independent Python verifier coerces JSON numbers through IEEE-754 binary64 / ECMAScript NumberToString. Shared vectors cover `2**53±1`, large integers, exponents, negative zero, non-BMP keys. Both implementations must agree on canonical strings.
+- **#20 — Actor-scoped nonces:** Ledger and PostgreSQL store key nonce state by `(actor_id, nonce)` from the verified intent. Migration `003_actor_nonce_and_pending.sql` is additive. New nonces require ≥128 bits CSPRNG entropy (`generateSecureNonce`).
+- **#21 — Human DENY and approval queue:** Signed `decision: APPROVE | DENY`. DENY marks pending `declined`, retires the nonce, emits a declined receipt, never executes. Concurrent pending approvals capped per `(principal_id, agent_id)` (default 5) with atomic PostgreSQL enforcement (`approval_queue_full`).
+
 ### Backlog consolidation
 
 Recovered PR #12 onto `main` (canonical JSON, `max_<field>`, executable `DEFER`/`SIMULATE` removal, fail-closed evaluator, execution-state reporting, Python verifier). Receipt emitter requires a real signer; demo placeholders never verify as evidence (#15). Ported Vault HTTPS/origin hardening (#2), CLI/policy-pin tests (#17), policy-only `McpToolGate` (#14), and retained #5 fixtures. Spec adds MCP binding claim levels, root/revocation/approval/policy-selection requirements, optional fail-closed hooks, conformance vectors, and README clarity vs Nexus / hackathon gate. Cumulative multi-turn budgets remain non-normative (issue #13).

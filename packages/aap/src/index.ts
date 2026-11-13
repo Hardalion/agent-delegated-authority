@@ -4,6 +4,8 @@ export {
   NonceAuthority,
   SharedNonceLedger,
   MemoryAtomicNonceBackend,
+  generateSecureNonce,
+  nonceStorageKey,
   type NonceStatus,
   type NonceStore,
   type NonceRecord,
@@ -13,10 +15,33 @@ export {
 } from './nonce.js'
 export {
   PendingAuthorizationStore,
+  DEFAULT_MAX_PENDING_APPROVALS,
   type PendingAuthorization,
   type PendingStore,
   type PendingContinuation,
+  type PendingPutOptions,
+  type PendingApprovalState,
 } from './pending.js'
+export {
+  MemoryAuthorityDirectory,
+  directoryFromPublicKeyMap,
+  resolveAuthorityDirectory,
+  assertUsableDirectoryKey,
+  type AuthorityDirectory,
+  type DirectoryKeyRecord,
+  type DirectoryKeyStatus,
+  type DirectoryIdentityKind,
+} from './directory.js'
+export {
+  ADAP_SIGNED_VERSION,
+  signEnvelope,
+  verifyEnvelopeSignature,
+  signedObjectPreimage,
+  constraintProfileOf,
+  type ConstraintProfile,
+  type SignedEnvelope,
+  type SignedObjectType,
+} from './signed-object.js'
 export {
   ImmutablePolicyResolver,
   assertPolicyContentHash,
@@ -58,6 +83,9 @@ export {
   signApproval,
   signDelegation,
   signIntent,
+  unsignedApproval,
+  unsignedDelegation,
+  unsignedIntent,
   type Capability,
   type Constraints,
   type Decision,
@@ -68,8 +96,15 @@ export {
   type IntentPayload,
   type SignedDelegation,
   type SignedIntent,
+  type SignProfile,
 } from './protocol.js'
-export { validateDelegationNarrowing, verifyAuthority, verifyHumanApproval } from './validate.js'
+export {
+  validateDelegationNarrowing,
+  verifyAuthority,
+  verifyHumanApproval,
+  constraintProfileForDelegation,
+  type DirectoryInput,
+} from './validate.js'
 export {
   runAuthorityPath,
   verifyProtocolReceipt,

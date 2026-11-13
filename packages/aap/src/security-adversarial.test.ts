@@ -279,25 +279,26 @@ describe('ADAP-001 human approval policy substitution', () => {
 describe('ADAP-002 object-valued nonce replay', () => {
   it('rejects object/array/number nonces and blocks independent JSON parse replay', () => {
     const ledger = new NonceLedger()
-    expect(() => ledger.claimForExecution({ value: 'x' } as unknown as string, 'h')).toThrow(/nonce/)
-    expect(() => ledger.claimForExecution(['x'] as unknown as string, 'h')).toThrow(/nonce/)
-    expect(() => ledger.claimForExecution(1 as unknown as string, 'h')).toThrow(/nonce/)
+    const actor = 'agt_example'
+    expect(() => ledger.claimForExecution(actor, { value: 'x' } as unknown as string, 'h')).toThrow(/nonce/)
+    expect(() => ledger.claimForExecution(actor, ['x'] as unknown as string, 'h')).toThrow(/nonce/)
+    expect(() => ledger.claimForExecution(actor, 1 as unknown as string, 'h')).toThrow(/nonce/)
     expect(() => assertValidNonce(null)).toThrow(/nonce/)
 
     const wire = JSON.stringify({ nonce: 'replay-wire-1' })
     const a = JSON.parse(wire) as { nonce: string }
     const b = JSON.parse(wire) as { nonce: string }
-    ledger.claimForExecution(a.nonce, 'hash-1')
-    ledger.consume(a.nonce, 'hash-1')
-    expect(() => ledger.claimForExecution(b.nonce, 'hash-1')).toThrow(/nonce/)
+    ledger.claimForExecution(actor, a.nonce, 'hash-1')
+    ledger.consume(actor, a.nonce, 'hash-1')
+    expect(() => ledger.claimForExecution(actor, b.nonce, 'hash-1')).toThrow(/nonce/)
 
     const objectWire = JSON.stringify({ nonce: { value: 'same-nonce' } })
     const left = JSON.parse(objectWire) as { nonce: { value: string } }
     const right = JSON.parse(objectWire) as { nonce: { value: string } }
     expect(left).not.toBe(right)
     expect(left.nonce).not.toBe(right.nonce)
-    expect(() => ledger.claimForExecution(left.nonce as unknown as string, 'hash-obj')).toThrow(/nonce/)
-    expect(() => ledger.claimForExecution(right.nonce as unknown as string, 'hash-obj')).toThrow(/nonce/)
+    expect(() => ledger.claimForExecution(actor, left.nonce as unknown as string, 'hash-obj')).toThrow(/nonce/)
+    expect(() => ledger.claimForExecution(actor, right.nonce as unknown as string, 'hash-obj')).toThrow(/nonce/)
   })
 
   it('blocks a second authority request after an independent JSON parse of the same nonce', async () => {

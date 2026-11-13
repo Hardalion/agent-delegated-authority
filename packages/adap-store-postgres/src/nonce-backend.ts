@@ -13,17 +13,13 @@ export interface PostgresNonceBackendOptions {
 }
 
 /**
- * PostgreSQL `AsyncAtomicNonceBackend`.
+ * PostgreSQL `AsyncAtomicNonceBackend` keyed by `(tenant_id, actor_id, nonce)`.
  *
  * Guarantees (when all gateway instances share this database):
- * - Primary key on `nonce` prevents dual insert.
+ * - Primary key on `(tenant_id, actor_id, nonce)` prevents dual insert.
  * - `UPDATE … WHERE version = $expected` is the compare half of CAS.
  * - A false return means no row was written.
  * - Rejected promises mean unknown outcome; callers must fail closed (no execute).
- *
- * Isolation: each compare-and-swap is one transaction (`BEGIN` … conditional
- * write … `COMMIT`/`ROLLBACK`) under READ COMMITTED. A false return means the
- * transaction rolled back and no row changed. Rows are never deleted.
  */
 export class PostgresAtomicNonceBackend implements AsyncAtomicNonceBackend {
   private readonly pool: Pool
@@ -34,17 +30,18 @@ export class PostgresAtomicNonceBackend implements AsyncAtomicNonceBackend {
     this.tenantId = options.tenantId ?? 'default'
   }
 
-  async read(nonce: string): Promise<VersionedNonceRecord | undefined> {
+  async read(actorId: string, nonce: string): Promise<VersionedNonceRecord | undefined> {
     const { rows } = await this.pool.query<{
       version: number
       status: NonceStatus
       intent_hash: string
       in_flight: boolean
+      actor_id: string
     }>(
-      `SELECT version, status, intent_hash, in_flight
+      `SELECT version, status, intent_hash, in_flight, actor_id
        FROM adap_nonces
-       WHERE nonce = $1 AND tenant_id = $2`,
-      [nonce, this.tenantId],
+       WHERE nonce = $1 AND tenant_id = $2 AND actor_id = $3`,
+      [nonce, this.tenantId, actorId],
     )
     const row = rows[0]
     if (!row) return undefined
@@ -54,26 +51,29 @@ export class PostgresAtomicNonceBackend implements AsyncAtomicNonceBackend {
         status: row.status,
         intentHash: row.intent_hash,
         inFlight: row.in_flight,
+        actorId: row.actor_id,
       },
     }
   }
 
   async compareAndSwap(
+    actorId: string,
     nonce: string,
     expectedVersion: number,
     record: NonceRecord,
   ): Promise<boolean> {
     if (expectedVersion < 0) return false
+    if (record.actorId !== actorId) return false
     const client = await this.pool.connect()
     try {
       await client.query('BEGIN')
       if (expectedVersion === 0) {
         const result = await client.query(
-          `INSERT INTO adap_nonces (tenant_id, nonce, version, status, intent_hash, in_flight)
-           VALUES ($1, $2, 1, $3, $4, $5)
-           ON CONFLICT (tenant_id, nonce) DO NOTHING
+          `INSERT INTO adap_nonces (tenant_id, actor_id, nonce, version, status, intent_hash, in_flight)
+           VALUES ($1, $2, $3, 1, $4, $5, $6)
+           ON CONFLICT (tenant_id, actor_id, nonce) DO NOTHING
            RETURNING nonce`,
-          [this.tenantId, nonce, record.status, record.intentHash, record.inFlight],
+          [this.tenantId, actorId, nonce, record.status, record.intentHash, record.inFlight],
         )
         if ((result.rowCount ?? 0) !== 1) {
           await client.query('ROLLBACK')
@@ -92,9 +92,18 @@ export class PostgresAtomicNonceBackend implements AsyncAtomicNonceBackend {
              updated_at = now()
          WHERE nonce = $1
            AND tenant_id = $5
-           AND version = $6
+           AND actor_id = $6
+           AND version = $7
          RETURNING nonce`,
-        [nonce, record.status, record.intentHash, record.inFlight, this.tenantId, expectedVersion],
+        [
+          nonce,
+          record.status,
+          record.intentHash,
+          record.inFlight,
+          this.tenantId,
+          actorId,
+          expectedVersion,
+        ],
       )
       if ((result.rowCount ?? 0) !== 1) {
         await client.query('ROLLBACK')

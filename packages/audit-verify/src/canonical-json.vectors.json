@@ -1,8 +1,17 @@
 {
   "profile": "RFC8785",
   "ordering": "UTF-16 code units",
-  "numbersNote": "ECMA-262 NumberToString. 500.0 is 500. Exponents -6 through 20 use fixed notation. 1e-7 and 1e21 use scientific notation. Negative zero is 0.",
+  "numbersNote": "ECMA-262 NumberToString after IEEE-754 binary64 interpretation. Integers above 2^53 are rounded like JavaScript Number. 500.0 is 500. Exponents -6 through 20 use fixed notation. 1e-7 and 1e21 use scientific notation. Negative zero is 0.",
   "accept": [
+    {
+      "name": "safe-integer-boundary-object",
+      "value": {
+        "maxSafe": 9007199254740991,
+        "maxSafePlusOne": 9007199254740992,
+        "maxSafePlusTwo": 9007199254740993
+      },
+      "canonical": "{\"maxSafe\":9007199254740991,\"maxSafePlusOne\":9007199254740992,\"maxSafePlusTwo\":9007199254740992}"
+    },
     {
       "name": "integer-like-keys",
       "value": {
@@ -68,6 +77,10 @@
     { "name": "one-e-20", "value": 1e20, "canonical": "100000000000000000000" },
     { "name": "one-e-21", "value": 1e21, "canonical": "1e+21" },
     { "name": "tenth", "value": 0.1, "canonical": "0.1" },
-    { "name": "negative-twelve-point-five", "value": -12.5, "canonical": "-12.5" }
+    { "name": "negative-twelve-point-five", "value": -12.5, "canonical": "-12.5" },
+    { "name": "max-safe-integer", "value": 9007199254740991, "canonical": "9007199254740991" },
+    { "name": "two-53", "value": 9007199254740992, "canonical": "9007199254740992" },
+    { "name": "two-53-plus-one", "value": 9007199254740993, "canonical": "9007199254740992" },
+    { "name": "twenty-digit-integer", "value": 12345678901234567890, "canonical": "12345678901234567000" }
   ]
 }

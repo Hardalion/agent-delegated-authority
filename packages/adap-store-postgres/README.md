@@ -10,12 +10,18 @@ PostgreSQL adapters for a deployment of the ADAP reference path. They are not a 
 
 | Property | Mechanism |
 | --- | --- |
-| Single insert winner | `PRIMARY KEY (tenant_id, nonce)` + `ON CONFLICT DO NOTHING` |
+| Single insert winner | `PRIMARY KEY (tenant_id, actor_id, nonce)` + `ON CONFLICT DO NOTHING` |
 | Versioned CAS | `UPDATE … WHERE version = $expected RETURNING` |
+| Actor isolation | Nonce and pending rows keyed by verified `actor_id` |
+| Pending queue cap | Transaction + `pg_advisory_xact_lock` + count of active pending |
 | Restart durability | Rows are never deleted by the adapter |
 | Fail closed | Rejected queries propagate; the authority path must not execute |
 
-Isolation assumption: **READ COMMITTED** with single-statement conditional writes. The compare-and-swap is one claim per nonce in that database. It is not exactly-once delivery across an external system.
+Isolation assumption: **READ COMMITTED** with transactional compare-and-swap and advisory locks for empty queue sets. The compare-and-swap is one claim per `(actor, nonce)` in that database. It is not exactly-once delivery across an external system.
+
+### Migration 003
+
+`migrations/003_actor_nonce_and_pending.sql` adds `actor_id`, replaces primary keys with `(tenant_id, actor_id, nonce)`, expands pending `approval_state` for `declined` / `expired`, and is idempotent. Legacy nonce rows keep `actor_id = ''` and remain non-replayable. Do not delete them. Deploy order: migrate, then roll out writers that always set `actor_id`. Rollback is not lossless once new actor-scoped rows exist.
 
 ## Migrate
 

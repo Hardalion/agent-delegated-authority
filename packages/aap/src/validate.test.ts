@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { assertIntentWithinDelegation, assertNotExpired, validateDelegationNarrowing } from './validate.js'
 import type { SignedDelegation } from './protocol.js'
+import { ADAP_SIGNED_VERSION } from './signed-object.js'
 
 const t0 = '2026-10-06T10:00:00.000Z'
 const t1 = '2026-10-06T10:15:00.000Z'
@@ -17,6 +18,17 @@ function delegation(over: Partial<SignedDelegation>): SignedDelegation {
     signature: 'x',
     ...over,
   }
+}
+
+/** Unsigned shape fixture for ceilings-v1 (signed-object 0.2) constraint profile. */
+function ceilingsDelegation(over: Partial<SignedDelegation>): SignedDelegation {
+  return delegation({
+    adap: ADAP_SIGNED_VERSION,
+    typ: 'delegation',
+    alg: 'Ed25519',
+    kid: 'ed25519:test',
+    ...over,
+  })
 }
 
 describe('delegation narrowing', () => {
@@ -71,8 +83,33 @@ describe('spending bound', () => {
     constraints: { max_amount: 500, currency: 'EUR' },
   })
 
-  it('requires quantity under max_quantity and ignores an echoed ceiling', () => {
+  it('legacy v0.1 keeps max_quantity as exact-match, not a ceiling (#19)', () => {
     const grant = delegation({
+      capabilities: [{ action: 'purchase', target: 'airline/*' }],
+      constraints: { max_quantity: 5 },
+    })
+    const intent = (parameters: Record<string, unknown>) => ({
+      intent_id: 'i',
+      actor: 'agent-a',
+      delegation_chain: ['d1'],
+      action: 'purchase',
+      target: 'airline/example',
+      parameters,
+      nonce: 'n',
+      issued_at: t0,
+      expires_at: t1,
+    })
+    expect(() => assertIntentWithinDelegation(intent({ quantity: 3 }), grant)).toThrow(
+      /parameter max_quantity is outside the delegation/,
+    )
+    expect(() => assertIntentWithinDelegation(intent({ max_quantity: 5 }), grant)).not.toThrow()
+    expect(() => assertIntentWithinDelegation(intent({ max_quantity: 4 }), grant)).toThrow(
+      /parameter max_quantity is outside the delegation/,
+    )
+  })
+
+  it('requires quantity under max_quantity and ignores an echoed ceiling', () => {
+    const grant = ceilingsDelegation({
       capabilities: [{ action: 'purchase', target: 'airline/*' }],
       constraints: { max_quantity: 5 },
     })
@@ -105,7 +142,7 @@ describe('spending bound', () => {
   })
 
   it('keeps other max_* ceilings and rejects non-canonical limits', () => {
-    const records = delegation({
+    const records = ceilingsDelegation({
       capabilities: [{ action: 'export', target: 'archive/*' }],
       constraints: { max_records: 2 },
     })
@@ -124,7 +161,7 @@ describe('spending bound', () => {
     expect(() => assertIntentWithinDelegation(intent({ records: 3 }), records)).toThrow(/max_records/)
 
     const bad = (constraints: Record<string, unknown>) =>
-      delegation({
+      ceilingsDelegation({
         capabilities: [{ action: 'purchase', target: 'airline/*' }],
         constraints: constraints as SignedDelegation['constraints'],
       })
@@ -153,11 +190,11 @@ describe('spending bound', () => {
   })
 
   it('lets a child lower max_quantity and not raise it', () => {
-    const parent = delegation({
+    const parent = ceilingsDelegation({
       capabilities: [{ action: 'purchase', target: 'airline/*', delegable: true }],
       constraints: { max_quantity: 5 },
     })
-    const child = delegation({
+    const child = ceilingsDelegation({
       delegation_id: 'd2',
       issuer: 'agent-a',
       subject: 'agent-b',
@@ -208,7 +245,7 @@ describe('spending bound', () => {
         read,
       ),
     ).not.toThrow()
-    const counted = delegation({
+    const counted = ceilingsDelegation({
       capabilities: [{ action: 'read', target: 'resource/*' }],
       constraints: { max_quantity: 5 },
     })

@@ -56,15 +56,51 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     try {
       const a = new PostgresAtomicNonceBackend({ pool, tenantId: 't1' })
       const b = new PostgresAtomicNonceBackend({ pool, tenantId: 't1' })
-      const record = { status: 'pending' as const, intentHash: 'ih1', inFlight: false }
+      const record = {
+        status: 'pending' as const,
+        intentHash: 'ih1',
+        inFlight: false,
+        actorId: 'agt_a',
+      }
       const results = await Promise.all([
-        a.compareAndSwap('n-race', 0, record),
-        b.compareAndSwap('n-race', 0, record),
+        a.compareAndSwap('agt_a', 'n-race', 0, record),
+        b.compareAndSwap('agt_a', 'n-race', 0, record),
       ])
       expect(results.filter(Boolean)).toHaveLength(1)
-      const row = await a.read('n-race')
+      const row = await a.read('agt_a', 'n-race')
       expect(row?.version).toBe(1)
       expect(row?.record.intentHash).toBe('ih1')
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('isolates the same nonce string across actors (#20)', async () => {
+    const pool = await freshPool()
+    try {
+      const backend = new PostgresAtomicNonceBackend({ pool })
+      expect(
+        await backend.compareAndSwap('agt_a', 'shared', 0, {
+          status: 'pending',
+          intentHash: 'a',
+          inFlight: false,
+          actorId: 'agt_a',
+        }),
+      ).toBe(true)
+      expect(
+        await backend.compareAndSwap('agt_b', 'shared', 0, {
+          status: 'pending',
+          intentHash: 'b',
+          inFlight: false,
+          actorId: 'agt_b',
+        }),
+      ).toBe(true)
+      expect((await backend.read('agt_a', 'shared'))?.record.intentHash).toBe('a')
+      expect((await backend.read('agt_b', 'shared'))?.record.intentHash).toBe('b')
+      const ledger = new SharedNonceLedger(backend)
+      await ledger.consume('agt_a', 'shared', 'a')
+      expect(await ledger.statusOf('agt_a', 'shared')).toBe('consumed')
+      expect(await ledger.assertUsable('agt_b', 'shared', 'b')).toBe('pending')
     } finally {
       await pool.end()
     }
@@ -74,16 +110,12 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     const pool = await freshPool()
     try {
       const backend = new PostgresAtomicNonceBackend({ pool })
-      await backend.compareAndSwap('n-claim', 0, {
-        status: 'pending',
-        intentHash: 'ih2',
-        inFlight: false,
-      })
+      await backend.compareAndSwap('agt_a', 'n-claim', 0, { status: 'pending', intentHash: 'ih2', inFlight: false, actorId: 'agt_a' })
       const ledgerA = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
       const ledgerB = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
       const outcomes = await Promise.allSettled([
-        ledgerA.claimForExecution('n-claim', 'ih2'),
-        ledgerB.claimForExecution('n-claim', 'ih2'),
+        ledgerA.claimForExecution('agt_a', 'n-claim', 'ih2'),
+        ledgerB.claimForExecution('agt_a', 'n-claim', 'ih2'),
       ])
       const fulfilled = outcomes.filter((o) => o.status === 'fulfilled')
       const rejected = outcomes.filter((o) => o.status === 'rejected')
@@ -92,8 +124,8 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
       const err = (rejected[0] as PromiseRejectedResult).reason
       expect(err).toBeInstanceOf(AuthorityError)
       expect((err as AuthorityError).message).toMatch(/nonce_in_flight_or_used|already used/)
-      expect(await ledgerA.statusOf('n-claim')).toBe('pending')
-      const row = await backend.read('n-claim')
+      expect(await ledgerA.statusOf('agt_a', 'n-claim')).toBe('pending')
+      const row = await backend.read('agt_a', 'n-claim')
       expect(row?.record.inFlight).toBe(true)
     } finally {
       await pool.end()
@@ -105,8 +137,8 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
       const pool = await freshPool()
       try {
         const ledger = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
-        await ledger.claimForExecution('n-persist', 'ih3')
-        await ledger.consume('n-persist', 'ih3')
+        await ledger.claimForExecution('agt_a', 'n-persist', 'ih3')
+        await ledger.consume('agt_a', 'n-persist', 'ih3')
       } finally {
         await pool.end()
       }
@@ -115,8 +147,8 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
       const pool = createPool({ connectionString: PG_URL })
       try {
         const ledger = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
-        await expect(ledger.assertUsable('n-persist', 'ih3')).rejects.toBeInstanceOf(AuthorityError)
-        expect(await ledger.statusOf('n-persist')).toBe('consumed')
+        await expect(ledger.assertUsable('agt_a', 'n-persist', 'ih3')).rejects.toBeInstanceOf(AuthorityError)
+        expect(await ledger.statusOf('agt_a', 'n-persist')).toBe('consumed')
       } finally {
         await pool.end()
       }
@@ -151,7 +183,7 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     const pool2 = createPool({ connectionString: PG_URL })
     try {
       const store = new PostgresPendingStore({ pool: pool2 })
-      const got = await store.get('p1')
+      const got = await store.get('agent', 'p1')
       expect(got?.intentHash).toBe('ihp')
       expect(got?.approvalState).toBe('pending')
       await expect(
@@ -169,8 +201,8 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
           now: new Date(),
         }),
       ).rejects.toBeInstanceOf(AuthorityError)
-      await store.markApproved('p1', 'ihp')
-      await expect(store.markApproved('p1', 'ihp')).rejects.toBeInstanceOf(AuthorityError)
+      await store.markApproved('agent', 'p1', 'ihp')
+      await expect(store.markApproved('agent', 'p1', 'ihp')).rejects.toBeInstanceOf(AuthorityError)
     } finally {
       await pool2.end()
     }
@@ -181,20 +213,12 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     try {
       const backend = new PostgresAtomicNonceBackend({ pool })
       expect(
-        await backend.compareAndSwap('n-rb', 0, {
-          status: 'pending',
-          intentHash: 'ih4',
-          inFlight: false,
-        }),
+        await backend.compareAndSwap('agt_a', 'n-rb', 0, { status: 'pending', intentHash: 'ih4', inFlight: false, actorId: 'agt_a' }),
       ).toBe(true)
       expect(
-        await backend.compareAndSwap('n-rb', 0, {
-          status: 'pending',
-          intentHash: 'ih4',
-          inFlight: true,
-        }),
+        await backend.compareAndSwap('agt_a', 'n-rb', 0, { status: 'pending', intentHash: 'ih4', inFlight: true, actorId: 'agt_a' }),
       ).toBe(false)
-      const row = await backend.read('n-rb')
+      const row = await backend.read('agt_a', 'n-rb')
       expect(row?.version).toBe(1)
       expect(row?.record.inFlight).toBe(false)
     } finally {
@@ -207,11 +231,7 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
     const backend = new PostgresAtomicNonceBackend({ pool })
     await pool.end()
     await expect(
-      backend.compareAndSwap('n-dead', 0, {
-        status: 'pending',
-        intentHash: 'ih5',
-        inFlight: false,
-      }),
+      backend.compareAndSwap('agt_a', 'n-dead', 0, { status: 'pending', intentHash: 'ih5', inFlight: false, actorId: 'agt_a' }),
     ).rejects.toBeTruthy()
   })
 
@@ -221,21 +241,55 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
       const a = new PostgresAtomicNonceBackend({ pool, tenantId: 'alpha' })
       const b = new PostgresAtomicNonceBackend({ pool, tenantId: 'beta' })
       expect(
-        await a.compareAndSwap('shared-nonce', 0, {
-          status: 'pending',
-          intentHash: 'a',
-          inFlight: false,
-        }),
+        await a.compareAndSwap('agt_a', 'shared-nonce', 0, { status: 'pending', intentHash: 'a', inFlight: false, actorId: 'agt_a' }),
       ).toBe(true)
       expect(
-        await b.compareAndSwap('shared-nonce', 0, {
-          status: 'pending',
-          intentHash: 'b',
-          inFlight: false,
-        }),
+        await b.compareAndSwap('agt_a', 'shared-nonce', 0, { status: 'pending', intentHash: 'b', inFlight: false, actorId: 'agt_a' }),
       ).toBe(true)
-      expect((await a.read('shared-nonce'))?.record.intentHash).toBe('a')
-      expect((await b.read('shared-nonce'))?.record.intentHash).toBe('b')
+      expect((await a.read('agt_a', 'shared-nonce'))?.record.intentHash).toBe('a')
+      expect((await b.read('agt_a', 'shared-nonce'))?.record.intentHash).toBe('b')
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('enforces pending approval queue cap under concurrent puts (#21)', async () => {
+    const pool = await freshPool()
+    try {
+      const store = new PostgresPendingStore({ pool, maxPendingApprovals: 2 })
+      const expiry = new Date(Date.now() + 60_000).toISOString()
+      const base = {
+        intentHash: 'ih',
+        principalId: 'prin',
+        agentId: 'agent',
+        delegationChainHash: 'dch',
+        policyUri: 'pol://x',
+        policyContentHash: 'pch',
+        policyVersion: '1',
+        policyName: 'n',
+        matchedRuleId: 'r1',
+        originalDecision: 'REQUIRE_HUMAN' as const,
+        approvalState: 'pending' as const,
+        expiry,
+        approverId: 'approver',
+      }
+      const results = await Promise.allSettled(
+        [1, 2, 3, 4].map((n) =>
+          store.put({ ...base, nonce: `q${n}`, intentHash: `ih${n}`, agentId: 'agent' }),
+        ),
+      )
+      const ok = results.filter((r) => r.status === 'fulfilled')
+      const blocked = results.filter((r) => r.status === 'rejected')
+      expect(ok).toHaveLength(2)
+      expect(blocked).toHaveLength(2)
+      for (const r of blocked) {
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(AuthorityError)
+        expect(((r as PromiseRejectedResult).reason as AuthorityError).code).toBe('approval_queue_full')
+      }
+      expect(await store.countActivePending?.('prin', 'agent')).toBe(2)
+      // Different agent under same principal has an independent quota.
+      await store.put({ ...base, nonce: 'other', agentId: 'agent-b', intentHash: 'ih-other' })
+      expect(await store.get('agent-b', 'other')).toBeTruthy()
     } finally {
       await pool.end()
     }

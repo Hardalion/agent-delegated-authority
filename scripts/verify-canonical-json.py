@@ -18,8 +18,12 @@ VECTORS = ROOT / "packages" / "audit-verify" / "src" / "canonical-json.vectors.j
 DANGEROUS = {"__proto__", "constructor", "prototype"}
 
 
-def es_number(value: float) -> str:
+def es_number(value: float | int) -> str:
     """ECMA-262 NumberToString for finite numbers, which is the RFC 8785 number format.
+
+    JSON numbers are interpreted as IEEE-754 binary64 (ECMAScript Number) before
+    serialization. Python ints are therefore coerced with float() — never emitted
+    with arbitrary precision — so 9007199254740993 becomes 9007199254740992.
 
     This is not Python json.dumps. json.dumps(500.0) is `500.0`, json.dumps(1e-6)
     is `1e-06`, and json.dumps(1e20) stays in exponent form. JCS emits `500`,
@@ -27,14 +31,19 @@ def es_number(value: float) -> str:
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("number required")
-    if isinstance(value, float) and not math.isfinite(value):
+    # Match ECMAScript Number: coerce before formatting. Reject non-finite results
+    # (values outside the binary64 range become inf / OverflowError).
+    try:
+        coerced = float(value)
+    except OverflowError as exc:
+        raise ValueError("non-finite") from exc
+    if not math.isfinite(coerced):
         raise ValueError("non-finite")
-    if isinstance(value, int) and abs(value) < 10**21:
-        return str(value)
+    value = coerced
     if value == 0:
         return "0"
     sign = "-" if value < 0 else ""
-    magnitude = float(-value if value < 0 else value)
+    magnitude = -value if value < 0 else value
     scientific: str | None = None
     for precision in range(0, 17):
         candidate = format(magnitude, f".{precision}e")
@@ -130,6 +139,18 @@ def main() -> int:
         print("FAIL number negative-zero")
     else:
         print("ok number negative-zero")
+    # Counterexample from issue #3: Python int precision must not diverge from JS Number.
+    if es_number(9007199254740993) != "9007199254740992":
+        failed = True
+        print("FAIL number two-53-plus-one-python-int")
+    else:
+        print("ok number two-53-plus-one-python-int")
+    try:
+        es_number(True)  # type: ignore[arg-type]
+        failed = True
+        print("FAIL boolean-as-number")
+    except TypeError:
+        print("ok boolean-as-number")
     if failed:
         return 1
     # Programmatic rejects mirrored by the TypeScript suite.
@@ -146,6 +167,13 @@ def main() -> int:
         print("ok non-finite")
     else:
         print("FAIL non-finite")
+        return 1
+    try:
+        es_number(10**400)
+    except ValueError:
+        print("ok overflow-to-inf")
+    else:
+        print("FAIL overflow-to-inf")
         return 1
     print("vectors", len(document["accept"]))
     return 0

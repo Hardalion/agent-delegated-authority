@@ -426,7 +426,7 @@ describe('policy registration', () => {
     })
     expect(pending.decision).toBe('REQUIRE_HUMAN')
     expect(calls).toBe(0)
-    const stored = pendingStore.get(intent.nonce)
+    const stored = pendingStore.get(intent.actor, intent.nonce)
     expect(stored?.approverId).toBe(env.principal.id)
     expect(stored?.policyContentHash).toBe(pending.policyHash)
     expect(stored?.intentHash).toBe(pending.intentHash)
@@ -449,25 +449,27 @@ describe('policy registration', () => {
 })
 
 describe('nonce adapter', () => {
+  const actor = 'agt_nonce'
+
   it('lets only one claimant win a scripted compare-and-swap race', () => {
     const backend = new MemoryAtomicNonceBackend()
     const first = new NonceLedger(backend)
     const second = new NonceLedger(backend)
     backend.beforeCompareAndSwap = () => {
-      second.claimForExecution('shared-nonce', 'hash-1')
+      second.claimForExecution(actor, 'shared-nonce', 'hash-1')
     }
-    expect(() => first.claimForExecution('shared-nonce', 'hash-1')).toThrow(/nonce_in_flight_or_used/)
-    expect(second.statusOf('shared-nonce')).toBe('pending')
-    expect(() => second.claimForExecution('shared-nonce', 'hash-1')).toThrow(/nonce_in_flight_or_used/)
+    expect(() => first.claimForExecution(actor, 'shared-nonce', 'hash-1')).toThrow(/nonce_in_flight_or_used/)
+    expect(second.statusOf(actor, 'shared-nonce')).toBe('pending')
+    expect(() => second.claimForExecution(actor, 'shared-nonce', 'hash-1')).toThrow(/nonce_in_flight_or_used/)
   })
 
   it('does not coordinate two process-local ledgers', () => {
     const left = new NonceLedger()
     const right = new NonceLedger()
-    left.claimForExecution('split', 'hash-2')
-    right.claimForExecution('split', 'hash-2')
-    expect(left.statusOf('split')).toBe('pending')
-    expect(right.statusOf('split')).toBe('pending')
+    left.claimForExecution(actor, 'split', 'hash-2')
+    right.claimForExecution(actor, 'split', 'hash-2')
+    expect(left.statusOf(actor, 'split')).toBe('pending')
+    expect(right.statusOf(actor, 'split')).toBe('pending')
   })
 
   it('spends a nonce when the executor throws and refuses the retry', async () => {
@@ -486,7 +488,7 @@ describe('nonce adapter', () => {
     expect(failed.executed).toBe(false)
     expect(failed.ruleId).toBe('execution')
     expect(calls).toBe(1)
-    expect(ledger.statusOf(intent.nonce)).toBe('failed')
+    expect(ledger.statusOf(intent.actor, intent.nonce)).toBe('failed')
     const retry = await run(env, intent, {
       ledger,
       execute: () => {

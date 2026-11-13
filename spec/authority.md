@@ -18,6 +18,7 @@ An id is not a credential.
 
 | Primitive | Specification |
 | --- | --- |
+| Signed objects | [signed-objects.md](./signed-objects.md) |
 | Delegation | [delegation.md](./delegation.md) |
 | Intent | [intent.md](./intent.md) |
 | Policy decision | [policy-decision.md](./policy-decision.md) |
