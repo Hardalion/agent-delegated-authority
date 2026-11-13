@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 Write-Host "==> 1/3 Policy eval: apply over the cap should BLOCK"
-node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args '{"amount":800}' --json
+# PowerShell strips unescaped quotes from '{"amount":800}' before Node sees them.
+node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args '{\"amount\":800}' --json
 if ($LASTEXITCODE -ne 1) { throw "Expected exit code 1 for BLOCK" }
 
 Write-Host ""

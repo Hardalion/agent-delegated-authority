@@ -184,7 +184,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         subjectId: root.subject,
         capabilities: root.capabilities.map((capability) => ({
           action: capability.action,
-          target: capability.target,
+          target: capability.target ?? '',
         })),
       })
       if (!allowed) {
