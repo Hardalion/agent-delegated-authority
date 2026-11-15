@@ -424,4 +424,154 @@ describe('unsupported policy actions', () => {
     expect(revoked.ruleId).toBe('revoked')
     expect(revoked.executed).toBe(false)
   })
+
+  it('rejects self-issued root delegations by default when rootAuthority is configured and enforces human directory kind on approvals', async () => {
+    const principal = createIdentity('prn_example')
+    const agent = createIdentity('agt_example')
+    const signer = createIdentity('reference-runtime')
+    const directory = new Map([
+      [principal.id, principal.publicKey],
+      [agent.id, agent.publicKey],
+      [signer.id, signer.publicKey],
+    ])
+    const selfRoot = signDelegation(
+      {
+        delegation_id: 'del_self',
+        issuer: agent.id,
+        subject: agent.id,
+        capabilities: [{ action: 'read', target: 'resource/*', delegable: false }],
+        constraints: { max_amount: 500 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      agent,
+    )
+    const policyResolver = new ImmutablePolicyResolver()
+    policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
+
+    const selfBlocked = await runAuthorityPath({
+      chain: [selfRoot],
+      intent: signIntent(
+        {
+          intent_id: 'int_self_root',
+          actor: agent.id,
+          delegation_chain: [selfRoot.delegation_id],
+          action: 'read',
+          target: 'resource/example',
+          parameters: {},
+          nonce: 'nonce-self-root',
+          issued_at: ISSUED,
+          expires_at: EXPIRES,
+        },
+        agent,
+      ),
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger: new NonceLedger(),
+      pendingStore: new PendingAuthorizationStore(),
+      policyResolver,
+      signer,
+      rootAuthority: { mayIssueRoot: () => true },
+      execute: () => ({ ok: true }),
+    })
+    expect(selfBlocked.decision).toBe('BLOCK')
+    expect(selfBlocked.ruleId).toBe('root_not_authorized')
+    expect(selfBlocked.executed).toBe(false)
+
+    // Directory entry tagged with kind: 'agent' cannot sign a HumanApproval.
+    const { MemoryAuthorityDirectory } = await import('./directory.js')
+    const typedDirectory = new MemoryAuthorityDirectory([
+      {
+        identityId: principal.id,
+        kid: 'ed25519:prn-as-agent',
+        alg: 'Ed25519',
+        publicKey: principal.publicKey,
+        status: 'active',
+        kind: 'agent',
+      },
+      {
+        identityId: agent.id,
+        kid: 'ed25519:agt-1',
+        alg: 'Ed25519',
+        publicKey: agent.publicKey,
+        status: 'active',
+        kind: 'agent',
+      },
+    ])
+    const root = signDelegation(
+      {
+        delegation_id: 'del_root_kind',
+        issuer: principal.id,
+        subject: agent.id,
+        capabilities: [{ action: 'apply', target: 'resource/*', delegable: false }],
+        constraints: { max_amount: 800 },
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      principal,
+    )
+    const intent = signIntent(
+      {
+        intent_id: 'int_kind',
+        actor: agent.id,
+        delegation_chain: [root.delegation_id],
+        action: 'apply',
+        target: 'resource/example',
+        parameters: { amount: 420 },
+        nonce: 'nonce-kind-1',
+        issued_at: ISSUED,
+        expires_at: EXPIRES,
+      },
+      agent,
+    )
+    const ledger = new NonceLedger()
+    const pendingStore = new PendingAuthorizationStore()
+    const pending = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory: typedDirectory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+    })
+    expect(pending.decision).toBe('REQUIRE_HUMAN')
+
+    const nonHumanApproval = signApproval(
+      {
+        intent_hash: pending.intentHash,
+        approver_id: principal.id,
+        approved_at: ISSUED,
+        decision: 'APPROVE',
+        agent_id: agent.id,
+        delegation_chain_hash: sha256([unsignedDelegation(root)]),
+        policy_content_hash: pending.policyHash,
+        matched_rule_id: pending.ruleId,
+      },
+      principal,
+    )
+    const rejectedKind = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory: typedDirectory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+      approval: nonHumanApproval,
+      execute: () => ({ ok: true }),
+    })
+    expect(rejectedKind.decision).toBe('BLOCK')
+    expect(rejectedKind.executed).toBe(false)
+    expect(rejectedKind.reason).toMatch(/wrong identity kind/i)
+  })
 })
+

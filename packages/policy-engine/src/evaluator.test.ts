@@ -204,6 +204,47 @@ describe('condition evaluation errors', () => {
     expect(() => parsePolicyDocument('{')).toThrow()
     expect(() => parsePolicyDocument('version: [')).toThrow()
   })
+
+  it('short-circuits parenthesized && right-hand sides without failing closed on unrelated tools', () => {
+    const policy = parsePolicyDocument(`version: "1.0"
+policyName: paren-short-circuit
+targetAgents: ["*"]
+defaultAction: ALLOW
+rules:
+  - ruleId: high_apply
+    action: REQUIRE_HUMAN
+    condition: "tool.name == 'apply' && (args.amount > 500)"
+    alertSeverity: MEDIUM
+`)
+    const readDecision = evaluateToolCall({
+      policy,
+      toolName: 'read',
+      toolArgs: {},
+      agentRole: ROLE,
+    })
+    expect(readDecision.action).toBe('ALLOW')
+
+    const applyDecision = evaluateToolCall({
+      policy,
+      toolName: 'apply',
+      toolArgs: { amount: 600 },
+      agentRole: ROLE,
+    })
+    expect(applyDecision.action).toBe('REQUIRE_HUMAN')
+    expect(applyDecision.ruleId).toBe('high_apply')
+  })
+
+  it('rejects unclosed string literals and invalid multi-dot numeric literals', () => {
+    expect(() => evaluateCondition("tool.name == 'apply", { tool: { name: 'apply' } })).toThrow(
+      /Unterminated string literal/
+    )
+    expect(() => evaluateCondition('args.amount == 1.2.3', { args: { amount: 1 } })).toThrow(
+      /Invalid numeric literal/
+    )
+    expect(() => evaluateCondition(" (tool.name == 'apply' ", { tool: { name: 'apply' } })).toThrow(
+      /Expected closing parenthesis/
+    )
+  })
 })
 
 describe('freeform argument boundary', () => {

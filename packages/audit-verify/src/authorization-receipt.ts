@@ -464,8 +464,11 @@ function validateSemanticInvariants(r: Record<string, unknown>): string[] {
       errors.push('REQUIRE_HUMAN receipts must include human attestation')
     }
   }
-  if (action === 'ALLOW' && human?.status === 'pending') {
-    errors.push('ALLOW receipts must not claim human.status=pending')
+  if (
+    action === 'ALLOW' &&
+    (human?.status === 'pending' || human?.status === 'declined' || human?.status === 'escalated')
+  ) {
+    errors.push(`ALLOW receipts must not claim human.status=${String(human.status)}`)
   }
   if (action === 'DEFER' && executed) {
     errors.push('DEFER receipts must not claim execution')
@@ -605,7 +608,9 @@ export function verifyReceiptChain(
 
   let expectedPrev: string | null = options?.prevReceiptHash ?? null
   let expectedSequence: number | undefined
-  const issuer = receipts[0]?.issuerKeyId
+  const issuerKeyId = receipts[0]?.issuerKeyId
+  const issuerName = receipts[0]?.issuer
+  const seenReceiptIds = new Set<string>()
 
   receipts.forEach((receipt, index) => {
     const single = verifyAuthorizationReceipt(receipt)
@@ -613,7 +618,16 @@ export function verifyReceiptChain(
     if (options?.publicKeySpki && !verifyReceiptSignature(receipt, options.publicKeySpki)) {
       errors.push(`receipt[${index}]: ed25519 signature invalid`)
     }
-    if (receipt.issuerKeyId !== issuer) errors.push(`receipt[${index}]: issuerKeyId differs from chain issuer`)
+    if (receipt.issuerKeyId !== issuerKeyId) {
+      errors.push(`receipt[${index}]: issuerKeyId differs from chain issuer`)
+    }
+    if (receipt.issuer !== issuerName) {
+      errors.push(`receipt[${index}]: issuer differs from chain issuer`)
+    }
+    if (seenReceiptIds.has(receipt.receiptId)) {
+      errors.push(`receipt[${index}]: duplicate receiptId ${receipt.receiptId}`)
+    }
+    seenReceiptIds.add(receipt.receiptId)
     if (typeof receipt.sequence !== 'number') {
       errors.push(`receipt[${index}]: sequence missing`)
     } else {

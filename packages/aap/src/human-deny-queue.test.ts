@@ -261,4 +261,98 @@ describe('human DENY and approval queue (#21)', () => {
     expect(a1.decision).toBe('REQUIRE_HUMAN')
     expect(b1.decision).toBe('REQUIRE_HUMAN')
   })
+
+  it('does not burn the pending nonce or wedge the queue when a malformed or profile-mismatched approval is replayed', async () => {
+    const { principal, agent, signer, directory, root, policyResolver } = env()
+    const ledger = new NonceLedger()
+    const pendingStore = new PendingAuthorizationStore({ maxPendingApprovals: 1 })
+    const intent = intentFor(agent, root.delegation_id, 'nonce-dos-1')
+    let executed = 0
+
+    const pending = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+      maxPendingApprovals: 1,
+    })
+    expect(pending.decision).toBe('REQUIRE_HUMAN')
+
+    // Unauthenticated/malformed approval (e.g. invalid signature hex -> 'schema', or profile mismatch -> 'profile')
+    const malformedApproval = {
+      intent_hash: pending.intentHash,
+      approver_id: principal.id,
+      approved_at: NOW.toISOString(),
+      decision: 'APPROVE' as const,
+      agent_id: agent.id,
+      delegation_chain_hash: sha256([root].map(unsignedDelegation)),
+      policy_content_hash: pending.policyHash,
+      matched_rule_id: pending.ruleId,
+      signature: 'not-hex',
+    }
+    const forgedAttempt = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+      approval: malformedApproval,
+      maxPendingApprovals: 1,
+      execute: () => {
+        executed += 1
+        return { ok: true }
+      },
+    })
+    expect(forgedAttempt.decision).toBe('BLOCK')
+    expect(forgedAttempt.executed).toBe(false)
+    expect(executed).toBe(0)
+
+    // The legitimate principal can still APPROVE (or DENY) the pending request.
+    const validApproval = signApproval(
+      {
+        intent_hash: pending.intentHash,
+        approver_id: principal.id,
+        approved_at: NOW.toISOString(),
+        decision: 'APPROVE',
+        agent_id: agent.id,
+        delegation_chain_hash: sha256([root].map(unsignedDelegation)),
+        policy_content_hash: pending.policyHash,
+        matched_rule_id: pending.ruleId,
+      },
+      principal
+    )
+    const resumed = await runAuthorityPath({
+      chain: [root],
+      intent,
+      directory,
+      policy: BASIC_AGENT_AUTHORITY,
+      policyUri: BASIC_AGENT_AUTHORITY_URI,
+      clock: new FixedClock(NOW),
+      ledger,
+      pendingStore,
+      policyResolver,
+      signer,
+      approval: validApproval,
+      maxPendingApprovals: 1,
+      execute: () => {
+        executed += 1
+        return { ok: true }
+      },
+    })
+    expect(resumed.decision).toBe('ALLOW')
+    expect(resumed.executed).toBe(true)
+    expect(executed).toBe(1)
+  })
 })
+

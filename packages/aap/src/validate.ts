@@ -556,6 +556,7 @@ export function verifyHumanApproval(input: {
   if (isVersionedHumanApproval(approval)) {
     const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id, approval.kid), now, {
       requireKid: approval.kid,
+      expectedKind: 'human',
     })
     const envelope = {
       adap: ADAP_SIGNED_VERSION,
@@ -569,7 +570,9 @@ export function verifyHumanApproval(input: {
       throw new AuthorityError('approval', 'approval signature invalid', true)
     }
   } else {
-    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now)
+    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now, {
+      expectedKind: 'human',
+    })
     if (!verifyObject(unsignedApproval(approval), approval.signature, importPublicKey(key.publicKey))) {
       throw new AuthorityError('approval', 'approval signature invalid', true)
     }
