@@ -31,7 +31,6 @@ export {
 export {
   executeAuthorized,
   attemptDirectBrokerExecute,
-  type ExecutionStatePersistence,
   type GatewayExecuteInput,
   type GatewayExecuteResult,
 } from './executor.js'

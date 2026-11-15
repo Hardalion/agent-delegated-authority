@@ -521,7 +521,7 @@ export class DemoRuntime {
         pending.approvalState = 'approved'
         pending.continuedBy = created.id
         pending.outcomeLabel = 'NOT EXECUTED · CONTINUED'
-        pending.nonceState = this.#nonceState(open.intent.actor, nonce)
+        pending.nonceState = this.#nonceState(nonce)
         pending.stages = buildStages({
           authenticated: pending.authenticated,
           decision: pending.decision,
@@ -566,16 +566,13 @@ export class DemoRuntime {
         }
         throw new DemoError(404, 'approval_not_found', 'No pending approval matches this nonce.')
       }
-      const open = this.#open.get(nonce)
-      const actorId = open?.intent.actor ?? this.#agent.id
-      this.#ledger.consume(actorId, nonce, pending.intentHash)
-      this.#store?.pendingStore.markDeclined(actorId, nonce, pending.intentHash)
+      this.#ledger.consume(nonce, pending.intentHash)
       pending.approvalState = 'rejected'
       pending.executed = false
       pending.downstreamStatus = 'not_called'
       pending.outcomeLabel = 'NOT EXECUTED · REJECTED'
       pending.reason = 'Human approver rejected the pending intent. The executor was not called.'
-      pending.nonceState = this.#nonceState(actorId, nonce)
+      pending.nonceState = this.#nonceState(nonce)
       pending.stages = buildStages(this.#viewFromCase(pending))
       this.#open.delete(nonce)
       const at = this.#now().toISOString()
@@ -1252,7 +1249,7 @@ export class DemoRuntime {
       outcomeLabel: outcomeLabel(view),
       approvalState: input.approvalState,
       authorityNote: authorityNote(input.ruleId, input.decision),
-      nonceState: this.#nonceState(input.intent.actor, input.intent.nonce),
+      nonceState: this.#nonceState(input.intent.nonce),
       receiptId: input.receipt?.receiptId ?? null,
       receipt: input.receipt,
       receiptClaimsExecuted,
@@ -1285,9 +1282,9 @@ export class DemoRuntime {
     }
   }
 
-  #nonceState(actorId: string, nonce: string): string {
+  #nonceState(nonce: string): string {
     try {
-      return this.#ledger.statusOf(actorId, nonce) ?? 'absent'
+      return this.#ledger.statusOf(nonce) ?? 'absent'
     } catch {
       return 'absent'
     }

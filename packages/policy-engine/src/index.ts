@@ -58,11 +58,3 @@ export {
 
 export { validatePolicyPin, type PolicyPinValidationResult } from './registry/validate-pin.js'
 
-export {
-  McpToolGate,
-  type McpToolCall,
-  type McpContentItem,
-  type McpToolResult,
-  type McpToolGateOptions,
-} from './integrations/mcp.js'
-
