@@ -79,6 +79,9 @@ function tokenize(input: string): Token[] {
         value += input[i]
         i += 1
       }
+      if (i >= input.length || input[i] !== quote) {
+        throw new Error('Unterminated string literal')
+      }
       i += 1
       tokens.push({ type: 'string', value })
       continue
@@ -86,11 +89,17 @@ function tokenize(input: string): Token[] {
 
     if (/[0-9]/.test(ch)) {
       let num = ''
+      let dots = 0
       while (i < input.length && /[0-9.]/.test(input[i])) {
+        if (input[i] === '.') dots += 1
         num += input[i]
         i += 1
       }
-      tokens.push({ type: 'number', value: Number(num) })
+      const parsed = Number(num)
+      if (dots > 1 || num.endsWith('.') || !Number.isFinite(parsed)) {
+        throw new Error(`Invalid numeric literal: ${num}`)
+      }
+      tokens.push({ type: 'number', value: parsed })
       continue
     }
 
@@ -321,9 +330,27 @@ class Parser {
 
     if (token.type === 'lparen') {
       this.consume()
-      const inner = this.parseOr()
-      if (this.peek().type === 'rparen') this.consume()
-      return inner
+      try {
+        const inner = this.parseOr()
+        if (this.peek().type !== 'rparen') {
+          throw new Error('Expected closing parenthesis')
+        }
+        this.consume()
+        return inner
+      } catch (error) {
+        if (error instanceof NumericComparisonError || error instanceof NonFiniteComparisonError) {
+          let depth = 1
+          while (depth > 0 && this.peek().type !== 'eof') {
+            const next = this.consume()
+            if (next.type === 'lparen') depth += 1
+            else if (next.type === 'rparen') depth -= 1
+          }
+          if (depth > 0) {
+            throw new Error('Expected closing parenthesis')
+          }
+        }
+        throw error
+      }
     }
 
     throw new Error(`Unexpected token: ${token.type}`)

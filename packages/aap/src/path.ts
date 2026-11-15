@@ -99,6 +99,7 @@ export interface RunAuthorityPathInput {
    * is not authorized fails closed (`root_not_authorized`).
    */
   readonly rootAuthority?: {
+    readonly allowSelfIssuedRoot?: boolean
     readonly mayIssueRoot: (input: {
       readonly issuerId: string
       readonly subjectId: string
@@ -160,6 +161,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
   let policyHash = ''
   let principalId: string | undefined
   let now = new Date()
+  let nonceUsability: 'fresh' | 'pending' | undefined
   let presented: { chain: SignedDelegation[]; intent: SignedIntent } | undefined
 
   try {
@@ -181,7 +183,11 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
 
     // An approval presented with a different intent fails for the binding reason
     // before nonce or pending state can mask it.
-    if (input.approval != null && input.approval.intent_hash !== intentHash) {
+    if (
+      input.approval != null &&
+      typeof input.approval === 'object' &&
+      input.approval.intent_hash !== intentHash
+    ) {
       throw new AuthorityError('approval', 'approval is not bound to this intent', true)
     }
 
@@ -190,6 +196,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       presented.intent.nonce,
       intentHash
     )
+    nonceUsability = usability
     const verified = authorizePresented({
       chain: presented.chain,
       intent: presented.intent,
@@ -198,6 +205,13 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
 
     const root = verified.chain[0]
     if (root && !root.parent_delegation_id && input.rootAuthority) {
+      if (root.issuer === root.subject && input.rootAuthority.allowSelfIssuedRoot !== true) {
+        throw new AuthorityError(
+          'root_not_authorized',
+          'self-issued root delegation is not allowed',
+          true
+        )
+      }
       const allowed = input.rootAuthority.mayIssueRoot({
         issuerId: root.issuer,
         subjectId: root.subject,
@@ -533,7 +547,12 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       now,
     }
     if (error instanceof AuthorityError) {
-      if (error.authenticated && error.code !== 'replay' && error.code !== 'approval') {
+      if (
+        error.authenticated &&
+        error.code !== 'replay' &&
+        error.code !== 'approval' &&
+        nonceUsability !== 'pending'
+      ) {
         await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
       }
       return sealOrClosed(view, {
@@ -550,7 +569,9 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         principalId,
       })
     }
-    await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
+    if (nonceUsability !== 'pending') {
+      await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
+    }
     return sealOrClosed(view, {
       decision: 'BLOCK',
       ruleId: 'system',
