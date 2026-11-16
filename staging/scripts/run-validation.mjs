@@ -108,6 +108,9 @@ async function main() {
   const principal = pemPair('prn_staging')
   const agent = pemPair('agt_staging')
   const issuer = pemPair('staging-runtime')
+  writeFileSync(join(secretsDir, 'root-grants.json'), JSON.stringify([
+    { issuerId: principal.id, action: 'apply', target: 'resource/*' },
+  ], null, 2))
   writeFileSync(join(secretsDir, 'issuer.pem'), issuer.pem, { mode: 0o600 })
   writeFileSync(join(secretsDir, 'directory.json'), JSON.stringify({
     entries: [

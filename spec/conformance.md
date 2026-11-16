@@ -38,6 +38,12 @@ Principal
 
 ## Optional operator hooks (fail closed when configured)
 
+The reference HTTP gateway configures `rootAuthority` from operator-owned resource
+grants. Its regression vectors in `packages/adap-gateway/src/root-authority.test.ts`
+cover a valid principal grant, an agent's self-issued root, a root issued by an
+untrusted agent to a second agent, and an authorized issuer granting an uncovered
+resource. Rejections must leave the credential broker uncalled.
+
 | Hook | MUST when present | Reference |
 | --- | --- | --- |
 | `rootAuthority` | Reject unauthorized roots (`root_not_authorized`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
