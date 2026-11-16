@@ -95,7 +95,7 @@ The property holds only when the operator's network gives the agent no other rou
 
 - Human approver keys are provisioned out of band; the directory maps `approver_id` → public key.
 - The policy resolver is operator-trusted. Documents are registered before requests are served. The first content hash for a URI wins; a different body for the same URI is rejected.
-- Production trusted clock is the gateway host clock (or equivalent), never a field from the agent request body. The reference path applies zero skew tolerance: `issued_at <= now < expires_at`.
+- Production trusted clock is the gateway host clock (or equivalent), never a field from the agent request body. The default is zero skew: `issued_at <= now < expires_at`. An operator may set `issuedAtSkewMs` from 0 to 5 minutes. That tolerance applies only to `issued_at`. `expires_at` is not extended. A non-zero value is stored in receipt `extensions.issuedAtSkewMs`.
 - Receipt verification with the issuer public key proves the issuer attested the body. It does not by itself prove an external system performed the action unless independent execution evidence is present.
 
 ## Known limitations (not claimed)
@@ -103,7 +103,7 @@ The property holds only when the operator's network gives the agent no other rou
 - Malicious model behavior beyond the bound.
 - Compromised host or a runtime that skips this path.
 - Credential isolation when the agent holds the rail credential.
-- Cumulative spend across a delegation (`max_amount` is per intent).
+- Cumulative spend when the grant does not set `cumulative_max_amount` (`max_amount` stays per intent).
 - Distributed replay protection without a shared atomic nonce/pending store that meets `AsyncAtomicNonceBackend` (use `adap-store-postgres` or equivalent).
 - Exactly-once after crash: a claim left `pending`/in-flight blocks that nonce; retry is a new intent.
 - Compromised private keys.

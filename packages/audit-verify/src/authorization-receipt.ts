@@ -3,13 +3,14 @@
  * Normative: ../../spec/authorization-receipt.md
  */
 
-import { createPublicKey, verify as verifyEd25519 } from 'node:crypto'
+import { createPublicKey, sign as signEd25519, verify as verifyEd25519, type KeyObject } from 'node:crypto'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import { canonicalJson } from './canonical-json.js'
 
 export const AUTHORIZATION_RECEIPT_FORMAT_VERSION = 1 as const
 export const AUTHORIZATION_RECEIPT_KIND = 'adap.receipt' as const
+export const RECEIPT_CHECKPOINT_KIND = 'adap.receipt.checkpoint' as const
 
 export type AuthorizationReceiptAction =
   | 'ALLOW'
@@ -589,13 +590,70 @@ export interface VerifyReceiptChainResult {
 }
 
 /**
+ * Signed head of an issuer log. A verifier that holds this object can see a
+ * dropped tail. Publish it somewhere the issuer does not control.
+ */
+export interface ReceiptCheckpointV1 {
+  readonly v: 1
+  readonly kind: typeof RECEIPT_CHECKPOINT_KIND
+  readonly issuer: string
+  readonly issuerKeyId: string
+  readonly sequence: number
+  readonly contentHash: string
+  readonly signedAt: string
+  readonly signature: string
+}
+
+export type UnsignedReceiptCheckpoint = Omit<ReceiptCheckpointV1, 'signature'>
+
+export function signReceiptCheckpoint(
+  fields: UnsignedReceiptCheckpoint,
+  privateKey: KeyObject
+): ReceiptCheckpointV1 {
+  const signature = signEd25519(null, Buffer.from(canonicalReceiptJson(fields)), privateKey).toString('hex')
+  return { ...fields, signature }
+}
+
+export function verifyReceiptCheckpoint(
+  checkpoint: ReceiptCheckpointV1,
+  publicKeySpki?: string
+): { readonly valid: boolean; readonly errors: readonly string[] } {
+  const errors: string[] = []
+  if (checkpoint.v !== 1) errors.push('checkpoint.v must be 1')
+  if (checkpoint.kind !== RECEIPT_CHECKPOINT_KIND) errors.push('checkpoint.kind invalid')
+  if (typeof checkpoint.issuer !== 'string' || checkpoint.issuer.length === 0) {
+    errors.push('checkpoint.issuer invalid')
+  }
+  if (typeof checkpoint.issuerKeyId !== 'string' || checkpoint.issuerKeyId.length === 0) {
+    errors.push('checkpoint.issuerKeyId invalid')
+  }
+  if (!Number.isInteger(checkpoint.sequence) || checkpoint.sequence < 0) {
+    errors.push('checkpoint.sequence invalid')
+  }
+  if (!HEX64.test(checkpoint.contentHash)) errors.push('checkpoint.contentHash invalid')
+  if (!ISO_DATETIME.test(checkpoint.signedAt)) errors.push('checkpoint.signedAt invalid')
+  if (!HEX_SIG.test(checkpoint.signature)) errors.push('checkpoint.signature invalid')
+  if (errors.length > 0) return { valid: false, errors }
+  if (publicKeySpki == null) return { valid: true, errors }
+  const { signature, ...unsigned } = checkpoint
+  const key = createPublicKey({
+    key: Buffer.from(publicKeySpki.trim(), 'base64url'),
+    type: 'spki',
+    format: 'der',
+  })
+  const ok = verifyEd25519(null, Buffer.from(canonicalReceiptJson(unsigned)), key, Buffer.from(signature, 'hex'))
+  if (!ok) errors.push('checkpoint signature invalid')
+  return { valid: errors.length === 0, errors }
+}
+
+/**
  * Walk an ordered receipt log. Each receipt must verify on its own, carry `sequence`
  * and `prevReceiptHash`, come from the same issuer, increase `sequence` by one, and
  * name the previous receipt's `integrity.contentHash`.
  *
  * Detects omission, insertion, and reordering inside the presented segment.
- * It cannot detect a dropped tail: the verifier needs the expected head from elsewhere.
- * Signatures are checked only when `publicKeySpki` is supplied.
+ * A dropped tail is detected when `checkpoint` names a later head than the
+ * supplied suffix. Signatures are checked only when `publicKeySpki` is supplied.
  */
 export function verifyReceiptChain(
   receipts: readonly AuthorizationReceiptV1[],
@@ -603,6 +661,8 @@ export function verifyReceiptChain(
     /** Content hash the first receipt must link to. Default `null` (start of log). */
     readonly prevReceiptHash?: string | null
     readonly publicKeySpki?: string
+    /** Signed head. The last supplied receipt must be this head. */
+    readonly checkpoint?: ReceiptCheckpointV1
   }
 ): VerifyReceiptChainResult {
   const errors: string[] = []
@@ -646,6 +706,24 @@ export function verifyReceiptChain(
     }
     expectedPrev = receipt.integrity.contentHash
   })
+
+  if (options?.checkpoint) {
+    const checkpoint = verifyReceiptCheckpoint(options.checkpoint, options.publicKeySpki)
+    for (const error of checkpoint.errors) errors.push(`checkpoint: ${error}`)
+    const head = receipts[receipts.length - 1]
+    if (head && options.checkpoint.sequence !== head.sequence) {
+      errors.push('checkpoint sequence is not the supplied head')
+    }
+    if (head && options.checkpoint.contentHash !== head.integrity.contentHash) {
+      errors.push('checkpoint content hash is not the supplied head')
+    }
+    if (
+      head &&
+      (options.checkpoint.issuer !== head.issuer || options.checkpoint.issuerKeyId !== head.issuerKeyId)
+    ) {
+      errors.push('checkpoint issuer does not match the supplied head')
+    }
+  }
 
   return { valid: errors.length === 0, errors }
 }

@@ -20,10 +20,11 @@ import {
   assertPolicyContentHash,
   type PolicyResolver,
 } from './policy-resolver.js'
-import { resolveTrustedNow, type Clock } from './clock.js'
+import { MAX_ISSUED_AT_SKEW_MS, resolveTrustedNow, type Clock } from './clock.js'
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
+import { chargeCumulativeSpend, type SpendLedger } from './spend.js'
 import {
   assertChainProfileConsistency,
   authorizePresented,
@@ -126,6 +127,17 @@ export interface RunAuthorityPathInput {
    * Not controllable via request metadata.
    */
   readonly maxPendingApprovals?: number
+  /**
+   * Tolerance applied only to `issued_at` (`issued_at <= now + skew`).
+   * Default 0. Values above {@link MAX_ISSUED_AT_SKEW_MS} are rejected.
+   * `expires_at` is not extended. A non-zero value is recorded on the receipt.
+   */
+  readonly issuedAtSkewMs?: number
+  /**
+   * Required when any delegation in the chain sets `cumulative_max_amount`.
+   * `max_amount` stays a per-intent ceiling. This ledger is the running sum.
+   */
+  readonly spendLedger?: SpendLedger
 }
 
 const NONE_EXEC = 'none'
@@ -168,6 +180,22 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
   /** True while verifying a human approval against an already-reserved pending nonce. */
   let pendingApprovalContinuation = false
 
+  const issuedAtSkewMs = input.issuedAtSkewMs ?? 0
+  if (
+    typeof issuedAtSkewMs !== 'number' ||
+    !Number.isSafeInteger(issuedAtSkewMs) ||
+    issuedAtSkewMs < 0 ||
+    issuedAtSkewMs > MAX_ISSUED_AT_SKEW_MS
+  ) {
+    return unauthenticatedRejection(
+      new AuthorityError(
+        'clock',
+        `issuedAtSkewMs must be an integer from 0 to ${MAX_ISSUED_AT_SKEW_MS}`,
+        false
+      )
+    )
+  }
+
   try {
     now = resolveTrustedNow(input)
     if (!hasResolver(input.policyResolver)) {
@@ -200,6 +228,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       chain: presented.chain,
       intent: presented.intent,
       now,
+      issuedAtSkewMs,
     })
 
     const root = verified.chain[0]
@@ -683,6 +712,13 @@ async function executeBound(
     })
   }
 
+  await chargeCumulativeSpend({
+    chain: input.chain,
+    parameters: input.intent.parameters,
+    intentHash: bound.intentHash,
+    ledger: input.spendLedger,
+  })
+
   const presentedHash = sha256(unsignedIntent(input.intent))
   if (
     presentedHash !== bound.intentHash ||
@@ -867,6 +903,9 @@ function seal(
     failureMode: fields.failureMode,
     sequence: input.receiptSequence,
     prevReceiptHash: input.prevReceiptHash,
+    ...(input.issuedAtSkewMs != null && input.issuedAtSkewMs > 0
+      ? { extensions: { issuedAtSkewMs: input.issuedAtSkewMs } }
+      : {}),
     signer: input.signer.privateKey,
     // Reference path records authorized parameters for offline review.
     // Callers that must omit secrets should pass a narrower allowlist via a future hook.

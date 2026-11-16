@@ -14,11 +14,11 @@ Normative domain rules for authority limits and resource identifiers in ADAP v0.
 | Non-finite | `NaN`, `+Infinity`, `-Infinity` are rejected before authorization. |
 | Zero | Allowed for both amounts and `max_*` caps. |
 | Comparison | Deterministic numeric compare on canonical values only. |
-| Scope | Profile-dependent. Legacy v0.1: only `max_amount` is a ceiling; other keys (including `max_quantity`) are exact-match. Signed-object 0.2 (`ceilings-v1`): every canonical `max_<field>` is a **per-intent** ceiling on `parameters.<field>`. See [signed-objects.md](./signed-objects.md) and [delegation.md](./delegation.md). Not cumulative spend. |
+| Scope | Profile-dependent. Legacy v0.1: only `max_amount` is a ceiling; other keys (including `max_quantity`) are exact-match. Signed-object 0.2 (`ceilings-v1`): every canonical `max_<field>` is a **per-intent** ceiling on `parameters.<field>`. `cumulative_max_amount` is the optional running sum. See [delegation.md](./delegation.md). |
 
-### Cumulative budgets (non-normative future)
+### Cumulative budgets
 
-Issue #13: silent multi-turn / cumulative spend accounting across intents is **out of scope for v0.1**. Receipt chains prove integrity of supplied receipts only. Operators that need cumulative limits must implement them outside this schema and state the semantics separately. Unknown downstream outcomes after an authorized attempt keep the nonce consumed; reconcile with idempotency at the resource.
+`max_amount` stays per intent. `cumulative_max_amount` on a delegation is the pool for that delegation id. The authority path charges `parameters.amount` on the spend ledger before execution, for every delegation in the chain that sets the key. No ledger means no execution. Receipt chains still only prove the receipts you were given. A signed checkpoint is what shows a dropped tail. Unknown downstream outcomes after an authorized attempt keep the nonce consumed.
 
 Policy evaluation and terminal constraint enforcement must use the same normalized representation.
 

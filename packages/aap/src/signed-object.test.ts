@@ -14,8 +14,8 @@ import { ADAP_SIGNED_VERSION, signedObjectPreimage, verifyEnvelopeSignature } fr
 import { importPublicKey } from './crypto.js'
 
 const NOW = new Date('2026-06-01T00:00:00.000Z')
-const ISSUED = '2026-01-01T00:00:00.000Z'
-const EXPIRES = '2099-01-01T00:00:00.000Z'
+const ISSUED = NOW.toISOString()
+const EXPIRES = new Date(NOW.getTime() + 15 * 60 * 1000).toISOString()
 
 describe('signed-object versioning and constraint profiles (#19)', () => {
   it('keeps legacy max_quantity as exact-match (does not widen to a ceiling)', () => {

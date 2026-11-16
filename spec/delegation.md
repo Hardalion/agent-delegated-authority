@@ -36,7 +36,9 @@ A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 
 `read` and `search` may omit `amount` when the only ceiling in question is `max_amount`. That exception does not apply to other actions or to other `max_<field>` keys.
 
-`max_amount` is not a cumulative spend ledger. This draft does not track total spending over the life of a grant. Implementations that need cumulative limits must add that outside this schema and state the semantics separately.
+`max_amount` is a per-intent ceiling. It does not add up across intents.
+
+`cumulative_max_amount` is an optional constraint. It is the running sum of `parameters.amount` charged against that delegation id, in the same minor units. A child may only lower it. When any delegation in the presented chain sets it, the runtime must pass a spend ledger or the path fails closed and does not execute. One intent cannot exceed the pool, and later intents cannot push the sum over it. `read` and `search` with no `amount` charge zero.
 
 ## Narrowing
 
@@ -67,9 +69,13 @@ A conforming runtime that enforces root of authority:
 
 The reference path accepts an optional `rootAuthority` hook on `runAuthorityPath`. When the hook is absent, root checks are deployment-owned and out of band. When present, a failed check is fail-closed `BLOCK`.
 
+## Lifetime
+
+`expires_at - issued_at` must be at most 24 hours for every delegation and every intent. The reference path rejects a longer window (`authority lifetime exceeds 24 hours`). That cap is what makes a grant die without a revocation service. Early withdrawal is still the revocation hook below.
+
 ## Revocation
 
-A delegation is valid until `expires_at` unless revoked earlier. Key rotation withdraws every grant from that issuer; per-delegation revocation is finer-grained.
+A delegation is valid until `expires_at` unless revoked earlier, and never past the 24 hour cap. Key rotation withdraws every grant from that issuer; per-delegation revocation is finer-grained.
 
 A conforming runtime that supports revocation:
 
@@ -84,7 +90,7 @@ The reference path accepts an optional `revocationCheck` hook. When absent, only
 
 In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them. A future revision may attach constraints per capability and support `closed: true` (any unnamed parameter is `BLOCK`).
 
-`max_<field>` ceilings remain **per-intent**, not cumulative spend across the life of a grant. Cumulative multi-turn accounting is non-normative future work (issue #13).
+`max_<field>` ceilings remain per-intent. The running sum is `cumulative_max_amount`, checked against the spend ledger on the authority path.
 
 ## Reference
 
