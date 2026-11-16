@@ -1,4 +1,5 @@
 import { canonicalJson, importPublicKey, sha256, verifyObject } from './crypto.js'
+import { MAX_AUTHORITY_LIFETIME_MS } from './clock.js'
 import { AuthorityError } from './errors.js'
 import { assertCanonicalAmount, assertWithinCeiling, ceilingField, isMaxAmountKey } from './amount.js'
 import {
@@ -44,14 +45,23 @@ import { cloneSignedDelegation, cloneSignedIntent, deepFreeze } from './snapshot
 
 export type DirectoryInput = AuthorityDirectory | ReadonlyMap<string, string>
 
-export function assertNotExpired(issuedAt: string, expiresAt: string, now = new Date()): void {
+export function assertNotExpired(
+  issuedAt: string,
+  expiresAt: string,
+  now = new Date(),
+  issuedAtSkewMs = 0
+): void {
   const issued = Date.parse(issuedAt)
   const expires = Date.parse(expiresAt)
   const current = now.getTime()
   if (!Number.isFinite(issued) || !Number.isFinite(expires) || expires <= issued) {
     throw new AuthorityError('expired', 'invalid delegation/intent lifetime')
   }
-  if (current < issued || current >= expires) {
+  if (expires - issued > MAX_AUTHORITY_LIFETIME_MS) {
+    throw new AuthorityError('expired', 'authority lifetime exceeds 24 hours', true)
+  }
+  // Skew loosens only the not-yet-valid check. Expiry stays `now < expires_at`.
+  if (current + issuedAtSkewMs < issued || current >= expires) {
     throw new AuthorityError('expired', 'expired or not-yet-valid authority')
   }
 }
@@ -181,9 +191,8 @@ function assertConstraintsNarrow(
     }
     const childVal = (child as Record<string, unknown>)[key]
     const reducibleCeiling =
-      profile === 'ceilings-v1'
-        ? isMaxAmountKey(key)
-        : key === 'max_amount'
+      key === 'cumulative_max_amount' ||
+      (profile === 'ceilings-v1' ? isMaxAmountKey(key) : key === 'max_amount')
     if (
       reducibleCeiling &&
       typeof parentVal === 'number' &&
@@ -245,6 +254,16 @@ function assertParametersWithin(
   profile: ConstraintProfile
 ): void {
   for (const [key, bound] of ownEntries(constraints as Record<string, unknown>)) {
+    if (key === 'cumulative_max_amount') {
+      const ceiling = assertCanonicalAmount(bound, 'cumulative_max_amount')
+      const amount = hasOwn(parameters, 'amount') ? parameters.amount : undefined
+      if (amount === undefined) {
+        if (action === 'read' || action === 'search') continue
+        throw new AuthorityError('constraint', 'amount is required', true)
+      }
+      assertWithinCeiling(amount, ceiling, 'amount', 'cumulative_max_amount')
+      continue
+    }
     if (profile === 'ceilings-v1') {
       const field = ceilingField(key)
       if (field) {
@@ -410,8 +429,11 @@ export function authorizePresented(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
   readonly now: Date
+  /** Applied only to `issued_at`. Default 0. Capped by the caller. */
+  readonly issuedAtSkewMs?: number
 }): VerifiedAuthority {
   const { chain, intent, now } = input
+  const issuedAtSkewMs = input.issuedAtSkewMs ?? 0
   try {
     const validatedIntent = validateSignedIntent(intent)
     const validatedChain = chain.map((delegation, index) =>
@@ -423,7 +445,7 @@ export function authorizePresented(input: {
     if (sha256(validatedChain.map(unsignedDelegation)) !== sha256(chain.map(unsignedDelegation))) {
       throw new AuthorityError('chain', 'normalized delegation diverges from the signed payload', true)
     }
-    verifyAuthenticated(validatedChain, validatedIntent, now)
+    verifyAuthenticated(validatedChain, validatedIntent, now, issuedAtSkewMs)
     deepFreeze(validatedIntent)
     deepFreeze(validatedChain)
     return {
@@ -449,14 +471,19 @@ export function verifyAuthority(input: {
   return authorizePresented({ chain: presented.chain, intent: presented.intent, now: input.now })
 }
 
-function verifyAuthenticated(chain: readonly SignedDelegation[], intent: SignedIntent, now: Date): void {
+function verifyAuthenticated(
+  chain: readonly SignedDelegation[],
+  intent: SignedIntent,
+  now: Date,
+  issuedAtSkewMs = 0
+): void {
   const authorityProfile = assertChainProfileConsistency(chain)
   assertIntentMatchesAuthorityProfile(intent, authorityProfile)
 
   for (let index = 0; index < chain.length; index += 1) {
     const delegation = chain[index]
     if (!delegation) throw new AuthorityError('chain', 'missing delegation', true)
-    assertNotExpired(delegation.issued_at, delegation.expires_at, now)
+    assertNotExpired(delegation.issued_at, delegation.expires_at, now, issuedAtSkewMs)
     if (index === 0) {
       if (delegation.parent_delegation_id) {
         throw new AuthorityError('chain', 'root delegation must not name a parent', true)
@@ -468,7 +495,7 @@ function verifyAuthenticated(chain: readonly SignedDelegation[], intent: SignedI
     }
   }
 
-  assertNotExpired(intent.issued_at, intent.expires_at, now)
+  assertNotExpired(intent.issued_at, intent.expires_at, now, issuedAtSkewMs)
   const terminal = chain[chain.length - 1]
   if (!terminal) throw new AuthorityError('chain', 'missing terminal delegation', true)
   assertIntentWithinDelegation(intent, terminal)

@@ -11,6 +11,7 @@ import {
   DEMO_SIGNATURE_HEX,
   emitAuthorizationReceipt,
   emitAuthorizationReceiptFromDecision,
+  emitReceiptCheckpoint,
   generateReceiptKeyPair,
   hashToolArgs,
   signReceipt,
@@ -22,7 +23,11 @@ function testSigner() {
   return { privateKey, publicKey, publicKeySpki }
 }
 
-function chainOf(length: number): { receipts: AuthorizationReceiptV1[]; publicKeySpki: string } {
+function chainOf(length: number): {
+  receipts: AuthorizationReceiptV1[]
+  publicKeySpki: string
+  privateKey: ReturnType<typeof testSigner>['privateKey']
+} {
   const { privateKey, publicKeySpki } = testSigner()
   const receipts: AuthorizationReceiptV1[] = []
   for (let sequence = 0; sequence < length; sequence += 1) {
@@ -47,7 +52,7 @@ function chainOf(length: number): { receipts: AuthorizationReceiptV1[]; publicKe
       })
     )
   }
-  return { receipts, publicKeySpki }
+  return { receipts, publicKeySpki, privateKey }
 }
 
 describe('verifyReceiptChain', () => {
@@ -78,6 +83,16 @@ describe('verifyReceiptChain', () => {
 
   it('does not detect a dropped tail on its own', () => {
     expect(verifyReceiptChain(chainOf(4).receipts.slice(0, 2)).valid).toBe(true)
+  })
+
+  it('rejects a dropped tail when a signed checkpoint names a later head', () => {
+    const { receipts, publicKeySpki, privateKey } = chainOf(4)
+    const head = receipts[3]!
+    const checkpoint = emitReceiptCheckpoint(head, privateKey, '2026-10-06T18:00:00.000Z')
+    expect(verifyReceiptChain(receipts, { publicKeySpki, checkpoint }).valid).toBe(true)
+    const prefix = verifyReceiptChain(receipts.slice(0, 2), { publicKeySpki, checkpoint })
+    expect(prefix.valid).toBe(false)
+    expect(prefix.errors.join(' ')).toMatch(/checkpoint/)
   })
 })
 

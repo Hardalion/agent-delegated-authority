@@ -9,7 +9,9 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import {
   AUTHORIZATION_RECEIPT_KIND,
+  RECEIPT_CHECKPOINT_KIND,
   buildUnsignedAuthorizationReceipt,
+  signReceiptCheckpoint,
   canonicalReceiptJson,
   normalizeAuthorizationOutcome,
   type AuthorizationAlertSeverity,
@@ -87,6 +89,8 @@ export type EmitAuthorizationReceiptInput = {
   readonly includeArgsUnredacted?: boolean
   /** Custom redaction. Wins over allowlist / includeArgsUnredacted. */
   readonly redactArgs?: (toolArgs: Record<string, unknown>) => Record<string, unknown>
+  /** Covered by the content hash. Not interpreted by a conforming verifier. */
+  readonly extensions?: Readonly<Record<string, unknown>>
 }
 
 function sha256HexUtf8(utf8: string): string {
@@ -260,6 +264,7 @@ export function emitAuthorizationReceipt(
     },
     ...(input.sequence != null ? { sequence: input.sequence } : {}),
     ...(input.prevReceiptHash !== undefined ? { prevReceiptHash: input.prevReceiptHash } : {}),
+    ...(input.extensions != null ? { extensions: input.extensions } : {}),
   })
 
   return {
@@ -387,4 +392,27 @@ export class AuthorizationReceiptLog {
     this.receipts.push(receipt)
     return receipt
   }
+}
+
+/** Signed head for the last receipt in an issuer log. */
+export function emitReceiptCheckpoint(
+  receipt: AuthorizationReceiptV1,
+  privateKey: KeyObject,
+  signedAt: string
+): ReturnType<typeof signReceiptCheckpoint> {
+  if (typeof receipt.sequence !== 'number') {
+    throw new Error('checkpoint requires a receipt sequence')
+  }
+  return signReceiptCheckpoint(
+    {
+      v: 1,
+      kind: RECEIPT_CHECKPOINT_KIND,
+      issuer: receipt.issuer,
+      issuerKeyId: receipt.issuerKeyId,
+      sequence: receipt.sequence,
+      contentHash: receipt.integrity.contentHash,
+      signedAt,
+    },
+    privateKey
+  )
 }

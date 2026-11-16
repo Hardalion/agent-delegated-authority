@@ -1,3 +1,5 @@
+import { AuthorityError } from './errors.js'
+
 /**
  * Trusted runtime clock.
  *
@@ -6,13 +8,16 @@
  * uses `systemClock` (the gateway process clock) unless the operator supplies
  * a clock it controls.
  *
- * Skew: the reference path applies zero tolerance. An instant is valid when
- * `issued_at <= now < expires_at`. There is no grace window. Operators synchronize
- * the trusted clock out of band. This package does not read agent request bodies
- * for time and does not compensate for clock drift.
+ * Skew: the default is zero. An instant is valid when
+ * `issued_at <= now < expires_at`. Operators may set `issuedAtSkewMs` up to
+ * `MAX_ISSUED_AT_SKEW_MS`. That tolerance applies only to `issued_at`
+ * (`issued_at <= now + skew`). `expires_at` is never extended.
+ * A grant or intent whose lifetime is longer than `MAX_AUTHORITY_LIFETIME_MS`
+ * is rejected. This package does not read agent request bodies for time.
  */
 
-import { AuthorityError } from './errors.js'
+export const MAX_ISSUED_AT_SKEW_MS = 5 * 60 * 1000
+export const MAX_AUTHORITY_LIFETIME_MS = 24 * 60 * 60 * 1000
 
 export interface Clock {
   readonly now: () => Date

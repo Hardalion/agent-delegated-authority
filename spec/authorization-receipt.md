@@ -220,7 +220,7 @@ Conforming runtimes do not perform a consequential side effect unless the govern
 
 A receipt is verified on its own. This draft does not define a store, an index, or a telemetry pipeline.
 
-When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier walks the ordered set: `sequence` increases by one, each `prevReceiptHash` names the previous receipt, and every receipt is from the same issuer key. That detects omission, insertion, and reordering inside the set. It does not detect a dropped tail. The verifier needs the expected latest receipt from somewhere the emitter does not control. Reference: `verifyReceiptChain` in `packages/audit-verify`.
+When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier walks the ordered set: `sequence` increases by one, each `prevReceiptHash` names the previous receipt, and every receipt is from the same issuer key. That detects omission, insertion, and reordering inside the set. A dropped tail is detected when the verifier also holds a signed checkpoint (`kind: adap.receipt.checkpoint`) of the latest receipt: `sequence`, `contentHash`, issuer, and issuer key. `verifyReceiptChain(..., { checkpoint })` rejects a chain whose last receipt is not that head. The checkpoint is useful only when a copy is published somewhere the issuer does not control. Reference: `verifyReceiptChain` and `signReceiptCheckpoint` in `packages/audit-verify`.
 
 Standalone receipts without those fields remain conforming. They do not, by themselves, prove that none were omitted.
 
@@ -229,8 +229,8 @@ Standalone receipts without those fields remain conforming. They do not, by them
 `verifyReceiptChain` proves integrity of the **supplied** ordered segment: structure, content hashes, sequence links, and optional Ed25519. It does not prove:
 
 - that the issuer never produced a conflicting fork (the issuer key can sign a new consistent chain)
-- that a dropped tail was never issued (the verifier needs an expected head from elsewhere)
-- cumulative spend or multi-turn budgets across intents (issue #13; non-normative future)
+- that a dropped tail was never issued, unless a signed checkpoint of the latest head is supplied
+- cumulative spend (that check is `cumulative_max_amount` on the authority path, not a receipt-chain property)
 
 When a downstream write outcome is unknown after an authorized attempt, the reference path keeps the nonce consumed and relies on reconcile/idempotency at the resource. The receipt records the runtime's reported execution binding; it is not an independent observation of the external system.
 

@@ -51,7 +51,22 @@ export {
   type ImmutablePolicyBinding,
   type PolicyResolver,
 } from './policy-resolver.js'
-export { systemClock, FixedClock, resolveTrustedNow, type Clock } from './clock.js'
+export {
+  systemClock,
+  FixedClock,
+  resolveTrustedNow,
+  MAX_ISSUED_AT_SKEW_MS,
+  MAX_AUTHORITY_LIFETIME_MS,
+  type Clock,
+} from './clock.js'
+export {
+  MemorySpendLedger,
+  chargeCumulativeSpend,
+  cumulativeCharges,
+  CUMULATIVE_MAX_AMOUNT,
+  type SpendLedger,
+  type SpendCharge,
+} from './spend.js'
 export {
   assertCanonicalAmount,
   assertAmountWithinLimit,
