@@ -97,6 +97,8 @@ export interface RunAuthorityPathInput {
   /**
    * Optional operator root-of-authority check. When set, a root whose issuer
    * is not authorized fails closed (`root_not_authorized`).
+   * Self-issued roots (`issuer === subject`) are rejected unless
+   * `allowSelfIssuedRoot` is explicitly true.
    */
   readonly rootAuthority?: {
     readonly mayIssueRoot: (input: {
@@ -104,6 +106,8 @@ export interface RunAuthorityPathInput {
       readonly subjectId: string
       readonly capabilities: readonly { readonly action: string; readonly target: string }[]
     }) => boolean
+    /** Opt-in for issuer === subject roots. Default false (spec: reject self-issued). */
+    readonly allowSelfIssuedRoot?: boolean
   }
   /**
    * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
@@ -161,6 +165,8 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
   let principalId: string | undefined
   let now = new Date()
   let presented: { chain: SignedDelegation[]; intent: SignedIntent } | undefined
+  /** True while verifying a human approval against an already-reserved pending nonce. */
+  let pendingApprovalContinuation = false
 
   try {
     now = resolveTrustedNow(input)
@@ -197,17 +203,33 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     })
 
     const root = verified.chain[0]
-    if (root && !root.parent_delegation_id && input.rootAuthority) {
-      const allowed = input.rootAuthority.mayIssueRoot({
-        issuerId: root.issuer,
-        subjectId: root.subject,
-        capabilities: root.capabilities.map((capability) => ({
-          action: capability.action,
-          target: capability.target ?? '',
-        })),
-      })
-      if (!allowed) {
-        throw new AuthorityError('root_not_authorized', 'root issuer is not authorized for this grant', true)
+    if (root && !root.parent_delegation_id) {
+      if (
+        root.issuer === root.subject &&
+        input.rootAuthority?.allowSelfIssuedRoot !== true
+      ) {
+        throw new AuthorityError(
+          'root_not_authorized',
+          'self-issued root not allowed',
+          true
+        )
+      }
+      if (input.rootAuthority) {
+        const allowed = input.rootAuthority.mayIssueRoot({
+          issuerId: root.issuer,
+          subjectId: root.subject,
+          capabilities: root.capabilities.map((capability) => ({
+            action: capability.action,
+            target: capability.target ?? '',
+          })),
+        })
+        if (!allowed) {
+          throw new AuthorityError(
+            'root_not_authorized',
+            'root issuer is not authorized for this grant',
+            true
+          )
+        }
       }
     }
     if (input.revocationCheck) {
@@ -324,6 +346,9 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
 
       const humanDecision = input.approval.decision
       const authorityProfile = assertChainProfileConsistency(verified.chain)
+      // From here through verifyHumanApproval, schema/identity/profile/signature
+      // failures must not retire the reserved pending nonce (#25).
+      pendingApprovalContinuation = true
       verifyHumanApproval({
         approval: input.approval,
         intentHash,
@@ -339,6 +364,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         expectedDecision: humanDecision === 'DENY' ? 'DENY' : 'APPROVE',
         authorityProfile,
       })
+      pendingApprovalContinuation = false
 
       if (humanDecision === 'DENY') {
         await pendingStore.markDeclined(verified.intent.actor, verified.intent.nonce, intentHash)
@@ -533,7 +559,23 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       now,
     }
     if (error instanceof AuthorityError) {
-      if (error.authenticated && error.code !== 'replay' && error.code !== 'approval') {
+      // Do not burn a reserved pending nonce for unauthenticated / pre-crypto
+      // approval failures (schema, identity, profile, signature). Those codes
+      // are otherwise authenticated=true so a malformed approval could DoS the
+      // pending queue (#25). Binding failures use code `approval` and are also
+      // preserved; replay is preserved so the real consumer stays recorded.
+      const preservePendingNonce =
+        pendingApprovalContinuation &&
+        (error.code === 'schema' ||
+          error.code === 'identity' ||
+          error.code === 'profile' ||
+          error.code === 'signature')
+      if (
+        error.authenticated &&
+        error.code !== 'replay' &&
+        error.code !== 'approval' &&
+        !preservePendingNonce
+      ) {
         await retireNonce(input.ledger, presented.intent.actor, presented.intent.nonce, intentHash)
       }
       return sealOrClosed(view, {
