@@ -18,6 +18,7 @@ import {
 } from 'adap-store-postgres'
 import { AlertingEventSink } from './alerts.js'
 import { JsonSecurityEventSink } from './events.js'
+import { createRootAuthority } from './root-authority.js'
 import { executeAuthorized } from './executor.js'
 import { STAGING_ALLOW_POLICY, STAGING_ALLOW_URI, STAGING_HUMAN_POLICY, STAGING_HUMAN_URI } from './staging-policies.js'
 import { VaultCredentialBroker } from './vault-broker.js'
@@ -114,6 +115,10 @@ export async function startGateway(): Promise<void> {
   })
   const registry = await migrateAndRegister(pool)
   const directory = loadDirectory(requiredEnv('ADAP_DIRECTORY_PATH'))
+  const rootAuthority = createRootAuthority(
+    JSON.parse(readFileSync(requiredEnv('ADAP_ROOT_GRANTS_PATH'), 'utf8')),
+    directory,
+  )
   const signer = loadIssuer(requiredEnv('ADAP_ISSUER_KEY_PATH'))
   const clientToken = requiredEnv('ADAP_GATEWAY_CLIENT_TOKEN')
   const broker = new VaultCredentialBroker({
@@ -267,6 +272,7 @@ export async function startGateway(): Promise<void> {
           intent: parsed.intent as never,
           approval: parsed.approval as never,
           directory,
+          rootAuthority,
           policy: pin.policy,
           policyUri,
           ledger: new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool })),

@@ -17,4 +17,14 @@ This package alone does not prevent an agent from calling a downstream system if
 
 ## Identity
 
+The HTTP gateway requires `ADAP_ROOT_GRANTS_PATH`, a path to an operator-owned JSON
+array such as `[{"issuerId":"prn_staging","action":"apply","target":"resource/*"}]`.
+Mount this file read-only alongside the identity directory. Missing, empty, malformed,
+or unknown-issuer configuration prevents startup. Each capability of the submitted
+root must match a configured issuer, action, and target. A final `/*` covers one
+resource segment, following delegation narrowing semantics. Self-issued roots are
+rejected. Both initial requests and approval continuations use this configuration.
+Restart all replicas to apply configuration changes. The staging validation script
+generates a grant for its principal and Compose mounts it in both gateways.
+
 `StaticIdentityDirectory` verifies key status, algorithm (Ed25519 only), expiry, issuer/audience, and human vs workload kind. It is not an IdP.
