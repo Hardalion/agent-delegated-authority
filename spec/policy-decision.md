@@ -27,7 +27,12 @@ When more than one policy is registered, a conforming deployment MUST NOT let an
 1. A required `policy` pin on the root delegation (a child may name a stricter pin but must not drop or replace it with an unrelated one).
 2. Operator configuration keyed by target namespace.
 
-The reference gateway may still accept `x-adap-policy-uri` for local drills. Production deployments that claim ADAP enforcement resolve the governing policy from the chain or operator config, then verify the presented document hash.
+The reference HTTP gateway resolves the governing policy from operator-owned exact
+principal/action/target bindings. Its optional `x-adap-policy-uri` header must match
+that selection. Production deployments that claim ADAP enforcement resolve the
+governing policy from the chain or operator config, then verify the presented
+document hash. Gateway regression vectors are in
+`packages/adap-gateway/src/policy-selection.test.ts`.
 
 ## Reference
 

@@ -4,6 +4,19 @@ Reference execution gateway. It is a deployment of the ADAP authority path, not 
 
 ## Boundary
 
+The HTTP gateway requires `ADAP_POLICY_BINDINGS_PATH`, pointing to an operator-owned
+JSON array of exact `{ principalId, action, target, policyUri }` bindings. For example,
+`[{"principalId":"prn_staging","action":"apply","target":"resource/human","policyUri":"staging-human@1"}]`.
+All policies must already exist in the registry. Empty, invalid, duplicate, or
+unregistered bindings prevent startup. Mount the file read-only and restart all
+replicas when changing it. A request without a matching binding is rejected.
+The optional `x-adap-policy-uri` header must agree with the selected binding.
+The authority path verifies the signatures and signed fields before executing.
+Approval continuation also passes this selection and the existing pending-policy
+binding checks. A changed mapping therefore fails closed for an old pending intent.
+The staging drill uses distinct `resource/example` and `resource/human` targets to
+demonstrate ALLOW and REQUIRE_HUMAN under fixed operator bindings.
+
 - Agents present signed intents to the gateway.
 - `executeAuthorized` runs `runAuthorityPath` then a credential broker.
 - Rail credentials never leave the broker; agents never receive them.
