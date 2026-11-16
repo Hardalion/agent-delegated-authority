@@ -73,11 +73,15 @@ function tokenize(input: string): Token[] {
 
     if (ch === "'" || ch === '"') {
       const quote = ch
+      const start = i
       i += 1
       let value = ''
       while (i < input.length && input[i] !== quote) {
         value += input[i]
         i += 1
+      }
+      if (i >= input.length) {
+        throw new Error(`Unterminated string literal at position ${start}`)
       }
       i += 1
       tokens.push({ type: 'string', value })
@@ -85,12 +89,24 @@ function tokenize(input: string): Token[] {
     }
 
     if (/[0-9]/.test(ch)) {
+      const start = i
       let num = ''
-      while (i < input.length && /[0-9.]/.test(input[i])) {
+      let dots = 0
+      while (i < input.length && /[0-9.]/.test(input[i]!)) {
+        if (input[i] === '.') {
+          dots += 1
+          if (dots > 1) {
+            throw new Error(`Invalid numeric literal at position ${start}`)
+          }
+        }
         num += input[i]
         i += 1
       }
-      tokens.push({ type: 'number', value: Number(num) })
+      const value = Number(num)
+      if (!Number.isFinite(value)) {
+        throw new Error(`Invalid numeric literal at position ${start}`)
+      }
+      tokens.push({ type: 'number', value })
       continue
     }
 
@@ -321,9 +337,26 @@ class Parser {
 
     if (token.type === 'lparen') {
       this.consume()
-      const inner = this.parseOr()
-      if (this.peek().type === 'rparen') this.consume()
-      return inner
+      try {
+        const inner = this.parseOr()
+        if (this.peek().type !== 'rparen') {
+          throw new Error('Expected closing parenthesis')
+        }
+        this.consume()
+        return inner
+      } catch (error) {
+        // Short-circuit `&&` ignores NumericComparisonError on the RHS. When the
+        // RHS is parenthesized, consume the closing `)` before rethrowing so the
+        // token stream stays aligned (#25).
+        if (
+          error instanceof NumericComparisonError ||
+          error instanceof NonFiniteComparisonError
+        ) {
+          if (this.peek().type === 'rparen') this.consume()
+          throw error
+        }
+        throw error
+      }
     }
 
     throw new Error(`Unexpected token: ${token.type}`)

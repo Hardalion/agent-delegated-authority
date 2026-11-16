@@ -79,6 +79,22 @@ describe('verifyReceiptChain', () => {
   it('does not detect a dropped tail on its own', () => {
     expect(verifyReceiptChain(chainOf(4).receipts.slice(0, 2)).valid).toBe(true)
   })
+
+  it('rejects a chain when issuer changes', () => {
+    const { receipts } = chainOf(2)
+    const forged = { ...receipts[1]!, issuer: 'other-runtime' }
+    const result = verifyReceiptChain([receipts[0]!, forged])
+    expect(result.valid).toBe(false)
+    expect(result.errors.join(' ')).toMatch(/issuer differs/)
+  })
+
+  it('rejects a chain with duplicate receiptId', () => {
+    const { receipts } = chainOf(2)
+    const forged = { ...receipts[1]!, receiptId: receipts[0]!.receiptId }
+    const result = verifyReceiptChain([receipts[0]!, forged])
+    expect(result.valid).toBe(false)
+    expect(result.errors.join(' ')).toMatch(/duplicate receiptId/)
+  })
 })
 
 describe('emitAuthorizationReceipt', () => {
