@@ -206,6 +206,37 @@ describe('condition evaluation errors', () => {
   })
 })
 
+describe('issue #25 lexer and parenthesized && short-circuit', () => {
+  it('short-circuits parenthesized numeric RHS without unexpected-token failure', () => {
+    expect(
+      evaluateCondition("tool.name == 'apply' && (args.amount > 500)", {
+        tool: { name: 'read' },
+        args: {},
+      }),
+    ).toBe(false)
+
+    const decision = evaluateToolCall({
+      policy: closed("tool.name == 'apply' && (args.amount > 500)"),
+      toolName: 'read',
+      toolArgs: {},
+      agentRole: ROLE,
+    })
+    expect(decision.action).toBe('ALLOW')
+  })
+
+  it('rejects unterminated string literals', () => {
+    expect(() => evaluateCondition("tool.name == 'apply", { tool: { name: 'apply' } })).toThrow(
+      /Unterminated string literal/,
+    )
+  })
+
+  it('rejects multi-dot numeric literals', () => {
+    expect(() => evaluateCondition('args.amount == 1.2.3', { args: { amount: 1 } })).toThrow(
+      /Invalid numeric literal/,
+    )
+  })
+})
+
 describe('freeform argument boundary', () => {
   it('does not let a renamed prompt field authorize a closed policy', () => {
     const decision = evaluateToolCall({

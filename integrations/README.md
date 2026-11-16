@@ -1,76 +1,131 @@
 # Framework integrations
 
-Call the authorization gate before a tool runs.
+Call the authority path before a consequential tool runs. The path verifies the delegation chain and the signed intent, checks the nonce, evaluates the pinned policy, and emits a receipt.
 
-1. Build the evaluation input: `toolName`, `toolArgs`, optional `agentRole`
-2. Call `evaluateToolCall()` (or `adap-policy` in CI)
-3. On `BLOCK`: do not execute
-4. On `REQUIRE_HUMAN`: wait for a person, do not execute
-5. On `ALLOW`: the caller may proceed
+`BLOCK` and an unresolved `REQUIRE_HUMAN` do not call the tool. Only `ALLOW` (including a later signed approval of a pending intent) may execute.
 
-No framework SDK is required. Wrap the reference evaluator.
+`evaluateToolCall()` is the policy check alone. It is documented below and does not provide these guarantees.
 
-## TypeScript
+## TypeScript: full authority path
+
+```typescript
+import {
+  BASIC_AGENT_AUTHORITY,
+  BASIC_AGENT_AUTHORITY_URI,
+  ImmutablePolicyResolver,
+  NonceLedger,
+  PendingAuthorizationStore,
+  createIdentity,
+  runAuthorityPath,
+  signDelegation,
+  signIntent,
+} from 'adap'
+
+const principal = createIdentity('prn_example')
+const agent = createIdentity('agt_example')
+const signer = createIdentity('reference-runtime')
+const directory = new Map([
+  [principal.id, principal.publicKey],
+  [agent.id, agent.publicKey],
+])
+
+const issued = new Date().toISOString()
+const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+
+const root = signDelegation(
+  {
+    delegation_id: 'del_root',
+    issuer: principal.id,
+    subject: agent.id,
+    capabilities: [{ action: 'read', target: 'resource/*', delegable: false }],
+    constraints: {},
+    issued_at: issued,
+    expires_at: expires,
+  },
+  principal
+)
+
+const intent = signIntent(
+  {
+    intent_id: 'int_1',
+    actor: agent.id,
+    delegation_chain: [root.delegation_id],
+    action: 'read',
+    target: 'resource/example',
+    parameters: {},
+    nonce: 'n_example_1',
+    issued_at: issued,
+    expires_at: expires,
+  },
+  agent
+)
+
+const policyResolver = new ImmutablePolicyResolver()
+policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
+
+const result = await runAuthorityPath({
+  chain: [root],
+  intent,
+  directory,
+  policy: BASIC_AGENT_AUTHORITY,
+  policyUri: BASIC_AGENT_AUTHORITY_URI,
+  policyResolver,
+  ledger: new NonceLedger(),
+  pendingStore: new PendingAuthorizationStore(),
+  signer,
+  // Operator revocation status. `revoked` and `unavailable` fail closed.
+  // Omit the hook and the grant stays valid until expires_at.
+  revocationCheck: (delegationId) => revocationStatus(delegationId),
+  execute: (ctx) => callTool(ctx.action, ctx.target, ctx.parameters),
+})
+
+if (result.decision === 'BLOCK' || result.decision === 'REQUIRE_HUMAN') {
+  // execute was not called
+}
+```
+
+Production deployments replace the in-process nonce ledger and pending store with a shared atomic store (`adap-store-postgres` or equivalent). `max_amount` is a per-intent ceiling. It does not accumulate spend across intents.
+
+The reference gateway process is `packages/adap-gateway`.
+
+## Policy-only check
+
+`evaluateToolCall()` answers whether a tool name and arguments match a policy document. It does not verify a delegation, a signature, a nonce, or a receipt. Use it for policy unit tests and for a pre-filter. Do not treat it as the authority boundary.
 
 ```typescript
 import { evaluateToolCall } from 'adap-policy'
 
-export class ToolGate {
-  constructor(private readonly policy: string) {}
-
-  async beforeToolCall(toolName: string, toolArgs: Record<string, unknown>) {
-    const decision = evaluateToolCall({
-      policy: this.policy,
-      toolName,
-      toolArgs,
-      agentRole: 'agt_reader',
-    })
-
-    if (decision.action === 'BLOCK') {
-      throw new Error(`BLOCK [${decision.ruleId}]: ${decision.reason}`)
-    }
-    if (decision.action === 'REQUIRE_HUMAN') {
-      return { deferred: true, ruleId: decision.ruleId, reason: decision.reason }
-    }
-    return { proceed: true }
-  }
-}
+const decision = evaluateToolCall({
+  policy: 'basic-agent-authority',
+  toolName: 'read',
+  toolArgs: {},
+  agentRole: 'agt_reader',
+})
 ```
 
-Wire this where tools are dispatched. The policy id in the example is `basic-agent-authority`.
+### Python
 
-## Python
-
-Until a Python package exists, call the CLI:
+Until a Python package exists, the CLI is the same policy-only check:
 
 ```bash
 adap-policy --policy basic-agent-authority --tool read --json
 ```
 
-## Function calling
-
-```typescript
-const decision = evaluateToolCall({
-  policy: 'basic-agent-authority',
-  toolName: functionCall.name,
-  toolArgs: JSON.parse(functionCall.arguments),
-})
-```
-
-## CI
+### CI
 
 ```bash
 adap-policy --policy-uri basic-agent-authority@1.0.0 --tool apply --args "{\"amount\":800}" --json
 # Exit 1 = BLOCK
 ```
 
-## Model Context Protocol (MCP) — policy-only helper
+## Model Context Protocol (MCP)
 
-`McpToolGate` evaluates MCP `tools/call` name/args against an ADAP policy document.
-It is a convenience wrapper around `evaluateToolCall`. It is **not** a full ADAP
-authority binding (no signed intent, delegation, capability, or receipt).
+Two claim levels. Do not mix them.
 
-For the normative authority-enforcing MCP profile, see `spec/mcp-binding.md`.
+| Claim | What it checks |
+| --- | --- |
+| Policy-only helper | `McpToolGate` / `evaluateToolCall` on tool name and arguments |
+| Authority-enforcing binding | Signed intent, delegation chain, nonce, policy pin, receipt. Normative text: `spec/mcp-binding.md` |
 
 ```typescript
 import { McpToolGate, type McpToolCall } from 'adap-policy'
@@ -80,26 +135,18 @@ const gate = new McpToolGate({
   agentRole: 'agt_reader',
 })
 
-// Intercept incoming MCP CallToolRequest
 const call: McpToolCall = {
   name: request.params.name,
   arguments: request.params.arguments,
 }
 
-const result = await gate.execute(call, async (args) => {
-  // Underlying tool execution only runs when policy returns ALLOW
-  return executeMyTool(call.name, args)
-})
-
-// On BLOCK or REQUIRE_HUMAN: result.isError is true, executor was not called.
-// On ALLOW: result.content contains tool output, result._meta.adap has decision.
-return result
+// Policy-only. This is not an ADAP MCP binding.
+const result = await gate.execute(call, async (args) => executeMyTool(call.name, args))
 ```
 
 ## Contributing an adapter
 
-Open a pull request with:
+Open a pull request with a short wrapper and a test that shows one `BLOCK` and one `ALLOW`.
 
-- A short wrapper
-- A test with a known `BLOCK` and a known `ALLOW`
-- A dependency on `adap-policy` only
+- A policy-only adapter depends on `adap-policy`.
+- An authority adapter depends on `adap` and calls `runAuthorityPath` (or the gateway) before the tool runs.

@@ -84,4 +84,18 @@ describe('ADAP-011 receipt semantic invariants', () => {
     expect(result.structureOk).toBe(false)
     expect(result.errors.join(' ')).toMatch(/pending/)
   })
+
+  it.each(['declined', 'escalated'] as const)(
+    'rejects ALLOW with human.status=%s',
+    (status) => {
+      const unsigned = buildUnsignedAuthorizationReceipt(
+        base({
+          human: { required: true, status },
+        }) as never
+      )
+      const result = verifyAuthorizationReceipt({ ...unsigned, signature: DUMMY_SIG })
+      expect(result.structureOk).toBe(false)
+      expect(result.errors.join(' ')).toMatch(new RegExp(status))
+    }
+  )
 })

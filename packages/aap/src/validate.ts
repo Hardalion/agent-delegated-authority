@@ -580,9 +580,12 @@ export function verifyHumanApproval(input: {
     throw new AuthorityError('approval', 'duplicate approval rejected', true)
   }
 
+  // When the directory records an identity kind, approvals must be human-signed
+  // (spec/human-approval.md). Keys without a kind stay accepted for legacy maps.
   if (isVersionedHumanApproval(approval)) {
     const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id, approval.kid), now, {
       requireKid: approval.kid,
+      expectedKind: 'human',
     })
     const envelope = {
       adap: ADAP_SIGNED_VERSION,
@@ -596,7 +599,9 @@ export function verifyHumanApproval(input: {
       throw new AuthorityError('approval', 'approval signature invalid', true)
     }
   } else {
-    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now)
+    const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now, {
+      expectedKind: 'human',
+    })
     if (!verifyObject(unsignedApproval(approval), approval.signature, importPublicKey(key.publicKey))) {
       throw new AuthorityError('approval', 'approval signature invalid', true)
     }
