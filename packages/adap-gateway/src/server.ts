@@ -20,6 +20,7 @@ import { AlertingEventSink } from './alerts.js'
 import { JsonSecurityEventSink } from './events.js'
 import { createRootAuthority } from './root-authority.js'
 import { executeAuthorized } from './executor.js'
+import { createPolicySelector } from './policy-selection.js'
 import { STAGING_ALLOW_POLICY, STAGING_ALLOW_URI, STAGING_HUMAN_POLICY, STAGING_HUMAN_URI } from './staging-policies.js'
 import { VaultCredentialBroker } from './vault-broker.js'
 
@@ -114,6 +115,10 @@ export async function startGateway(): Promise<void> {
     queryTimeoutMs: 4_000,
   })
   const registry = await migrateAndRegister(pool)
+  const selectPolicy = createPolicySelector(
+    JSON.parse(readFileSync(requiredEnv('ADAP_POLICY_BINDINGS_PATH'), 'utf8')),
+    registry,
+  )
   const directory = loadDirectory(requiredEnv('ADAP_DIRECTORY_PATH'))
   const rootAuthority = createRootAuthority(
     JSON.parse(readFileSync(requiredEnv('ADAP_ROOT_GRANTS_PATH'), 'utf8')),
@@ -245,12 +250,6 @@ export async function startGateway(): Promise<void> {
         res.end(JSON.stringify({ error: { code: 'unavailable', message: 'dependencies not ready' } }))
         return
       }
-      const policyUri = req.headers['x-adap-policy-uri']
-      if (policyUri !== STAGING_ALLOW_URI && policyUri !== STAGING_HUMAN_URI) {
-        res.writeHead(400, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ error: { code: 'policy', message: 'policy URI is not registered' } }))
-        return
-      }
       let parsed: z.infer<typeof BodySchema>
       try {
         const raw = JSON.parse((await readBody(req)).toString('utf8')) as unknown
@@ -258,6 +257,14 @@ export async function startGateway(): Promise<void> {
       } catch {
         res.writeHead(400, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ error: { code: 'schema', message: 'request rejected' } }))
+        return
+      }
+      let policyUri: string
+      try {
+        policyUri = selectPolicy(parsed, req.headers['x-adap-policy-uri'])
+      } catch {
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: { code: 'policy', message: 'governing policy rejected' } }))
         return
       }
       const pin = registry.resolveByUri(policyUri)

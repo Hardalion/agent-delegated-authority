@@ -106,6 +106,10 @@ async function main() {
   ].join('\n'), { mode: 0o600 })
 
   const principal = pemPair('prn_staging')
+  writeFileSync(join(secretsDir, 'policy-bindings.json'), JSON.stringify([
+    { principalId: principal.id, action: 'apply', target: 'resource/example', policyUri: 'staging-allow@1' },
+    { principalId: principal.id, action: 'apply', target: 'resource/human', policyUri: 'staging-human@1' },
+  ], null, 2))
   const agent = pemPair('agt_staging')
   const issuer = pemPair('staging-runtime')
   writeFileSync(join(secretsDir, 'root-grants.json'), JSON.stringify([
@@ -149,13 +153,13 @@ async function main() {
     expires_at: expires,
   }, { id: principal.id, publicKey: principal.publicKey, privateKey: principal.privateKey })
 
-  function intentFor(nonce) {
+  function intentFor(nonce, target = 'resource/example') {
     return adap.signIntent({
       intent_id: `int_${nonce}`,
       actor: agent.id,
       delegation_chain: [delegation.delegation_id],
       action: 'apply',
-      target: 'resource/example',
+      target,
       parameters: { amount: 10 },
       nonce,
       issued_at: issued,
@@ -164,7 +168,8 @@ async function main() {
   }
 
   async function authorize(port, nonce, policyUri, approval) {
-    const body = JSON.stringify({ chain: [delegation], intent: intentFor(nonce), ...(approval ? { approval } : {}) })
+    const target = policyUri === 'staging-human@1' ? 'resource/human' : 'resource/example'
+    const body = JSON.stringify({ chain: [delegation], intent: intentFor(nonce, target), ...(approval ? { approval } : {}) })
     try {
       return await httpsJson(port, '/v1/authorize', {
         method: 'POST',
