@@ -32,6 +32,13 @@ import {
   verifyHumanApproval,
 } from './validate.js'
 
+export class ExecutionOutcomeUnknownError extends Error {
+  constructor(message = 'downstream outcome unknown') {
+    super(message)
+    this.name = 'ExecutionOutcomeUnknownError'
+  }
+}
+
 export interface ExecutionContext {
   readonly action: string
   readonly target: string
@@ -134,6 +141,18 @@ export interface RunAuthorityPathInput {
    */
   readonly issuedAtSkewMs?: number
   /**
+   * Verifier audience. Required unless `unsafeDevAllowUnconfiguredChecks` is set.
+   * Every delegation, intent, and approval `aud` must equal it.
+   */
+  readonly audience?: string
+  /**
+   * Dev-only escape hatch. Default false. When true, missing root authority,
+   * revocation, approver kind, and audience are not enforced. Recorded on the receipt.
+   */
+  readonly unsafeDevAllowUnconfiguredChecks?: boolean
+  readonly enforcementMode?: 'gateway' | 'in_process'
+  readonly credentialBoundary?: 'gateway_isolated' | 'caller_supplied'
+  /**
    * Required when any delegation in the chain sets `cumulative_max_amount`.
    * `max_amount` stays a per-intent ceiling. This ledger is the running sum.
    */
@@ -230,6 +249,31 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       now,
       issuedAtSkewMs,
     })
+
+    const devBypass = input.unsafeDevAllowUnconfiguredChecks === true
+    if (!devBypass && !input.audience) {
+      throw new AuthorityError('audience', 'AUDIENCE_MISMATCH', true)
+    }
+    if (input.audience) {
+      const audience = input.audience
+      for (const delegation of verified.chain) {
+        if (delegation.aud !== audience) {
+          throw new AuthorityError('audience', 'AUDIENCE_MISMATCH', true)
+        }
+      }
+      if (verified.intent.aud !== audience) {
+        throw new AuthorityError('audience', 'AUDIENCE_MISMATCH', true)
+      }
+      if (input.approval && input.approval.aud !== audience) {
+        throw new AuthorityError('audience', 'AUDIENCE_MISMATCH', true)
+      }
+    }
+    if (!devBypass && !input.rootAuthority) {
+      throw new AuthorityError('root_not_authorized', 'root authority is required', true)
+    }
+    if (!devBypass && !input.revocationCheck) {
+      throw new AuthorityError('revoked', 'revocation check is required', true)
+    }
 
     const root = verified.chain[0]
     if (root && !root.parent_delegation_id) {
@@ -360,16 +404,14 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         throw new AuthorityError('approval', 'pinned policy rule does not match pending context', true)
       }
 
-      if (input.approvalPolicy) {
+      if (input.approvalPolicy?.isHuman && !input.approvalPolicy.isHuman(input.approval.approver_id)) {
+        throw new AuthorityError('approval', 'approver is not a human identity', true)
+      }
+      if (input.approvalPolicy?.allowSelfApproval !== true) {
         const approverId = input.approval.approver_id
-        if (input.approvalPolicy.isHuman && !input.approvalPolicy.isHuman(approverId)) {
-          throw new AuthorityError('approval', 'approver is not a human identity', true)
-        }
-        if (input.approvalPolicy.allowSelfApproval !== true) {
-          const subjects = new Set(verified.chain.map((delegation) => delegation.subject))
-          if (subjects.has(approverId) || approverId === verified.intent.actor) {
-            throw new AuthorityError('approval', 'approver cannot approve their own agent action', true)
-          }
+        const subjects = new Set(verified.chain.map((delegation) => delegation.subject))
+        if (subjects.has(approverId) || approverId === verified.intent.actor) {
+          throw new AuthorityError('approval', 'approver cannot approve their own agent action', true)
         }
       }
 
@@ -392,6 +434,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         seenApprovalKeys: seenApprovals,
         expectedDecision: humanDecision === 'DENY' ? 'DENY' : 'APPROVE',
         authorityProfile,
+        requireApproverKind: input.unsafeDevAllowUnconfiguredChecks !== true,
       })
       pendingApprovalContinuation = false
 
@@ -767,7 +810,24 @@ async function executeBound(
   let result: unknown
   try {
     result = await input.execute(ctx)
-  } catch {
+  } catch (error) {
+    if (error instanceof ExecutionOutcomeUnknownError) {
+      await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
+      return seal(input, {
+        decision: 'ALLOW',
+        ruleId: bound.decision.ruleId,
+        reason: 'downstream outcome unknown',
+        alertSeverity: 'CRITICAL',
+        matched: bound.decision.matched,
+        intentHash: bound.intentHash,
+        delegationHash: bound.delegationHash,
+        policyHash: bound.policyHash,
+        executed: false,
+        failureMode: 'SYSTEM_ERROR',
+        principalId: bound.principalId,
+        executionOutcome: 'unknown',
+      })
+    }
     await input.ledger.fail(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
       decision: 'BLOCK',
@@ -856,6 +916,7 @@ function seal(
     readonly failureMode: 'NONE' | 'RULE_VIOLATION' | 'SYSTEM_ERROR'
     readonly principalId?: string
     readonly human?: HumanAttestation
+    readonly executionOutcome?: 'not_dispatched' | 'returned' | 'unknown' | 'failed_after_dispatch'
   }
 ): ProtocolResult {
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
@@ -895,17 +956,30 @@ function seal(
     receiptId: `rcpt_${fields.intentHash.slice(0, 20)}_${fields.executed ? 'exec' : fields.decision.toLowerCase()}`,
     execution: {
       targetSystem: input.intent.target,
-      executed: fields.executed,
-      executedAt: fields.executed ? decidedAt : undefined,
+      executed: fields.executionOutcome === 'unknown' ? false : fields.executed,
+      executedAt: fields.executed && fields.executionOutcome !== 'unknown' ? decidedAt : undefined,
       intentHash: fields.intentHash,
+      outcome: fields.executionOutcome ?? (fields.executed ? 'returned' : 'not_dispatched'),
     },
     human: fields.human,
     failureMode: fields.failureMode,
     sequence: input.receiptSequence,
     prevReceiptHash: input.prevReceiptHash,
-    ...(input.issuedAtSkewMs != null && input.issuedAtSkewMs > 0
-      ? { extensions: { issuedAtSkewMs: input.issuedAtSkewMs } }
-      : {}),
+    extensions: {
+      checks_applied: {
+        root_authority: Boolean(input.rootAuthority) && input.unsafeDevAllowUnconfiguredChecks !== true,
+        revocation_check: Boolean(input.revocationCheck) && input.unsafeDevAllowUnconfiguredChecks !== true,
+        human_approver_kind: input.unsafeDevAllowUnconfiguredChecks !== true,
+        no_self_approval: input.approvalPolicy?.allowSelfApproval !== true,
+        approval_policy: Boolean(input.approvalPolicy),
+        unsafe_dev_unconfigured_checks: input.unsafeDevAllowUnconfiguredChecks === true,
+      },
+      enforcement_mode: input.enforcementMode ?? 'in_process',
+      credential_boundary: input.credentialBoundary ?? 'caller_supplied',
+      ...(input.issuedAtSkewMs != null && input.issuedAtSkewMs > 0
+        ? { issuedAtSkewMs: input.issuedAtSkewMs }
+        : {}),
+    },
     signer: input.signer.privateKey,
     // Reference path records authorized parameters for offline review.
     // Callers that must omit secrets should pass a narrower allowlist via a future hook.
@@ -941,9 +1015,12 @@ export function verifyProtocolReceipt(
   const structure = verifyAuthorizationReceipt(receipt)
   const { signature, ...unsigned } = receipt
   const signatureOk = verifyHex(unsigned, signature, publicKey)
-  const errors = [...structure.errors]
+  const errors = structure.errors.filter((item) => item !== 'MISSING_PUBLIC_KEY')
   if (!signatureOk) errors.push('ed25519 signature invalid')
-  return { valid: structure.valid && signatureOk, errors }
+  return {
+    valid: structure.structureOk && structure.contentHashOk && !structure.demoSignature && signatureOk,
+    errors,
+  }
 }
 
 export { ImmutablePolicyResolver, PendingAuthorizationStore }

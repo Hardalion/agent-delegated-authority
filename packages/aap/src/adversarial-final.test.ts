@@ -159,6 +159,7 @@ describe('executor boundary', () => {
     const signed = intent(env.agent, env.root, 'exec-throw')
     let calls = 0
     const failed = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: signed,
       directory: env.directory,
@@ -178,6 +179,7 @@ describe('executor boundary', () => {
     expect(failed.ruleId).toBe('execution')
     expect(await ledger.statusOf(signed.actor, signed.nonce)).toBe('failed')
     const retry = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: signed,
       directory: env.directory,
@@ -204,6 +206,7 @@ describe('executor boundary', () => {
     const cycle: Record<string, unknown> = { ok: true }
     cycle.self = cycle
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: signed,
       directory: env.directory,
@@ -228,6 +231,7 @@ describe('policy resolver trust', () => {
   it('rejects a missing resolver instead of evaluating a caller document', async () => {
     const env = world()
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: intent(env.agent, env.root, 'no-resolver'),
       directory: env.directory,
@@ -271,6 +275,7 @@ describe('approval binding on a fresh nonce', () => {
     const original = intent(env.agent, env.root, 'approval-original', { amount: 10, note: 'example' })
     let calls = 0
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: original,
       directory: env.directory,
@@ -289,6 +294,7 @@ describe('approval binding on a fresh nonce', () => {
     expect(pending.decision).toBe('REQUIRE_HUMAN')
     const mutated = intent(env.agent, env.root, 'approval-mutated', { amount: 20, note: 'example' })
     const blocked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: mutated,
       directory: env.directory,
@@ -339,6 +345,7 @@ describe('snapshot and receipt agreement', () => {
       waiting = resolve
     })
     const pending = runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],
       intent: signed,
       directory: env.directory,

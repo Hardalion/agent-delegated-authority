@@ -95,6 +95,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
     const intent = intentFor(agent, root.delegation_id, 'nonce-malformed-1')
 
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -111,6 +112,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
     expect((await pendingStore.get(agent.id, intent.nonce))?.approvalState).toBe('pending')
 
     const blocked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -151,6 +153,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
       principal
     )
     const approved = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -206,6 +209,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
     const ledger = new NonceLedger()
 
     const rejected = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -221,6 +225,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
     expect(rejected.reason).toMatch(/self-issued root not allowed/)
 
     const allowed = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -248,6 +253,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
     const intent = intentFor(agent, root.delegation_id, 'nonce-kind-1')
 
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -275,6 +281,7 @@ describe('issue #25 pending nonce + root/approval kinds', () => {
       principal
     )
     const blocked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,

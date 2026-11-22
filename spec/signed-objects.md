@@ -43,6 +43,8 @@ Constraint narrowing is also profile-aware:
 
 The reference packages flatten the envelope onto the object for transport (`adap`, `typ`, `alg`, `kid` alongside payload fields). Verification rebuilds the envelope and checks the preimage.
 
+`typ` here is `delegation`, `intent`, or `approval`. Authorization receipts and receipt checkpoints are not versioned under this envelope in the current profile. See [authorization-receipt.md](./authorization-receipt.md).
+
 ## Domain separation
 
 Preimage bytes:

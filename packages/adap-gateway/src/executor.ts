@@ -1,4 +1,5 @@
 import {
+  ExecutionOutcomeUnknownError,
   runAuthorityPath,
   type ExecutionContext,
   type ProtocolResult,
@@ -102,6 +103,7 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
   }
 
   const result = await runAuthorityPath({
+    unsafeDevAllowUnconfiguredChecks: input.unsafeDevAllowUnconfiguredChecks ?? true,
     ...input,
     execute: async (ctx) => {
       authorizedCtx = ctx
@@ -185,13 +187,7 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
           intentHash: ctx.intentHash,
           reason: downstream.error,
         })
-        // Return, do not throw. The nonce is consumed so the same intent cannot be
-        // retried. The result states that the downstream outcome is unknown.
-        return {
-          executionState: 'unknown',
-          correlationId: corr,
-          error: downstream.error,
-        }
+        throw new ExecutionOutcomeUnknownError(downstream.error)
       }
       events?.emit({
         type: downstream.status === 'accepted' ? 'execution.completed' : 'execution.completed',

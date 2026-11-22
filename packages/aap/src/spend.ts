@@ -65,22 +65,29 @@ export function cumulativeCharges(input: {
   readonly parameters: Readonly<Record<string, unknown>>
   readonly intentHash: string
 }): SpendCharge[] {
-  const raw = hasOwn(input.parameters, 'amount') ? input.parameters.amount : 0
-  const amount = assertCanonicalAmount(raw, 'parameters.amount')
   const charges: SpendCharge[] = []
   for (const delegation of input.chain) {
-    if (!hasOwn(delegation.constraints, CUMULATIVE_MAX_AMOUNT)) continue
-    charges.push({
-      delegationId: delegation.delegation_id,
-      intentHash: input.intentHash,
-      amount,
-      ceiling: assertCanonicalAmount(
-        delegation.constraints[CUMULATIVE_MAX_AMOUNT],
-        CUMULATIVE_MAX_AMOUNT
-      ),
-    })
+    for (const [key, bound] of Object.entries(delegation.constraints)) {
+      const field = cumulativeField(key)
+      if (!field) continue
+      const raw = hasOwn(input.parameters, field) ? input.parameters[field] : 0
+      charges.push({
+        delegationId: delegation.delegation_id,
+        intentHash: input.intentHash,
+        amount: assertCanonicalAmount(raw, `parameters.${field}`),
+        ceiling: assertCanonicalAmount(bound, key),
+      })
+    }
   }
   return charges
+}
+
+function cumulativeField(key: string): string | undefined {
+  if (key === CUMULATIVE_MAX_AMOUNT) return 'amount'
+  if (!key.startsWith('cumulative_')) return undefined
+  const field = key.slice('cumulative_'.length)
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field) || field.startsWith('max_')) return undefined
+  return field
 }
 
 export async function chargeCumulativeSpend(input: {

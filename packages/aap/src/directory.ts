@@ -93,6 +93,8 @@ export function assertUsableDirectoryKey(
   opts?: {
     readonly requireKid?: string
     readonly expectedKind?: DirectoryIdentityKind
+    /** When true, a missing kind fails. When false, only an explicit other kind fails. */
+    readonly requireKind?: boolean
     readonly allowRevokedForHistoricalVerify?: boolean
   }
 ): DirectoryKeyRecord {
@@ -109,7 +111,9 @@ export function assertUsableDirectoryKey(
   if (key.status === 'expired') {
     throw new AuthorityError('signature', 'key expired', true)
   }
-  if (opts?.expectedKind && key.kind != null && key.kind !== opts.expectedKind) {
+  if (opts?.requireKind && opts.expectedKind && key.kind !== opts.expectedKind) {
+    throw new AuthorityError('signature', 'wrong identity kind', true)
+  } else if (opts?.expectedKind && key.kind != null && key.kind !== opts.expectedKind) {
     throw new AuthorityError('signature', 'wrong identity kind', true)
   }
   const t = now.getTime()

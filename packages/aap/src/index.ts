@@ -127,11 +127,13 @@ export {
   type DirectoryInput,
 } from './validate.js'
 export {
+  ExecutionOutcomeUnknownError,
   runAuthorityPath,
   verifyProtocolReceipt,
   type ExecutionContext,
   type ProtocolResult,
   type RunAuthorityPathInput,
 } from './path.js'
+export { adapBindingForMcpCall, hashMcpToolDefinition, type McpToolDefinition } from './mcp-tool.js'
 export { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-policy.js'
 export { DEMO_NOW, runAgentToAgentDemo, type AgentToAgentDemo } from './agents.js'

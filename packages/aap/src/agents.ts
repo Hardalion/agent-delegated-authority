@@ -93,6 +93,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
   )
 
   const read = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: [root, toAgentB],
     intent: signIntent(
       {
@@ -151,6 +152,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
   const applyBody = applyIntent(agentA.id, [root.delegation_id], 'nonce_apply', 420)
   const applyPending = await run(applyBody, [root])
   const apply = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: [root],
     intent: applyBody,
     directory,
@@ -222,6 +224,7 @@ export async function runAgentToAgentDemo(input?: { readonly now?: Date }): Prom
 
   function run(intent: ReturnType<typeof signIntent>, chain: SignedDelegation[]) {
     return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain,
       intent,
       directory,

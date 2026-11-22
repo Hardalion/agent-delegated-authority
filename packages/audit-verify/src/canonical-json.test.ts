@@ -47,7 +47,9 @@ describe('RFC 8785 canonical JSON vectors', () => {
       readFileSync(join(here, '../../../examples/receipt.json'), 'utf8'),
     ) as { integrity: { contentHash: string } }
     const result = verifyAuthorizationReceipt(receipt)
-    expect(result.valid).toBe(true)
+    expect(result.valid).toBe(false)
+    expect(result.status).toBe('integrity_only')
+    expect(result.contentHashOk).toBe(true)
     expect(result.contentHash).toBe('35a2f27d1d11b306fbbfa81d0345afe66db6c9087d760eec7f20644744f2511c')
     expect(receipt.integrity.contentHash).toBe(result.contentHash)
   })

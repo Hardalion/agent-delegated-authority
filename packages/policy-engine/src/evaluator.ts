@@ -131,7 +131,7 @@ function tokenize(input: string): Token[] {
     }
 
     const two = input.slice(i, i + 2)
-    if (['==', '!=', '>=', '<=', '&&'].includes(two)) {
+    if (['==', '!=', '>=', '<=', '&&', '||'].includes(two)) {
       tokens.push({ type: 'op', value: two })
       i += 2
       continue
@@ -183,13 +183,15 @@ function resolvePath(ctx: EvaluationContext, path: string): unknown {
   return current
 }
 
-function containsValue(current: unknown, arg: unknown): boolean {
+function containsValue(current: unknown, arg: unknown, ignoreCase: boolean): boolean {
   if (typeof current === 'string') {
-    return current.toLowerCase().includes(String(arg).toLowerCase())
+    const haystack = ignoreCase ? current.toLowerCase() : current
+    const needle = ignoreCase ? String(arg).toLowerCase() : String(arg)
+    return haystack.includes(needle)
   }
   if (Array.isArray(current)) {
     return current.some((item) => {
-      if (typeof item === 'string' && typeof arg === 'string') {
+      if (ignoreCase && typeof item === 'string' && typeof arg === 'string') {
         return item.toLowerCase() === arg.toLowerCase()
       }
       return item === arg
@@ -225,7 +227,24 @@ class Parser {
   }
 
   private parseOr(): boolean {
-    return this.parseAnd()
+    let left = this.parseAnd()
+    let next = this.peek()
+    while (next.type === 'op' && next.value === '||') {
+      this.consume()
+      if (left) {
+        try {
+          this.parseAnd()
+        } catch (error) {
+          if (!(error instanceof NumericComparisonError) && !(error instanceof NonFiniteComparisonError)) {
+            throw error
+          }
+        }
+      } else {
+        left = this.parseAnd()
+      }
+      next = this.peek()
+    }
+    return left
   }
 
   private parseAnd(): boolean {
@@ -272,7 +291,10 @@ class Parser {
       return compare(operator, left, right)
     }
 
-    return Boolean(left)
+    if (typeof left !== 'boolean') {
+      throw new Error('condition must be boolean')
+    }
+    return left
   }
 
   private parseArray(): unknown[] {
@@ -311,11 +333,11 @@ class Parser {
           member.type === 'ident' || member.type === 'op' ? member.value : undefined
         if (!memberName) throw new Error('Expected member name after dot')
 
-        if (memberName === 'contains' && this.peek().type === 'lparen') {
+        if ((memberName === 'contains' || memberName === 'icontains') && this.peek().type === 'lparen') {
           this.consume()
           const arg = this.parsePrimary()
           if (this.peek().type === 'rparen') this.consume()
-          return containsValue(current, arg)
+          return containsValue(current, arg, memberName === 'icontains')
         }
 
         if (DANGEROUS_PROPERTY.has(memberName)) {
@@ -380,8 +402,10 @@ export class NumericComparisonError extends Error {
 }
 
 function compare(operator: string, left: unknown, right: unknown): boolean {
-  if (operator === '==') return left === right
-  if (operator === '!=') return left !== right
+  if (operator === '==' || operator === '!=') {
+    if (left === undefined || right === undefined) return false
+    return operator === '==' ? left === right : left !== right
+  }
 
   if (typeof left !== 'number' || typeof right !== 'number') {
     throw new NumericComparisonError()

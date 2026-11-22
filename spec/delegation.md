@@ -38,7 +38,9 @@ A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 
 `max_amount` is a per-intent ceiling. It does not add up across intents.
 
-`cumulative_max_amount` is an optional constraint. It is the running sum of `parameters.amount` charged against that delegation id, in the same minor units. A child may only lower it. When any delegation in the presented chain sets it, the runtime must pass a spend ledger or the path fails closed and does not execute. One intent cannot exceed the pool, and later intents cannot push the sum over it. `read` and `search` with no `amount` charge zero.
+`cumulative_max_amount` is the running sum of `parameters.amount`. Any `cumulative_<field>` key is the running sum of `parameters.<field>` in the same units. A child may only lower it. When any delegation in the presented chain sets one, the runtime must pass a spend ledger or the path fails closed and does not execute. One intent cannot exceed the pool, and later intents cannot push the sum over it. `read` and `search` with no `amount` charge zero for the amount pool.
+
+`closed: true` rejects any parameter key that is not the field of a `max_<field>` ceiling, `currency`, or an exact-match constraint. A chain longer than 8 links is rejected before signature verification. `aud`, when the runtime sets an audience, must match that audience on every delegation, intent, and approval.
 
 ## Narrowing
 

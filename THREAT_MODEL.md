@@ -96,6 +96,8 @@ The property holds only when the operator's network gives the agent no other rou
 - Human approver keys are provisioned out of band; the directory maps `approver_id` → public key.
 - The policy resolver is operator-trusted. Documents are registered before requests are served. The first content hash for a URI wins; a different body for the same URI is rejected.
 - Production trusted clock is the gateway host clock (or equivalent), never a field from the agent request body. The default is zero skew: `issued_at <= now < expires_at`. An operator may set `issuedAtSkewMs` from 0 to 5 minutes. That tolerance applies only to `issued_at`. `expires_at` is not extended. A non-zero value is stored in receipt `extensions.issuedAtSkewMs`.
+- A delegation chain longer than 8 links is rejected before signature verification.
+- When the runtime sets an audience, every delegation, intent, and approval must carry the same `aud`. A missing root-authority hook or revocation check fails closed unless `unsafeDevAllowUnconfiguredChecks` is explicitly true, and that opt-out is written on the receipt.
 - Receipt verification with the issuer public key proves the issuer attested the body. It does not by itself prove an external system performed the action unless independent execution evidence is present.
 
 ## Known limitations (not claimed)

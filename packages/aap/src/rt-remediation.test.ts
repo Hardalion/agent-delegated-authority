@@ -116,6 +116,7 @@ function run(
   const policyResolver = options.policyResolver ?? new ImmutablePolicyResolver()
   if (!options.policyResolver) policyResolver.register(policy, policyUri)
   return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: [env.root],
     intent,
     directory: env.directory,

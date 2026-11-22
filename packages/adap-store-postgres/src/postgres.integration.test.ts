@@ -443,6 +443,7 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
         const ledger = new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool }))
         const pending = new PostgresPendingStore({ pool })
         return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
           chain: [root],
           intent,
           directory,

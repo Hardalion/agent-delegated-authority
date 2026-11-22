@@ -105,6 +105,7 @@ describe('production adversarial suite', () => {
       e.agent,
     )
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [e.root],
       intent,
       directory: e.directory,
@@ -136,6 +137,7 @@ describe('production adversarial suite', () => {
       e.agent,
     )
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [e.root],
       intent,
       directory: e.directory,
@@ -170,6 +172,7 @@ describe('production adversarial suite', () => {
       e.agent,
     )
     const first = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [e.root],
       intent,
       directory: e.directory,
@@ -210,6 +213,7 @@ describe('production adversarial suite', () => {
       e.principal,
     )
     const second = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [e.root],
       intent: mutated,
       directory: e.directory,

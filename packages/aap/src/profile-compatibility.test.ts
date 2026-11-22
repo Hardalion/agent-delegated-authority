@@ -305,6 +305,7 @@ describe('intent and approval profile compatibility', () => {
     const ledger = new NonceLedger()
     const pendingStore = new PendingAuthorizationStore()
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -333,6 +334,7 @@ describe('intent and approval profile compatibility', () => {
     )
     expect(legacyApproval.adap).toBeUndefined()
     const resumed = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
