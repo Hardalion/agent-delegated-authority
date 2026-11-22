@@ -92,6 +92,7 @@ export interface ExecutionBinding {
   readonly targetSystem?: string
   readonly executed?: boolean
   readonly executedAt?: string
+  readonly outcome?: 'not_dispatched' | 'returned' | 'unknown' | 'failed_after_dispatch'
   /** Hash of the unsigned intent presented at the execution boundary. */
   readonly intentHash: string
 }
@@ -152,6 +153,13 @@ export interface VerifyAuthorizationReceiptResult {
   readonly signatureOk?: boolean
   /** True when the signature equals the known demo placeholder. */
   readonly demoSignature: boolean
+  /**
+   * `verified` only when Ed25519 was checked and matched.
+   * `integrity_only` means structure and content hash matched and no key was supplied.
+   * That state is never `valid`.
+   */
+  readonly status: 'verified' | 'integrity_only' | 'invalid'
+  readonly failureReason?: 'MISSING_PUBLIC_KEY' | 'SIGNATURE_NOT_VERIFIED' | 'STRUCTURE_INVALID'
   readonly errors: readonly string[]
   readonly contentHash?: string
 }
@@ -540,6 +548,8 @@ export function verifyAuthorizationReceipt(
       structureOk: false,
       signatureChecked: false,
       demoSignature: false,
+      status: 'invalid',
+      failureReason: 'STRUCTURE_INVALID',
       errors: structureErrors,
     }
   }
@@ -567,18 +577,24 @@ export function verifyAuthorizationReceipt(
     }
   }
 
-  const valid =
-    contentHashOk &&
-    !demoSignature &&
-    (!signatureChecked || signatureOk === true)
+  if (!signatureChecked && contentHashOk && !demoSignature) {
+    errors.push('MISSING_PUBLIC_KEY')
+  }
+  const signatureVerified = signatureChecked && signatureOk === true && contentHashOk && !demoSignature
+  if (signatureChecked && signatureOk !== true && !errors.some((item) => item.includes('signature'))) {
+    errors.push('SIGNATURE_NOT_VERIFIED')
+  }
+  const status = signatureVerified ? 'verified' : contentHashOk && !demoSignature ? 'integrity_only' : 'invalid'
 
   return {
-    valid,
+    valid: signatureVerified,
     contentHashOk,
     structureOk: true,
     signatureChecked,
     signatureOk,
     demoSignature,
+    status,
+    failureReason: signatureVerified ? undefined : !signatureChecked ? 'MISSING_PUBLIC_KEY' : 'SIGNATURE_NOT_VERIFIED',
     errors,
     contentHash: expected,
   }
@@ -634,7 +650,9 @@ export function verifyReceiptCheckpoint(
   if (!ISO_DATETIME.test(checkpoint.signedAt)) errors.push('checkpoint.signedAt invalid')
   if (!HEX_SIG.test(checkpoint.signature)) errors.push('checkpoint.signature invalid')
   if (errors.length > 0) return { valid: false, errors }
-  if (publicKeySpki == null) return { valid: true, errors }
+  if (publicKeySpki == null) {
+    return { valid: false, errors: ['MISSING_PUBLIC_KEY'] }
+  }
   const { signature, ...unsigned } = checkpoint
   const key = createPublicKey({
     key: Buffer.from(publicKeySpki.trim(), 'base64url'),
@@ -675,11 +693,11 @@ export function verifyReceiptChain(
   const seenReceiptIds = new Set<string>()
 
   receipts.forEach((receipt, index) => {
-    const single = verifyAuthorizationReceipt(receipt)
+    const single = verifyAuthorizationReceipt(
+      receipt,
+      options?.publicKeySpki ? { publicKeySpki: options.publicKeySpki } : undefined,
+    )
     if (!single.valid) errors.push(`receipt[${index}]: ${single.errors.join('; ')}`)
-    if (options?.publicKeySpki && !verifyReceiptSignature(receipt, options.publicKeySpki)) {
-      errors.push(`receipt[${index}]: ed25519 signature invalid`)
-    }
     if (receipt.issuerKeyId !== issuerKeyId) {
       errors.push(`receipt[${index}]: issuerKeyId differs from chain issuer`)
     }

@@ -243,6 +243,7 @@ export function validateIntentPayload(raw: unknown): IntentPayload {
     nonce: assertValidNonce(raw.nonce),
     issued_at: assertIsoTimestamp(raw.issued_at, 'intent.issued_at'),
     expires_at: assertIsoTimestamp(raw.expires_at, 'intent.expires_at'),
+    ...(typeof raw.aud === 'string' ? { aud: raw.aud } : {}),
   }
 }
 
@@ -291,6 +292,7 @@ export function validateSignedDelegation(raw: unknown, path = 'delegation'): Sig
     constraints: normalizeConstraints(raw.constraints, `${path}.constraints`),
     issued_at: assertIsoTimestamp(raw.issued_at, `${path}.issued_at`),
     expires_at: assertIsoTimestamp(raw.expires_at, `${path}.expires_at`),
+    ...(typeof raw.aud === 'string' ? { aud: raw.aud } : {}),
     ...(hasOwn(raw, 'parent_delegation_id') && raw.parent_delegation_id != null
       ? {
           parent_delegation_id: assertValidIdentity(
@@ -362,6 +364,7 @@ export function validateHumanApproval(raw: unknown): HumanApproval {
     agent_id: assertValidIdentity(raw.agent_id, 'approval.agent_id'),
     delegation_chain_hash: raw.delegation_chain_hash,
     policy_content_hash: raw.policy_content_hash,
+    ...(typeof raw.aud === 'string' ? { aud: raw.aud } : {}),
     ...(hasOwn(raw, 'matched_rule_id') && raw.matched_rule_id != null
       ? { matched_rule_id: assertStringField(raw.matched_rule_id, 'approval.matched_rule_id', 1, 256) }
       : {}),

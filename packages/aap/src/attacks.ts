@@ -211,6 +211,7 @@ async function executeCase(input: {
   const policyResolver = input.policyResolver ?? new ImmutablePolicyResolver()
   policyResolver.register(POLICY, POLICY_URI)
   const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: input.chain,
     intent: input.intent,
     directory: input.actors.directory,

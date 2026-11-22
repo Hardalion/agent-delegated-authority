@@ -218,7 +218,9 @@ Conforming runtimes do not perform a consequential side effect unless the govern
 
 ## 7. Verification scope
 
-A receipt is verified on its own. This draft does not define a store, an index, or a telemetry pipeline.
+A receipt is verified on its own. `valid` is true only when the issuer public key was supplied and the Ed25519 signature matched. Structure and content hash without a key are `status: integrity_only` and `valid: false` (`MISSING_PUBLIC_KEY`). This draft does not define a store, an index, or a telemetry pipeline.
+
+Receipt v1 and the receipt checkpoint are not inside the signed-object envelope of [signed-objects.md](./signed-objects.md). Their signature is Ed25519 over the canonical unsigned body, not `ADAP/0.2/receipt` or `ADAP/0.2/checkpoint`. Moving those artifacts into that domain-separated envelope is a later upgrade. It is not claimed here. What this profile does record, on the signed receipt, is `execution.outcome` (`unknown` never sets `executed: true`), plus `extensions.enforcement_mode` and `extensions.credential_boundary`. A receipt minted with `unsafeDevAllowUnconfiguredChecks: true` sets `extensions.checks_applied.unsafe_dev_unconfigured_checks` to true. That receipt is not a conformance receipt.
 
 When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier walks the ordered set: `sequence` increases by one, each `prevReceiptHash` names the previous receipt, and every receipt is from the same issuer key. That detects omission, insertion, and reordering inside the set. A dropped tail is detected when the verifier also holds a signed checkpoint (`kind: adap.receipt.checkpoint`) of the latest receipt: `sequence`, `contentHash`, issuer, and issuer key. `verifyReceiptChain(..., { checkpoint })` rejects a chain whose last receipt is not that head. The checkpoint is useful only when a copy is published somewhere the issuer does not control. Reference: `verifyReceiptChain` and `signReceiptCheckpoint` in `packages/audit-verify`.
 
@@ -226,7 +228,7 @@ Standalone receipts without those fields remain conforming. They do not, by them
 
 ### 7.1 What the chain proves
 
-`verifyReceiptChain` proves integrity of the **supplied** ordered segment: structure, content hashes, sequence links, and optional Ed25519. It does not prove:
+`verifyReceiptChain` proves integrity of the **supplied** ordered segment only when each receipt's Ed25519 signature is checked with the issuer public key. Without that key the chain is not valid. It does not prove:
 
 - that the issuer never produced a conflicting fork (the issuer key can sign a new consistent chain)
 - that a dropped tail was never issued, unless a signed checkpoint of the latest head is supplied

@@ -184,6 +184,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
   const legitBody = intent(agentA, [root.delegation_id], 'nonce_legit', 'purchase', 'airline/example', spend(legitAmount), parentExpiry)
   const legitLedger = new NonceLedger()
   const legitPending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: [root],
     intent: legitBody,
     directory,
@@ -200,6 +201,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     },
   })
   const legit = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
     chain: [root],
     intent: legitBody,
     directory,
@@ -301,6 +303,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
 
   function run(signed: ReturnType<typeof signIntent>, chain: SignedDelegation[], actor: Identity = agentA) {
     return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain,
       intent: signed,
       directory,

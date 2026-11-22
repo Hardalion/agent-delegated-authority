@@ -82,7 +82,8 @@ describe('verifyReceiptChain', () => {
   })
 
   it('does not detect a dropped tail on its own', () => {
-    expect(verifyReceiptChain(chainOf(4).receipts.slice(0, 2)).valid).toBe(true)
+    const { receipts, publicKeySpki } = chainOf(4)
+    expect(verifyReceiptChain(receipts.slice(0, 2), { publicKeySpki }).valid).toBe(true)
   })
 
   it('rejects a dropped tail when a signed checkpoint names a later head', () => {
@@ -142,7 +143,7 @@ describe('emitAuthorizationReceipt', () => {
     expect(receipt.execution?.executed).toBe(false)
     expect(receipt.intent.argsHash).toBe(hashToolArgs({ amount: 420 }))
     expect(receipt.intent.argsRedacted).toEqual({ amount: 420 })
-    expect(verifyAuthorizationReceipt(receipt).valid).toBe(true)
+    expect(verifyAuthorizationReceipt(receipt).status).toBe('integrity_only')
     expect(verifyAuthorizationReceipt(receipt, { publicKeySpki }).valid).toBe(true)
     expect(verifyReceiptSignature(receipt, publicKeySpki)).toBe(true)
   })
@@ -173,7 +174,7 @@ describe('emitAuthorizationReceipt', () => {
 
     expect(receipt.decision.outcome).toBe('allowed')
     expect(receipt.execution?.executed).toBe(true)
-    expect(verifyAuthorizationReceipt(receipt).valid).toBe(true)
+    expect(verifyAuthorizationReceipt(receipt).status).toBe('integrity_only')
   })
 
   it('includes optional hash-chain fields in the signed content hash', () => {
@@ -229,8 +230,8 @@ describe('emitAuthorizationReceipt', () => {
     expect(first.prevReceiptHash).toBeNull()
     expect(second.sequence).toBe(1)
     expect(second.prevReceiptHash).toBe(first.integrity.contentHash)
-    expect(verifyAuthorizationReceipt(first).valid).toBe(true)
-    expect(verifyAuthorizationReceipt(second).valid).toBe(true)
+    expect(verifyAuthorizationReceipt(first).status).toBe('integrity_only')
+    expect(verifyAuthorizationReceipt(second).status).toBe('integrity_only')
   })
 
   it('throws without signer, signatureHex, or demo', () => {

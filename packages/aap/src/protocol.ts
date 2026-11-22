@@ -32,6 +32,8 @@ export interface DelegationPayload {
   readonly issued_at: string
   readonly expires_at: string
   readonly parent_delegation_id?: string
+  /** Verifier or deployment identifier. Required when the runtime sets `audience`. */
+  readonly aud?: string
 }
 
 /**
@@ -56,6 +58,8 @@ export interface IntentPayload {
   readonly nonce: string
   readonly issued_at: string
   readonly expires_at: string
+  /** Verifier or deployment identifier. Required when the runtime sets `audience`. */
+  readonly aud?: string
 }
 
 export interface SignedIntent extends IntentPayload {
@@ -79,6 +83,8 @@ export interface HumanApprovalPayload {
   readonly delegation_chain_hash: string
   readonly policy_content_hash: string
   readonly matched_rule_id?: string
+  /** Verifier or deployment identifier. Required when the runtime sets `audience`. */
+  readonly aud?: string
 }
 
 export interface HumanApproval extends HumanApprovalPayload {

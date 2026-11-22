@@ -11,10 +11,7 @@
         "toolArgs": { "amount": 800 },
         "agentRole": "agt_reader"
       },
-      "expect": {
-        "action": "BLOCK",
-        "executorCalled": false
-      }
+      "expect": { "action": "BLOCK", "executorCalled": false }
     },
     {
       "id": "mcp-pol-allow",
@@ -25,40 +22,31 @@
         "toolArgs": {},
         "agentRole": "agt_reader"
       },
-      "expect": {
-        "action": "ALLOW",
-        "executorCalled": true
-      }
+      "expect": { "action": "ALLOW", "executorCalled": true }
     },
     {
       "id": "mcp-auth-over-delegation",
       "claim": "authority-enforcing",
-      "setup": "child max_amount greater than parent",
-      "expect": {
-        "action": "BLOCK",
-        "ruleId": "narrowing",
-        "executorCalled": false,
-        "receiptExecuted": false
-      }
+      "input": {
+        "parentMaxAmount": 500,
+        "childMaxAmount": 800
+      },
+      "expect": { "action": "BLOCK", "ruleId": "narrowing", "executorCalled": false, "receiptExecuted": false }
     },
     {
       "id": "mcp-auth-require-human",
       "claim": "authority-enforcing",
-      "setup": "intent under grant; policy REQUIRE_HUMAN; no approval",
-      "expect": {
-        "action": "REQUIRE_HUMAN",
-        "executorCalled": false,
-        "pendingBoundToIntentHash": true
-      }
+      "input": { "policyAction": "REQUIRE_HUMAN", "approval": null },
+      "expect": { "action": "REQUIRE_HUMAN", "executorCalled": false, "pendingBoundToIntentHash": true }
     },
     {
       "id": "mcp-auth-tool-def-drift",
       "claim": "authority-enforcing",
-      "setup": "tool schema hash differs from grant",
-      "expect": {
-        "action": "BLOCK",
-        "executorCalled": false
-      }
+      "input": {
+        "pinnedHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "presentedHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expect": { "action": "BLOCK", "executorCalled": false }
     }
   ]
 }

@@ -12,7 +12,7 @@ Policies are JSON objects (YAML is a serialization). Conforming documents MUST v
 | `version` | string | yes | Policy document semver (`major.minor.patch`) |
 | `policyName` | string | yes | Stable id, **kebab-case** (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
 | `description` | string | no | Human-readable summary |
-| `targetAgents` | string[] | yes | Agent roles governed, or `["*"]` for all. Entries are non-empty and must not contain whitespace |
+| `targetAgents` | string[] | yes | Actor ids governed, or `["*"]` for all. The reference path compares this list to `intent.actor`. Entries are non-empty and must not contain whitespace |
 | `defaultAction` | enum | yes | Used when no rule matches. `ALLOW` \| `BLOCK` \| `REQUIRE_HUMAN`. Missing or invalid is `BLOCK` with `ruleId: default_action_required` |
 | `rules` | Rule[] | yes | Non-empty ordered rule list |
 

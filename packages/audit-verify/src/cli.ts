@@ -59,8 +59,8 @@ async function main() {
     }
   } else if (result.valid && result.signatureChecked) {
     console.log('OK signature verified with the issuer public key')
-  } else if (result.valid) {
-    console.log('OK structure and content hash. Signature not checked.')
+  } else if (result.status === 'integrity_only') {
+    console.error('INVALID: MISSING_PUBLIC_KEY. Structure and content hash matched. Signature was not verified.')
   } else {
     console.error(`INVALID: ${result.errors.join('; ') || 'receipt failed verification'}`)
   }

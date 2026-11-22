@@ -254,16 +254,21 @@ function assertParametersWithin(
   profile: ConstraintProfile
 ): void {
   for (const [key, bound] of ownEntries(constraints as Record<string, unknown>)) {
-    if (key === 'cumulative_max_amount') {
-      const ceiling = assertCanonicalAmount(bound, 'cumulative_max_amount')
-      const amount = hasOwn(parameters, 'amount') ? parameters.amount : undefined
-      if (amount === undefined) {
-        if (action === 'read' || action === 'search') continue
-        throw new AuthorityError('constraint', 'amount is required', true)
+    if (key === 'cumulative_max_amount' || (key.startsWith('cumulative_') && key !== 'cumulative_max_amount')) {
+      const field = key === 'cumulative_max_amount' ? 'amount' : key.slice('cumulative_'.length)
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(field)) {
+        throw new AuthorityError('constraint', `constraint ${key} is not a cumulative ceiling`, true)
       }
-      assertWithinCeiling(amount, ceiling, 'amount', 'cumulative_max_amount')
+      const ceiling = assertCanonicalAmount(bound, key)
+      const presented = hasOwn(parameters, field) ? parameters[field] : undefined
+      if (presented === undefined) {
+        if (field === 'amount' && (action === 'read' || action === 'search')) continue
+        throw new AuthorityError('constraint', `${field} is required`, true)
+      }
+      assertWithinCeiling(presented, ceiling, field, key)
       continue
     }
+    if (key === 'closed') continue
     if (profile === 'ceilings-v1') {
       const field = ceilingField(key)
       if (field) {
@@ -301,6 +306,23 @@ function assertParametersWithin(
     }
     if (!hasOwn(parameters, key) || parameters[key] !== bound) {
       throw new AuthorityError('constraint', `parameter ${key} is outside the delegation`, true)
+    }
+  }
+  if (constraints.closed === true) {
+    const allowed = new Set<string>(['currency'])
+    for (const key of Object.keys(constraints)) {
+      if (key === 'closed' || key === 'currency' || key.startsWith('cumulative_')) continue
+      if (key === 'max_amount') {
+        allowed.add('amount')
+        continue
+      }
+      const field = key.startsWith('max_') ? key.slice(4) : key
+      if (field) allowed.add(field)
+    }
+    for (const key of Object.keys(parameters)) {
+      if (!allowed.has(key)) {
+        throw new AuthorityError('constraint', `undeclared parameter ${key}`, true)
+      }
     }
   }
 }
@@ -402,14 +424,22 @@ function verifySignatures(
  * Failures here are unauthenticated: the nonce must not be consumed.
  * Semantic amount and delegation checks are `authorizePresented`.
  */
+export const MAX_DELEGATION_CHAIN_DEPTH = 8
+
 export function presentAuthority(input: {
   readonly chain: readonly SignedDelegation[]
   readonly intent: SignedIntent
   readonly directory: DirectoryInput
   readonly now?: Date
+  /** Checked before any signature. Default 8. */
+  readonly maxChainDepth?: number
 }): { readonly chain: SignedDelegation[]; readonly intent: SignedIntent } {
   if (!Array.isArray(input.chain)) {
     throw new AuthorityError('schema', 'delegation chain must be an array', false)
+  }
+  const maxChainDepth = input.maxChainDepth ?? MAX_DELEGATION_CHAIN_DEPTH
+  if (input.chain.length > maxChainDepth) {
+    throw new AuthorityError('chain', 'delegation chain exceeds maximum depth', false)
   }
   const chain = input.chain.map((delegation, index) =>
     cloneSignedDelegation(delegation, `chain[${index}]`)
@@ -522,6 +552,8 @@ export function verifyHumanApproval(input: {
    * and a legacy context rejects a v0.2 approval.
    */
   readonly authorityProfile: SignedObjectProfile
+  /** When true, the approver directory entry must have kind `human`. */
+  readonly requireApproverKind?: boolean
 }): void {
   const approval = validateHumanApproval(input.approval)
   const {
@@ -585,7 +617,8 @@ export function verifyHumanApproval(input: {
   if (isVersionedHumanApproval(approval)) {
     const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id, approval.kid), now, {
       requireKid: approval.kid,
-      expectedKind: 'human',
+      expectedKind: 'human' as const,
+      requireKind: input.requireApproverKind === true,
     })
     const envelope = {
       adap: ADAP_SIGNED_VERSION,
@@ -600,7 +633,8 @@ export function verifyHumanApproval(input: {
     }
   } else {
     const key = assertUsableDirectoryKey(directory.lookup(approval.approver_id), now, {
-      expectedKind: 'human',
+      expectedKind: 'human' as const,
+      requireKind: input.requireApproverKind === true,
     })
     if (!verifyObject(unsignedApproval(approval), approval.signature, importPublicKey(key.publicKey))) {
       throw new AuthorityError('approval', 'approval signature invalid', true)

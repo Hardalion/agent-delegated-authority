@@ -11,7 +11,15 @@ A conforming evaluator:
 3. Does **not** mutate input context or global state
 4. Parses conditions into a fixed AST evaluated with pure functions
 5. Returns a `PolicyDecision` object fully determined by `(policy document, agentRole, evaluation context)`
-6. For `>`, `<`, `>=`, and `<=`, both operands must already be finite numbers. `null`, booleans, strings, missing values, `NaN`, and infinities do not coerce. `NaN` and infinities are `BLOCK` with rule id `amount_not_finite`. Any other non-number is `BLOCK` with rule id `numeric_comparison_rejected`. Neither falls through to `defaultAction: ALLOW`. `==` and `!=` stay strict equality and are not forced to be numeric
+6. Operators are evaluated left to right. `&&` does not evaluate the right side's failure when the left side is false. `||` does not evaluate the right side's failure when the left side is true. A missing path compared with `==` or `!=` is false, not true. `<`, `<=`, `>`, and `>=` require finite numbers. A bare path is a condition only when its value is a boolean. `.contains()` is case-sensitive. `.icontains()` folds ASCII case. `NaN` and infinities are `BLOCK` with rule id `amount_not_finite`. Any other non-number on an ordered comparison is `BLOCK` with rule id `numeric_comparison_rejected`. Neither falls through to `defaultAction: ALLOW`
+
+```
+condition   = or
+or          = and *("||" and)
+and         = comparison *("&&" comparison)
+comparison  = primary [("=" "=" / "!" "=" / "<" / "<" "=" / ">" / ">" "=") primary]
+primary     = path / string / number / "true" / "false" / "null" / "(" condition ")"
+```
 7. A condition that fails to parse or evaluate is `BLOCK` with rule id `condition_evaluation_error`. The reason is fixed and does not include the condition text or a stack. Loading an invalid policy document still throws, so a bad document is not reported as a runtime condition error
 
 ## Formal inputs

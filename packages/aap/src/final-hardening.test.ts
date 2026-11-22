@@ -121,12 +121,14 @@ function run(
     pendingStore: options.pendingStore,
     policyResolver,
     signer: env.signer,
+    unsafeDevAllowUnconfiguredChecks: true,
     approval: options.approval,
     seenApprovals: options.seenApprovals,
     execute: options.execute ?? (() => ({ ok: true })),
   }
   if (options.now !== undefined) {
-    return runAuthorityPath({ ...input, now: options.now } as typeof input & { now: unknown })
+    return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true, ...input, now: options.now } as typeof input & { now: unknown })
   }
   return runAuthorityPath(input)
 }

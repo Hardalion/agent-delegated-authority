@@ -24,7 +24,7 @@ export function verifyPublishedProof(): string {
   const examples = new URL('../../../examples/', import.meta.url)
   const sampleKey = readFileSync(new URL('issuer-public-key.txt', examples), 'utf8')
   const sample = readJson(new URL('receipt.json', examples)) as AuthorizationReceiptV1
-  const sampleCheck = verifyAuthorizationReceipt(sample)
+  const sampleCheck = verifyAuthorizationReceipt(sample, { publicKeySpki: sampleKey })
   if (!sampleCheck.valid) throw new Error(sampleCheck.errors.join('; '))
   if (!verifyReceiptSignature(sample, sampleKey)) throw new Error('sample receipt signature')
 

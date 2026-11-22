@@ -70,6 +70,7 @@ describe('human DENY and approval queue (#21)', () => {
     const intent = intentFor(agent, root.delegation_id, 'nonce-deny-1')
     let executed = 0
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -101,6 +102,7 @@ describe('human DENY and approval queue (#21)', () => {
       principal
     )
     const denied = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -139,6 +141,7 @@ describe('human DENY and approval queue (#21)', () => {
       principal
     )
     const again = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -177,10 +180,12 @@ describe('human DENY and approval queue (#21)', () => {
       execute: () => ({ ok: true }),
     }
     const first = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...base,
       intent: intentFor(agent, root.delegation_id, 'nonce-q1', 100),
     })
     const second = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...base,
       intent: intentFor(agent, root.delegation_id, 'nonce-q2', 110),
     })
@@ -188,6 +193,7 @@ describe('human DENY and approval queue (#21)', () => {
     expect(second.decision).toBe('REQUIRE_HUMAN')
     const thirdIntent = intentFor(agent, root.delegation_id, 'nonce-q3', 120)
     const full = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...base,
       intent: thirdIntent,
     })
@@ -233,6 +239,7 @@ describe('human DENY and approval queue (#21)', () => {
     const ledger = new NonceLedger()
     const pendingStore = new PendingAuthorizationStore({ maxPendingApprovals: 1 })
     const a1 = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [rootA],
       intent: intentFor(agentA, rootA.delegation_id, 'na1'),
       directory,
@@ -246,6 +253,7 @@ describe('human DENY and approval queue (#21)', () => {
       maxPendingApprovals: 1,
     })
     const b1 = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [rootB],
       intent: intentFor(agentB, rootB.delegation_id, 'nb1'),
       directory,

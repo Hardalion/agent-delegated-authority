@@ -63,6 +63,7 @@ function harness(maxAmount: number) {
     )
     const ledger = new NonceLedger()
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -81,6 +82,7 @@ function harness(maxAmount: number) {
     })
     if (!approval || pending.decision !== 'REQUIRE_HUMAN') return pending
     return runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -178,6 +180,7 @@ describe('exclusive nonce claim before execution', () => {
 
     const run = () =>
       runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
         chain: [root],
         intent,
         directory,
@@ -274,6 +277,7 @@ describe('unsupported policy actions', () => {
     )
     let executions = 0
     const blocked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -305,6 +309,7 @@ describe('unsupported policy actions', () => {
     const resolver = new ImmutablePolicyResolver()
     resolver.register(allowPolicy, 'allow-read-only@1')
     const allowed = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: signIntent(
         {
@@ -363,6 +368,7 @@ describe('unsupported policy actions', () => {
     policyResolver.register(BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI)
 
     const rootDenied = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: signIntent(
         {
@@ -394,6 +400,7 @@ describe('unsupported policy actions', () => {
     expect(rootDenied.executed).toBe(false)
 
     const revoked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: signIntent(
         {

@@ -83,8 +83,9 @@ describe('authorization receipt', () => {
     expect(result.contentHashOk).toBe(true)
     expect(result.demoSignature).toBe(false)
     expect(result.signatureChecked).toBe(false)
-    expect(result.valid).toBe(true)
-    expect(result.errors).toEqual([])
+    expect(result.valid).toBe(false)
+    expect(result.status).toBe('integrity_only')
+    expect(result.failureReason).toBe('MISSING_PUBLIC_KEY')
   })
 
   it('rejects the known demo placeholder signature as evidence', () => {
@@ -159,7 +160,8 @@ describe('authorization receipt', () => {
     const signature = sign(null, Buffer.from(canonicalReceiptJson(unsigned)), privateKey).toString('hex')
     const receipt: AuthorizationReceiptV1 = { ...unsigned, signature }
     const spki = publicKey.export({ type: 'spki', format: 'der' }).toString('base64url')
-    expect(verifyAuthorizationReceipt(receipt).valid).toBe(true)
+    expect(verifyAuthorizationReceipt(receipt).valid).toBe(false)
+    expect(verifyAuthorizationReceipt(receipt).status).toBe('integrity_only')
     expect(verifyReceiptSignature(receipt, spki)).toBe(true)
     expect(verifyReceiptSignature({ ...receipt, signature: DUMMY_SIG }, spki)).toBe(false)
   })

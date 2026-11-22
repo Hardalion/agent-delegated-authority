@@ -88,6 +88,7 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
       principal
     )
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: intentFor(agent, root.delegation_id, 'nonce-long', 10, ISSUED, EXPIRES),
       directory,
@@ -121,19 +122,22 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
       signer,
       execute: () => ({ ok: true }),
     }
-    const tight = await runAuthorityPath({ ...base, ledger: new NonceLedger() })
+    const tight = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true, ...base, ledger: new NonceLedger() })
     expect(tight.decision).toBe('BLOCK')
     expect(tight.reason).toMatch(/not-yet-valid/)
 
     const loose = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...base,
       ledger: new NonceLedger(),
       issuedAtSkewMs: 60_000,
     })
     expect(loose.decision).toBe('ALLOW')
-    expect(authenticatedReceipt(loose).extensions).toEqual({ issuedAtSkewMs: 60_000 })
+    expect(authenticatedReceipt(loose).extensions?.issuedAtSkewMs).toBe(60_000)
 
     const over = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...base,
       ledger: new NonceLedger(),
       issuedAtSkewMs: MAX_ISSUED_AT_SKEW_MS + 1,
@@ -151,6 +155,7 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
     const spendLedger = new MemorySpendLedger()
     const run = (nonce: string, amount: number) =>
       runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
         chain: [root],
         intent: intentFor(agent, root.delegation_id, nonce, amount),
         directory,
@@ -186,6 +191,7 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
     })
     let executed = 0
     const blocked = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: intentFor(agent, root.delegation_id, 'n-missing', 10),
       directory,

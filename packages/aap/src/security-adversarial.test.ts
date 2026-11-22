@@ -85,6 +85,7 @@ describe('ADAP-001 human approval policy substitution', () => {
     const ledger = new NonceLedger()
     let exec = 0
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -118,6 +119,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       ],
     }
     const withoutApproval = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -142,6 +144,7 @@ describe('ADAP-001 human approval policy substitution', () => {
     const ledger2 = new NonceLedger()
     const intent2 = signedApply(agent, root, 420, 'adap001-nr')
     const pending2 = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: intent2,
       directory,
@@ -154,6 +157,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       signer,
     })
     const substituted = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: intent2,
       directory,
@@ -189,6 +193,7 @@ describe('ADAP-001 human approval policy substitution', () => {
 
     // Continuation must present the pinned document. The resolver refuses a different body.
     const approved = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -230,6 +235,7 @@ describe('ADAP-001 human approval policy substitution', () => {
     const ledger = new NonceLedger()
     const seen = new Set<string>()
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -256,6 +262,7 @@ describe('ADAP-001 human approval policy substitution', () => {
       principal
     )
     const wrongAgent = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -341,8 +348,10 @@ describe('ADAP-002 object-valued nonce replay', () => {
         return { ok: true }
       },
     }
-    const allowed = await runAuthorityPath({ ...shared, intent: first })
-    const replay = await runAuthorityPath({ ...shared, intent: second })
+    const allowed = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true, ...shared, intent: first })
+    const replay = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true, ...shared, intent: second })
     expect(allowed.decision).toBe('ALLOW')
     expect(allowed.executed).toBe(true)
     expect(replay.decision).toBe('BLOCK')
@@ -474,6 +483,7 @@ describe('ADAP-007 missing required intent fields', () => {
     ]
     for (const intent of malformed) {
       const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
         chain: [root],
         intent: intent as unknown as SignedIntent,
         directory,
@@ -502,6 +512,7 @@ describe('ADAP-008 trusted clock', () => {
     const { agent, signer, directory, root, pendingStore, policyResolver } = fixture()
     const intent = signedApply(agent, root, 420, 'adap008')
     const expired = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -524,6 +535,7 @@ describe('ADAP-008 trusted clock', () => {
     const intent = signedApply(agent, root, 10, 'adap008-caller-now')
     let exec = 0
     const result = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -611,6 +623,7 @@ describe('execution gate', () => {
     const { agent, signer, directory, root, pendingStore, policyResolver } = fixture()
     let exec = 0
     const pending = await runAuthorityPath({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent: signedApply(agent, root, 420, 'exec-gate'),
       directory,
