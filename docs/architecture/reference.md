@@ -24,8 +24,8 @@ On the reference path:
 
 - `BLOCK` and an unresolved `REQUIRE_HUMAN` do not call the executor.
 - `executed: true` means the executor callback returned. It is not an independent observation of the external system.
-- If the callback throws, the reference path records `executed: false` and marks the nonce `failed`. That receipt does not prove the callback did nothing before it threw. See [THREAT_MODEL.md](../../THREAT_MODEL.md).
-- The reference gateway's `executionState: unknown` is a gateway field. The callback returned, so the authority result is `executed: true` and the nonce is consumed. Reconciliation is a later read. See [outcome unknown](../operations/outcome-unknown.md).
+- If the callback throws, or the downstream outcome is unknown, the reference path records `decision: ALLOW`, `failureMode: SYSTEM_ERROR`, `execution.outcome: unknown`, and `executed: false`, and consumes the nonce. That receipt does not prove the callback did nothing before it threw. See [THREAT_MODEL.md](../../THREAT_MODEL.md).
+- The reference gateway's `executionState: unknown` is a gateway field. The authority receipt is `decision: ALLOW`, `execution.outcome: unknown`, and `executed: false`. The nonce is consumed. Reconciliation is a later read. See [outcome unknown](../operations/outcome-unknown.md).
 
 The Postgres adapter gives one claim per nonce in that database. It does not promise exactly-once delivery across the external system. The external system needs its own idempotency.
 

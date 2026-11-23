@@ -29,14 +29,19 @@
       "claim": "authority-enforcing",
       "input": {
         "parentMaxAmount": 500,
-        "childMaxAmount": 800
+        "childMaxAmount": 800,
+        "tool_definition_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
       "expect": { "action": "BLOCK", "ruleId": "narrowing", "executorCalled": false, "receiptExecuted": false }
     },
     {
       "id": "mcp-auth-require-human",
       "claim": "authority-enforcing",
-      "input": { "policyAction": "REQUIRE_HUMAN", "approval": null },
+      "input": {
+        "policyAction": "REQUIRE_HUMAN",
+        "approval": null,
+        "tool_definition_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
       "expect": { "action": "REQUIRE_HUMAN", "executorCalled": false, "pendingBoundToIntentHash": true }
     },
     {

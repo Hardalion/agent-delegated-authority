@@ -174,10 +174,12 @@ describe('executor boundary', () => {
         throw new Error('downstream failed after a partial write')
       },
     })
-    expect(failed.decision).toBe('BLOCK')
+    expect(failed.decision).toBe('ALLOW')
     expect(failed.executed).toBe(false)
-    expect(failed.ruleId).toBe('execution')
-    expect(await ledger.statusOf(signed.actor, signed.nonce)).toBe('failed')
+    expect(failed.ruleId).toBe('allow_apply')
+    expect(authenticatedReceipt(failed).decision.failureMode).toBe('SYSTEM_ERROR')
+    expect(authenticatedReceipt(failed).execution?.outcome).toBe('unknown')
+    expect(await ledger.statusOf(signed.actor, signed.nonce)).toBe('consumed')
     const retry = await runAuthorityPath({
       unsafeDevAllowUnconfiguredChecks: true,
       chain: [env.root],

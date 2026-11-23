@@ -42,6 +42,40 @@ export function hashMcpToolDefinition(definition: McpToolDefinition): string {
   return `sha256:${sha256(body)}`
 }
 
+export type AuthorityMcpCall =
+  | { readonly kind: 'not-mcp' }
+  | { readonly kind: 'malformed'; readonly reason: string }
+  | { readonly kind: 'call'; readonly serverId: string; readonly toolName: string }
+
+/**
+ * Classify a presented action and target. Anything under `mcp/` is an
+ * authority-enforcing MCP call and must use `mcp/<server_id>/<tool_name>`
+ * with `server_id` matching `[A-Za-z0-9_-]+`. A dot or slash in `server_id`,
+ * an empty segment, or an action that is not `server_id.tool_name` is malformed.
+ */
+export function authorityMcpCall(action: string, target: string): AuthorityMcpCall {
+  if (!target.startsWith('mcp/')) return { kind: 'not-mcp' }
+  const parts = target.split('/')
+  if (parts.length !== 3 || parts[0] !== 'mcp') {
+    return { kind: 'malformed', reason: 'mcp target must be mcp/<server_id>/<tool_name>' }
+  }
+  const serverId = parts[1] ?? ''
+  const toolName = parts[2] ?? ''
+  if (!SERVER_ID.test(serverId)) {
+    return {
+      kind: 'malformed',
+      reason: 'mcp server_id must match [A-Za-z0-9_-]+ and must not contain "." or "/"',
+    }
+  }
+  if (toolName.length === 0) {
+    return { kind: 'malformed', reason: 'mcp tool_name must be non-empty and must not contain "/"' }
+  }
+  if (action !== `${serverId}.${toolName}`) {
+    return { kind: 'malformed', reason: 'mcp action must be server_id.tool_name' }
+  }
+  return { kind: 'call', serverId, toolName }
+}
+
 /** `server_id.tool_name` is the action. `mcp/<server_id>/<tool_name>` is the target. */
 export function adapBindingForMcpCall(serverId: string, toolName: string): {
   readonly action: string

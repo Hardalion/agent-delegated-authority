@@ -10,7 +10,7 @@ import { assertValidIdentity, assertValidNonce } from './runtime-validate.js'
  *
  * - `pending` — reserved for human approval, or exclusively claimed for execution
  * - `consumed` — terminal success (or a terminal BLOCK that retires the nonce)
- * - `failed` — executor threw; nonce is spent and cannot be retried with the same intent
+ * - `failed` — explicit terminal failure; nonce is spent and cannot be retried with the same intent. A throw after dispatch consumes the nonce instead, because a downstream write cannot be ruled out.
  *
  * Every transition is a read followed by a compare-and-swap on the record version.
  * A lost race throws `nonce_in_flight_or_used` and does not execute.

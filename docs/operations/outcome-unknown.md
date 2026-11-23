@@ -2,7 +2,7 @@
 
 Reference-gateway behavior in this repository. It is not a protocol requirement that every runtime use these field names.
 
-`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result, or the executor threw after dispatch had begun. The authority path records `execution.outcome: unknown` and `executed: false`, and consumes the nonce. `executed: false` here means the runtime cannot claim a completed result. It does not mean the external write was proven absent. `not_dispatched` is reserved for a halt before `execute` is called. Reconciliation is a later read of the downstream ledger. It does not POST.
+`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result, or the executor threw after dispatch had begun. The authority path records `decision: ALLOW`, `failureMode: SYSTEM_ERROR`, `execution.outcome: unknown`, and `executed: false`, and consumes the nonce. `executed: false` here means the runtime cannot claim a completed result. It does not mean the external write was proven absent. `not_dispatched` is reserved for a halt before `execute` is called. Reconciliation is a later read of the downstream ledger. It does not POST.
 
 # OUTCOME-UNKNOWN-RECONCILIATION
 

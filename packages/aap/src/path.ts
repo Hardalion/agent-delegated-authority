@@ -24,6 +24,7 @@ import { MAX_ISSUED_AT_SKEW_MS, resolveTrustedNow, type Clock } from './clock.js
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
+import { authorityMcpCall } from './mcp-tool.js'
 import { chargeCumulativeSpend, type SpendLedger } from './spend.js'
 import {
   assertChainProfileConsistency,
@@ -159,8 +160,9 @@ export interface RunAuthorityPathInput {
   readonly spendLedger?: SpendLedger
   /**
    * Runtime hash of the MCP tool definition about to be called (`sha256:` + hex).
-   * Required when any delegation in the chain sets `tool_definition_hash`.
-   * A missing or different hash is `BLOCK` before the executor is called.
+   * Required for an authority-enforcing MCP call (`target` under `mcp/`), and
+   * required when any delegation sets `tool_definition_hash`. A missing or
+   * different hash is `BLOCK` before policy evaluation and before dispatch.
    */
   readonly mcpToolDefinitionHash?: string
 }
@@ -171,7 +173,8 @@ const TOOL_DEFINITION_PIN = /^sha256:[0-9a-f]{64}$/
 
 function assertToolDefinitionPin(
   chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
-  runtimeHash: string | undefined
+  runtimeHash: string | undefined,
+  required: boolean
 ): void {
   const pins: string[] = []
   for (const delegation of chain) {
@@ -182,13 +185,30 @@ function assertToolDefinitionPin(
     }
     pins.push(pin)
   }
-  if (pins.length === 0) return
+  if (pins.length === 0) {
+    if (required) {
+      throw new AuthorityError('tool_definition', 'tool definition pin is required', true)
+    }
+    return
+  }
   if (pins.some((pin) => pin !== pins[0])) {
     throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
   }
   if (runtimeHash !== pins[0]) {
     throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
   }
+}
+
+function assertMcpAuthority(
+  intent: { readonly action: string; readonly target: string },
+  chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
+  runtimeHash: string | undefined
+): void {
+  const call = authorityMcpCall(intent.action, intent.target)
+  if (call.kind === 'malformed') {
+    throw new AuthorityError('mcp_binding', call.reason, true)
+  }
+  assertToolDefinitionPin(chain, runtimeHash, call.kind === 'call')
 }
 
 function hasResolver(value: unknown): value is PolicyResolver {
@@ -266,6 +286,8 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     if (input.approval != null && input.approval.intent_hash !== intentHash) {
       throw new AuthorityError('approval', 'approval is not bound to this intent', true)
     }
+
+    assertMcpAuthority(presented.intent, presented.chain, input.mcpToolDefinitionHash)
 
     const usability = await input.ledger.assertUsable(
       presented.intent.actor,
@@ -345,8 +367,6 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         }
       }
     }
-    assertToolDefinitionPin(verified.chain, input.mcpToolDefinitionHash)
-
     const pendingStore = input.pendingStore
     const seenApprovals = input.seenApprovals
     const view: RunAuthorityPathInput & { now: Date } = {
@@ -843,33 +863,20 @@ async function executeBound(
   try {
     result = await input.execute(ctx)
   } catch (error) {
-    // The executor was invoked. A thrown error does not prove the downstream
-    // write did not happen, so the receipt outcome is `unknown`, never
-    // `not_dispatched`. `not_dispatched` is only for a halt before `execute`.
-    if (error instanceof ExecutionOutcomeUnknownError) {
-      await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
-      return seal(input, {
-        decision: 'ALLOW',
-        ruleId: bound.decision.ruleId,
-        reason: 'downstream outcome unknown',
-        alertSeverity: 'CRITICAL',
-        matched: bound.decision.matched,
-        intentHash: bound.intentHash,
-        delegationHash: bound.delegationHash,
-        policyHash: bound.policyHash,
-        executed: false,
-        failureMode: 'SYSTEM_ERROR',
-        principalId: bound.principalId,
-        executionOutcome: 'unknown',
-      })
-    }
-    await input.ledger.fail(input.intent.actor, input.intent.nonce, bound.intentHash)
+    // The executor was invoked. Authority already allowed dispatch, and a
+    // downstream side effect cannot be ruled out. This matches
+    // ExecutionOutcomeUnknownError: ALLOW, outcome unknown, executed false,
+    // SYSTEM_ERROR. `not_dispatched` is only for a halt before `execute`.
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
-      decision: 'BLOCK',
-      ruleId: 'execution',
-      reason: 'executor failed after dispatch; downstream outcome is unknown',
+      decision: 'ALLOW',
+      ruleId: bound.decision.ruleId,
+      reason:
+        error instanceof ExecutionOutcomeUnknownError
+          ? 'downstream outcome unknown'
+          : 'executor failed after dispatch; downstream outcome is unknown',
       alertSeverity: 'CRITICAL',
-      matched: false,
+      matched: bound.decision.matched,
       intentHash: bound.intentHash,
       delegationHash: bound.delegationHash,
       policyHash: bound.policyHash,
