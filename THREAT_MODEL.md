@@ -103,6 +103,7 @@ The property holds only when the operator's network gives the agent no other rou
 ## Known limitations (not claimed)
 
 - Malicious model behavior beyond the bound.
+- Prompt injection that stays inside the grant. The path checks the action, the target, amounts and other constraints, and the policy. It does not check why the model chose the call, and the receipt does not record which input caused the intent. `examples/attacks/07-in-grant-injection.txt` records the current `ALLOW`. Tracked in #48.
 - Compromised host or a runtime that skips this path.
 - Credential isolation when the agent holds the rail credential.
 - Cumulative spend when the grant does not set `cumulative_max_amount` (`max_amount` stays per intent).

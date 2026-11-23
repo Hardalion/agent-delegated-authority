@@ -18,5 +18,6 @@ These are limits of the reference implementation and of a deployment. They are n
 | Explicit `defaultAction: ALLOW` | Unmatched calls follow that configured action. v0.1 does not rewrite it to `BLOCK`. Consequential policies should set `BLOCK`. |
 | Freeform argument names | The evaluator does not run prompt text. A policy can still name a field the caller controls. There is no universal argument whitelist. |
 | Receipt chain | `verifyReceiptChain` does not detect a dropped tail. |
+| Injection inside the grant | An injected instruction that keeps the call inside the grant is `ALLOW`. The receipt does not record which input caused the intent. See [attack 07](../../examples/attacks/07-in-grant-injection.txt) and #48. |
 
 Deployment controls that remain outside the protocol: network policy, a production secret manager, and a highly available nonce store.
