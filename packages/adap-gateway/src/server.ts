@@ -9,6 +9,7 @@ import {
   SharedNonceLedger,
   type DirectoryIdentityKind,
   type Identity,
+  type RunAuthorityPathInput,
 } from 'adap'
 import {
   applyMigrations,
@@ -16,6 +17,7 @@ import {
   decideReconciliation,
   PostgresAtomicNonceBackend,
   PostgresExecutionLog,
+  PostgresGrantRevocation,
   PostgresPendingStore,
   PostgresPolicyRegistry,
 } from 'adap-store-postgres'
@@ -125,6 +127,30 @@ async function migrateAndRegister(pool: ReturnType<typeof createPool>): Promise<
   throw last
 }
 
+export interface GatewayServerConfig {
+  readonly audience: string
+  readonly directory: RunAuthorityPathInput['directory']
+  readonly rootAuthority: NonNullable<RunAuthorityPathInput['rootAuthority']>
+  readonly approvalPolicy: NonNullable<RunAuthorityPathInput['approvalPolicy']>
+  readonly revocationCheck: NonNullable<RunAuthorityPathInput['revocationCheck']>
+}
+
+/** Fail closed. A missing audience, revocation check, or approval policy does not boot. */
+export function createGatewayServer(config: GatewayServerConfig): GatewayServerConfig & {
+  readonly unsafeDevAllowUnconfiguredChecks: false
+} {
+  if (typeof config.audience !== 'string' || config.audience.length === 0) {
+    throw new Error('gateway audience is required')
+  }
+  if (typeof config.revocationCheck !== 'function') {
+    throw new Error('gateway revocationCheck is required')
+  }
+  if (typeof config.approvalPolicy?.isHuman !== 'function') {
+    throw new Error('gateway approvalPolicy is required')
+  }
+  return { ...config, unsafeDevAllowUnconfiguredChecks: false }
+}
+
 export async function startGateway(): Promise<void> {
   const replica = process.env.ADAP_REPLICA_ID ?? 'gateway'
   const pool = createPool({
@@ -145,6 +171,14 @@ export async function startGateway(): Promise<void> {
   const approvalPolicy = {
     isHuman: (identityId: string) => directory.lookup(identityId)?.kind === 'human',
   }
+  const grantRevocation = new PostgresGrantRevocation(pool)
+  const gateway = createGatewayServer({
+    audience: requiredEnv('ADAP_AUDIENCE'),
+    directory,
+    rootAuthority,
+    approvalPolicy,
+    revocationCheck: (delegationId) => grantRevocation.check(delegationId),
+  })
   const signer = loadIssuer(requiredEnv('ADAP_ISSUER_KEY_PATH'))
   const clientToken = requiredEnv('ADAP_GATEWAY_CLIENT_TOKEN')
   const broker = new VaultCredentialBroker({
@@ -304,10 +338,12 @@ export async function startGateway(): Promise<void> {
           chain: parsed.chain as never,
           intent: parsed.intent as never,
           approval: parsed.approval as never,
-          directory,
-          rootAuthority,
-          approvalPolicy,
-          unsafeDevAllowUnconfiguredChecks: false,
+          directory: gateway.directory,
+          rootAuthority: gateway.rootAuthority,
+          approvalPolicy: gateway.approvalPolicy,
+          revocationCheck: gateway.revocationCheck,
+          audience: gateway.audience,
+          unsafeDevAllowUnconfiguredChecks: gateway.unsafeDevAllowUnconfiguredChecks,
           policy: pin.policy,
           policyUri,
           ledger: new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool })),

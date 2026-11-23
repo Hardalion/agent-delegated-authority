@@ -121,7 +121,9 @@ export interface RunAuthorityPathInput {
   /**
    * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
    */
-  readonly revocationCheck?: (delegationId: string) => 'active' | 'revoked' | 'unavailable'
+  readonly revocationCheck?: (
+    delegationId: string,
+  ) => 'active' | 'revoked' | 'unavailable' | Promise<'active' | 'revoked' | 'unavailable'>
   /**
    * Optional human-approval identity policy. When set, self-approval and non-human
    * approvers fail closed.
@@ -364,7 +366,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     }
     if (input.revocationCheck) {
       for (const delegation of verified.chain) {
-        const status = input.revocationCheck(delegation.delegation_id)
+        const status = await input.revocationCheck(delegation.delegation_id)
         if (status === 'revoked') {
           throw new AuthorityError('revoked', `delegation ${delegation.delegation_id} is revoked`, true)
         }

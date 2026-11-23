@@ -73,6 +73,7 @@ describe('gateway governing policy', () => {
     const policyUri = select(request, undefined)
     const execute = vi.fn(async () => ({ status: 'completed' as const, correlationId: 'test', body: {} }))
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       ...request, directory: new Map([[principal.id, principal.publicKey], [agent.id, agent.publicKey]]),
       policy: policyResolver.resolveByUri(policyUri)!.policy, policyUri, policyResolver,
       ledger: new NonceLedger(), pendingStore: new PendingAuthorizationStore(),

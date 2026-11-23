@@ -105,6 +105,7 @@ describe('credential isolation gateway', () => {
       )
       const events = new MemorySecurityEventSink()
       const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
         chain: [root],
         intent,
         directory,
@@ -296,6 +297,7 @@ describe('authorized action canonicality', () => {
     )
     const counted = countingBroker()
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
       intent,
       directory,
@@ -400,6 +402,7 @@ describe('execution state persistence', () => {
     const ledger = new NonceLedger()
     let writes = 0
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -425,6 +428,7 @@ describe('execution state persistence', () => {
     expect(events.events.some((event) => event.type === 'storage.failure')).toBe(true)
 
     const retry = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -450,6 +454,7 @@ describe('execution state persistence', () => {
     const gate = setup()
     const events = new MemorySecurityEventSink()
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -478,6 +483,7 @@ describe('execution state persistence', () => {
   it('does not treat a callback that merely returns as durable confirmation', async () => {
     const gate = setup()
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -498,6 +504,7 @@ describe('execution state persistence', () => {
   it('reports confirmed only when every callback says the write is durable', async () => {
     const gate = setup()
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -518,6 +525,7 @@ describe('execution state persistence', () => {
   it('does not stay confirmed when a later callback does not confirm the write', async () => {
     const gate = setup()
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
@@ -549,6 +557,7 @@ describe('execution state persistence', () => {
     gate.policyResolver.register(blocked, uri)
     let calls = 0
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [gate.root],
       intent: gate.intent,
       directory: gate.directory,
