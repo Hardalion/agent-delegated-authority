@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security credit
+
+The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `createGatewayServer` requires an audience, `approvalPolicy.isHuman`, and a revocation check. Revocation is read from `adap_revoked_grants`, and a store failure is `unavailable` (`BLOCK`). Reported by Ahmed Shacker (@AS2812). Fixed in #47.
+
 ### Security remediation (#19, #3, #20, #21)
 
 - **#19 — Signed-object versioning:** Introduces `adap: 0.2` envelopes with domain-separated preimage `ADAP/0.2/<typ>\0` + JCS of `{ adap, typ, alg, kid, payload }` for delegations, intents, and approvals. Legacy unversioned objects keep v0.1 constraint semantics (`max_amount` ceiling; other keys including `max_quantity` exact-match). Generic `max_<field>` ceilings apply only under the versioned `ceilings-v1` profile. Authority directory is keyed by `(identityId, kid)` with rotation and revocation. Delegation narrowing, intents, and human approvals are **profile-consistent**: mixed legacy/0.2 chains and cross-profile approvals are rejected. See `spec/signed-objects.md`.
