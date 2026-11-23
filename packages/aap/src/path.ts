@@ -47,6 +47,12 @@ export interface ExecutionContext {
   readonly principalId: string
   readonly parameters: Readonly<Record<string, unknown>>
   readonly intentHash: string
+  /**
+   * The runtime's tool-definition hash when one was presented, the same value the
+   * receipt binds. The executor can compare it with the live definition before
+   * dispatch and refuse one that changed after authorization.
+   */
+  readonly toolDefinitionHash?: string
 }
 
 export interface ProtocolResult {
@@ -171,6 +177,8 @@ export interface RunAuthorityPathInput {
    * Required for an authority-enforcing MCP call (`target` under `mcp/`), and
    * required when any delegation sets `tool_definition_hash`. A missing or
    * different hash is `BLOCK` before policy evaluation and before dispatch.
+   * On those calls a well-formed value is bound on every receipt as
+   * `execution.toolDefinitionHash` and passed to the executor.
    */
   readonly mcpToolDefinitionHash?: string
 }
@@ -178,6 +186,25 @@ export interface RunAuthorityPathInput {
 const NONE_EXEC = 'none'
 const UNHASHABLE_EXEC = 'unhashable'
 const TOOL_DEFINITION_PIN = /^sha256:[0-9a-f]{64}$/
+
+/**
+ * The runtime tool-definition hash to bind on the receipt and hand to the executor.
+ *
+ * Bound only on a call the path pin-checks: a target under `mcp/`, or a chain that sets
+ * `tool_definition_hash`. On any other call nothing compares the value with a grant, so
+ * a receipt must not carry it as if it had been checked. A malformed value is never bound.
+ * On a pin-checked call it cannot match the pin, so the path refuses that call.
+ */
+function boundToolDefinitionHash(input: {
+  readonly mcpToolDefinitionHash?: unknown
+  readonly chain: readonly { readonly constraints?: { readonly tool_definition_hash?: unknown } }[]
+  readonly intent: { readonly target: string }
+}): string | undefined {
+  const hash = input.mcpToolDefinitionHash
+  if (typeof hash !== 'string' || !TOOL_DEFINITION_PIN.test(hash)) return undefined
+  const pinned = input.chain.some((delegation) => delegation.constraints?.tool_definition_hash != null)
+  return pinned || input.intent.target.startsWith('mcp/') ? hash : undefined
+}
 
 function assertToolDefinitionPin(
   chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
@@ -858,7 +885,9 @@ async function executeBound(
     throw error
   }
 
+  const toolDefinitionHash = boundToolDefinitionHash(input)
   const ctx: ExecutionContext = {
+    ...(toolDefinitionHash !== undefined ? { toolDefinitionHash } : {}),
     action: input.intent.action,
     target: input.intent.target,
     actor: input.intent.actor,
@@ -971,6 +1000,7 @@ function seal(
   }
 ): ProtocolResult {
   const decidedAt = (input.now ?? resolveTrustedNow(input)).toISOString()
+  const toolDefinitionHash = boundToolDefinitionHash(input)
   const policy = input.policy
   const executionHash = fields.executed ? sha256(fields.result ?? null) : NONE_EXEC
   const toolArgs = deepDataClone(input.intent.parameters) as Record<string, unknown>
@@ -1011,6 +1041,7 @@ function seal(
       executedAt: fields.executed && fields.executionOutcome !== 'unknown' ? decidedAt : undefined,
       intentHash: fields.intentHash,
       outcome: fields.executionOutcome ?? (fields.executed ? 'returned' : 'not_dispatched'),
+      ...(toolDefinitionHash !== undefined ? { toolDefinitionHash } : {}),
     },
     human: fields.human,
     failureMode: fields.failureMode,

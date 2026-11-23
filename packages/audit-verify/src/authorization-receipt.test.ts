@@ -165,4 +165,48 @@ describe('authorization receipt', () => {
     expect(verifyReceiptSignature(receipt, spki)).toBe(true)
     expect(verifyReceiptSignature({ ...receipt, signature: DUMMY_SIG }, spki)).toBe(false)
   })
+
+  it('accepts a well-formed execution.toolDefinitionHash and covers it with the content hash', () => {
+    const body = sampleBody()
+    const toolDefinitionHash = `sha256:${'e'.repeat(64)}`
+    const unsigned = buildUnsignedAuthorizationReceipt({
+      ...body,
+      execution: { ...body.execution, toolDefinitionHash },
+    })
+    const receipt: AuthorizationReceiptV1 = { ...unsigned, signature: DUMMY_SIG }
+    const result = verifyAuthorizationReceipt(receipt)
+    expect(result.structureOk).toBe(true)
+    expect(result.contentHashOk).toBe(true)
+    expect(unsigned.integrity.contentHash).not.toBe(contentHashOfUnsignedReceipt(body))
+
+    const swapped: AuthorizationReceiptV1 = {
+      ...receipt,
+      execution: { ...receipt.execution!, toolDefinitionHash: `sha256:${'f'.repeat(64)}` },
+    }
+    expect(verifyAuthorizationReceipt(swapped).contentHashOk).toBe(false)
+  })
+
+  it('rejects a malformed execution.toolDefinitionHash', () => {
+    const body = sampleBody()
+    for (const toolDefinitionHash of [
+      'e'.repeat(64),
+      `sha256:${'E'.repeat(64)}`,
+      `sha512:${'e'.repeat(64)}`,
+      `sha256:${'e'.repeat(63)}`,
+      '',
+      null,
+      42,
+    ]) {
+      const receipt = {
+        ...buildUnsignedAuthorizationReceipt(body),
+        execution: { ...body.execution, toolDefinitionHash },
+        signature: DUMMY_SIG,
+      }
+      const result = verifyAuthorizationReceipt(receipt)
+      expect(result.structureOk).toBe(false)
+      expect(result.errors).toContain(
+        'execution.toolDefinitionHash must be sha256: followed by 64 lowercase hex chars'
+      )
+    }
+  })
 })

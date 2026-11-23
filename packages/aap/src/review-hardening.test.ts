@@ -360,6 +360,7 @@ describe('mcp conformance vectors', () => {
       'mcp-auth-over-delegation',
       'mcp-auth-require-human',
       'mcp-auth-tool-def-drift',
+      'mcp-receipt-tool-def-binding',
     ])
     for (const vector of document.vectors) {
       if (vector.claim === 'policy-only') {

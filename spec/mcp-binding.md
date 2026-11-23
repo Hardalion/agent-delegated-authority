@@ -22,7 +22,7 @@ A conforming ADAP MCP gateway:
 3. **Presents** a delegation chain whose terminal grant covers that action/target and every `max_<field>` ceiling.
 4. **Evaluates** the governing policy from operator configuration or a pin carried on the root delegation — not from an unauthenticated client header alone when more than one policy is registered.
 5. **Mints no side effect** on `BLOCK` or unresolved `REQUIRE_HUMAN`. Only `ALLOW` (including post-approval) may invoke the tool handler.
-6. **Emits** an Authorization Receipt that binds intent hash, policy pin and content hash, decision, and reported execution. Demo placeholder signatures MUST NOT verify as valid evidence.
+6. **Emits** an Authorization Receipt that binds intent hash, policy pin and content hash, decision, and reported execution. On a call the path pin-checks (an authority-enforcing MCP call, or a grant that sets `tool_definition_hash`), the receipt also binds the runtime's tool-definition hash as `execution.toolDefinitionHash`. Every receipt for such a call carries it: `ALLOW` (including post-approval), `REQUIRE_HUMAN`, and `BLOCK`. On `ALLOW` and `REQUIRE_HUMAN` it equals the grant's `tool_definition_hash`. On `BLOCK` it is the value the runtime presented and can differ from the pin, as on a `tool_definition` refusal, so the receipt records which definition the gateway was about to call. A malformed runtime value is not bound, and neither is a value on a call that nothing pin-checks. Demo placeholder signatures MUST NOT verify as valid evidence.
 7. **Keeps** rail / tool credentials out of the model process. The gateway or vault broker holds them.
 
 ### Synthetic conformance scenarios (no side effects)
@@ -36,6 +36,7 @@ These scenarios MUST be testable without contacting a real MCP server:
 | `mcp-auth-over-delegation` | Child raises parent `max_amount` | `BLOCK`, no tool call, receipt `executed: false` |
 | `mcp-auth-require-human` | Intent under grant, policy `REQUIRE_HUMAN`, no approval | Tool not called; pending bound to intent hash |
 | `mcp-auth-tool-def-drift` | Tool schema hash differs from grant | `BLOCK` until a new grant names the new hash |
+| `mcp-receipt-tool-def-binding` | Fixed tool definition with unsorted keys, a non-ASCII description, and `annotations` | Pin equals the vector value. Every receipt for that call carries it as `execution.toolDefinitionHash` |
 
 Language-independent vectors: [examples/conformance/mcp-vectors.json](../examples/conformance/mcp-vectors.json).
 
@@ -51,4 +52,5 @@ Retained from review (PR #9). Not required for v0.1 conformance:
 
 - Policy-only helper tests: `packages/policy-engine/src/integrations/mcp.test.ts`
 - Authority path: `packages/aap`, `packages/adap-gateway`
+- Receipt check against a tool definition: `verifyReceiptMcpToolBinding` in `packages/aap/src/mcp-tool.ts`. It recomputes the pin and checks the receipt's action and target. It does not check the signature
 - Threat model: [../THREAT_MODEL.md](../THREAT_MODEL.md)
