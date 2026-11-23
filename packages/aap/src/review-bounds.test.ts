@@ -23,7 +23,7 @@ const ALLOW_APPLY: Policy = {
 }
 const ALLOW_URI = 'allow-apply@1.0.0'
 
-function world(constraints: Record<string, number> = { max_amount: 800 }) {
+function world(constraints: Record<string, string | number | boolean> = { max_amount: 800 }) {
   const principal = createIdentity('prn_example')
   const agent = createIdentity('agt_example')
   const signer = createIdentity('reference-runtime')
@@ -54,7 +54,8 @@ function intentFor(
   nonce: string,
   amount: number,
   issued = ISSUED,
-  expires = EXPIRES
+  expires = EXPIRES,
+  extra: Record<string, unknown> = {},
 ) {
   return signIntent(
     {
@@ -63,7 +64,7 @@ function intentFor(
       delegation_chain: [rootId],
       action: 'apply',
       target: 'resource/example',
-      parameters: { amount },
+      parameters: { amount, ...extra },
       nonce,
       issued_at: issued,
       expires_at: expires,
@@ -150,6 +151,7 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
     const { agent, signer, directory, root, policyResolver } = world({
       max_amount: 800,
       cumulative_max_amount: 500,
+      currency: 'EUR',
     })
     const ledger = new NonceLedger()
     const spendLedger = new MemorySpendLedger()
@@ -157,7 +159,7 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
       runAuthorityPath({
       unsafeDevAllowUnconfiguredChecks: true,
         chain: [root],
-        intent: intentFor(agent, root.delegation_id, nonce, amount),
+        intent: intentFor(agent, root.delegation_id, nonce, amount, ISSUED, EXPIRES, { currency: 'EUR' }),
         directory,
         policy: ALLOW_APPLY,
         policyUri: ALLOW_URI,
@@ -188,12 +190,13 @@ describe('review bounds: lifetime, skew, cumulative spend', () => {
     const { agent, signer, directory, root, policyResolver } = world({
       max_amount: 800,
       cumulative_max_amount: 500,
+      currency: 'EUR',
     })
     let executed = 0
     const blocked = await runAuthorityPath({
       unsafeDevAllowUnconfiguredChecks: true,
       chain: [root],
-      intent: intentFor(agent, root.delegation_id, 'n-missing', 10),
+      intent: intentFor(agent, root.delegation_id, 'n-missing', 10, ISSUED, EXPIRES, { currency: 'EUR' }),
       directory,
       policy: ALLOW_APPLY,
       policyUri: ALLOW_URI,

@@ -357,6 +357,7 @@ describe('snapshot and receipt agreement', () => {
       ledger: new SharedNonceLedger(new SharedMemoryBackend()),
       policyResolver: env.policyResolver,
       signer: env.signer,
+      includeArgsUnredacted: true,
       execute: async (ctx) => {
         waiting()
         await hold

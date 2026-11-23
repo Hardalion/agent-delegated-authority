@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { verifyAuthorizationReceipt, type AuthorizationReceiptV1 } from './authorization-receipt.js'
 
 function usage(): never {
@@ -65,10 +66,20 @@ async function main() {
     console.error(`INVALID: ${result.errors.join('; ') || 'receipt failed verification'}`)
   }
 
-  process.exit(result.valid ? 0 : 1)
+  process.exit(cliExitCode(result))
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(2)
-})
+/** Non-zero unless Ed25519 was checked and matched. Integrity-only is not success. */
+export function cliExitCode(result: { readonly valid: boolean }): number {
+  return result.valid ? 0 : 1
+}
+
+const invokedDirectly =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(2)
+  })
+}

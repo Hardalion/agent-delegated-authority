@@ -1,11 +1,13 @@
 # Security status
 
-**Tree:** `main` at `2ce1e2f35cbc5d4d472e992de545c8bef2857ab3` (2026-11-02).
+**Tree:** follow-up hardening on top of `3b41e02` (2026-11-23). This is the public reference tree after PR #36 and PR #45, plus the worker-cache, reconciliation, directory-kind, pending-nonce, redaction, and spend-pool fixes in this branch.
 **This is not a certification.** No SOC 2, ISO 27001, or independent retest is claimed.
 
 ## What the tests in this repository cover
 
 Findings ADAP-001 through ADAP-011 have regression tests named in [regression-matrix.md](regression-matrix.md). The suite to run is `pnpm test:security`. Those tests check the behavior described in this repository. The original assessment PDF is not in this repository, so the matrix is not a line-by-line check of that PDF.
+
+Later review fixes that the suite also covers: production checks fail closed unless the dev opt-out is set; an executor throw after dispatch records `ALLOW` / `SYSTEM_ERROR` / `outcome: unknown`; authority-enforcing MCP calls require a tool-definition pin; a hydrated worker drops a revoked policy URI while keeping the content hash for a pending approval; a negative lookup does not freeze a `started` write as `reconciled`; the gateway directory keeps key `kind` and a non-human key cannot approve; a nonce waiting on `REQUIRE_HUMAN` cannot be executed as `ALLOW`; receipt arguments are redacted unless the caller opts in; cumulative amount pools are separated by ceiling and currency.
 
 Mohammad Ali Oweidat's independent retest is **not** recorded as complete. A handoff note from an earlier revision existed at `docs/security/historical/EXTERNAL-RETEST-PACKAGE.md` and was moved out of the public tree with the other historical records. It was not a reviewer report and its removal is not a retest result.
 

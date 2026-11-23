@@ -195,6 +195,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     pendingStore,
     policyResolver,
     signer,
+    includeArgsUnredacted: true,
     execute: () => {
       executorCalls += 1
       return { unexpected: true }
@@ -212,6 +213,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
     pendingStore,
     policyResolver,
     signer,
+    includeArgsUnredacted: true,
     approval: signApproval(
       {
         intent_hash: legitPending.intentHash,
@@ -314,6 +316,7 @@ export async function runLaunchProof(input?: { readonly now?: Date }): Promise<L
       pendingStore,
       policyResolver,
       signer,
+      includeArgsUnredacted: true,
       execute: () => {
         executorCalls += 1
         return { actor: actor.id }

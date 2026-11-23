@@ -159,6 +159,12 @@ export interface RunAuthorityPathInput {
    */
   readonly spendLedger?: SpendLedger
   /**
+   * Copy tool arguments into the receipt. Default false: the emitter redacts
+   * them. Set true only when the caller has decided the arguments are not secret.
+   */
+  readonly includeArgsUnredacted?: boolean
+  readonly argsRedactedAllowlist?: readonly string[]
+  /**
    * Runtime hash of the MCP tool definition about to be called (`sha256:` + hex).
    * Required for an authority-enforcing MCP call (`target` under `mcp/`), and
    * required when any delegation sets `tool_definition_hash`. A missing or
@@ -1024,9 +1030,8 @@ function seal(
         : {}),
     },
     signer: input.signer.privateKey,
-    // Reference path records authorized parameters for offline review.
-    // Callers that must omit secrets should pass a narrower allowlist via a future hook.
-    includeArgsUnredacted: true,
+    includeArgsUnredacted: input.includeArgsUnredacted === true,
+    argsRedactedAllowlist: input.argsRedactedAllowlist,
   })
   return {
     decision: fields.decision,

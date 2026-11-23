@@ -26,7 +26,7 @@ export interface PostgresPolicyRegistryOptions {
 export class PostgresPolicyRegistry implements PolicyResolver {
   private readonly pool: Pool
   private readonly tenantId: string
-  private readonly memory = new ImmutablePolicyResolver()
+  private memory = new ImmutablePolicyResolver()
 
   constructor(options: PostgresPolicyRegistryOptions) {
     this.pool = options.pool
@@ -42,20 +42,26 @@ export class PostgresPolicyRegistry implements PolicyResolver {
     }>(
       `SELECT uri, body, content_hash, revoked
        FROM adap_policies
-       WHERE tenant_id = $1 AND revoked = false`,
+       WHERE tenant_id = $1`,
       [this.tenantId],
     )
-    let count = 0
+    const next = new ImmutablePolicyResolver()
+    let active = 0
     for (const row of rows) {
       const parsed = PolicySchema.parse(row.body)
       const hash = sha256(parsed)
       if (hash !== row.content_hash) {
         throw new AuthorityError('policy', 'stored policy content hash mismatch', true)
       }
-      this.memory.register(parsed, row.uri)
-      count += 1
+      if (row.revoked) {
+        next.retainHistorical(parsed, row.uri)
+      } else {
+        next.register(parsed, row.uri)
+        active += 1
+      }
     }
-    return count
+    this.memory = next
+    return active
   }
 
   /**
@@ -136,6 +142,12 @@ export class PostgresPolicyRegistry implements PolicyResolver {
     if ((result.rowCount ?? 0) !== 1) {
       throw new AuthorityError('policy', 'policy URI not found or already revoked', true)
     }
+    const contentHash = result.rows[0]?.content_hash
+    if (typeof contentHash === 'string') {
+      const pin = this.memory.resolveByUri(uri)
+      if (pin) this.memory.retainHistorical(pin.policy, uri)
+    }
+    this.memory.unbindUri(uri)
   }
 
   resolveByContentHash(contentHash: string): ImmutablePolicyBinding {

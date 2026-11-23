@@ -9,7 +9,9 @@ export { PostgresPendingStore, type PostgresPendingStoreOptions } from './pendin
 export { PostgresPolicyRegistry, type PostgresPolicyRegistryOptions } from './policy-registry.js'
 export {
   PostgresExecutionLog,
+  decideReconciliation,
   predecessorsOf,
   type ExecutionKnowledge,
   type ExecutionLogRecord,
+  type ReconciliationDecision,
 } from './execution-log.js'
