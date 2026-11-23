@@ -2,7 +2,7 @@
 
 Reference-gateway behavior in this repository. It is not a protocol requirement that every runtime use these field names.
 
-`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result. The executor callback still returned, so the authority path reports `executed: true` and consumes the nonce. That boolean is the callback report. It is not proof the external system committed. Reconciliation is a later read of the downstream ledger. It does not POST.
+`executionState: unknown` means the downstream call did not yield a completed or failed HTTP result, or the executor threw after dispatch had begun. The authority path records `decision: ALLOW`, `failureMode: SYSTEM_ERROR`, `execution.outcome: unknown`, and `executed: false`, and consumes the nonce. `executed: false` here means the runtime cannot claim a completed result. It does not mean the external write was proven absent. `not_dispatched` is reserved for a halt before `execute` is called. Reconciliation is a later read of the downstream ledger. It does not POST.
 
 # OUTCOME-UNKNOWN-RECONCILIATION
 
@@ -22,12 +22,12 @@ The gateway:
 
 | Step | Observation |
 | --- | --- |
-| Authorize while drop-next was armed | `executionState: unknown`, `executed: true` |
+| Authorize while drop-next was armed | `executionState: unknown`, receipt `executed: false`, `outcome: unknown` |
 | Same intent to the other replica | `decision: BLOCK`, `executed` not true |
 | `GET /v1/reconcile/{intentHash}` | `state: reconciled`, `detail: downstream_has_one_record` |
 | Downstream business writes | 3 after this step (one replay, one approval, one unknown). No second business row for the unknown intent |
 
-The authority receipt's `executed: true` means the executor returned. The returned body says the downstream outcome is `unknown`. It does not mean the business transaction was known to be committed at response time. Reconciliation is what established that the downstream ledger had one record.
+The authority receipt's `outcome: unknown` and `executed: false` mean the runtime invoked the executor and cannot claim a completed result. They do not mean the business transaction was known to be committed, and they do not mean it was known to be absent. Reconciliation is what established that the downstream ledger had one record.
 
 A paused Postgres is a different case. The caller timed out, and after unpause the nonce was `consumed`. The retry was `BLOCK`. One commit happened. The caller did not get a second execution.
 

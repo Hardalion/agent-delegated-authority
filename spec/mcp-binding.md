@@ -17,7 +17,7 @@ Model Context Protocol (MCP) is a transport and tool-call surface. ADAP is the a
 
 A conforming ADAP MCP gateway:
 
-1. **Derives** `action` and `target` from server identity, tool name, and a pinned tool-definition hash (description + input schema). The agent MUST NOT freely label a call with an unrelated target while arguments point elsewhere.
+1. **Derives** `action` and `target` from server identity and tool name, and **pins** the tool definition. This pin is a **MUST** for the authority-enforcing tier only. The policy-only helper and any non-MCP grant are outside it: a non-MCP grant checks `tool_definition_hash` only when the grant sets one. `server_id` MUST match `[A-Za-z0-9_-]+` and MUST NOT contain `.` or `/`. `tool_name` MUST NOT contain `/`. The action is `server_id.tool_name`. The target is `mcp/<server_id>/<tool_name>`. The authority path enforces that shape before policy evaluation and before dispatch, including when the caller built `action` and `target` without the helper. A dot, a slash, an empty segment, or an action that is not `server_id.tool_name` is `BLOCK` (`mcp_binding`). `tool.target` is that target on the policy context. The pin is `sha256:` plus the SHA-256 of the RFC 8785 encoding of `{ server_id, tool_name, description, input_schema }` plus `title`, `icons`, `output_schema`, and `annotations` when present. Absent optional fields are omitted. An authority-enforcing MCP call MUST carry `tool_definition_hash` on the grant and the same value as `mcpToolDefinitionHash` on the runtime call. A missing pin, a different pin, or two different pins in one chain is `BLOCK` (`tool_definition`) and the executor is not called. The same check runs on a direct call and on approval resume. The agent MUST NOT freely label a call with an unrelated target while arguments point elsewhere.
 2. **Requires** a signed ADAP intent whose `parameters` are the tool arguments (closed-world when the tool profile sets `closed: true`).
 3. **Presents** a delegation chain whose terminal grant covers that action/target and every `max_<field>` ceiling.
 4. **Evaluates** the governing policy from operator configuration or a pin carried on the root delegation — not from an unauthenticated client header alone when more than one policy is registered.
@@ -45,7 +45,7 @@ Retained from review (PR #9). Not required for v0.1 conformance:
 
 - Whether receipts MUST bind a hash of the tool result (indirect prompt injection via results).
 - Whether server-initiated MCP sampling/elicitation is an intent, and under whose delegation.
-- Whether the gateway keeps session state (cumulative spend, data-flow labels). v0.1 decisions are **per call**. Cumulative multi-turn accounting is a **non-normative future**; see [amounts-and-targets.md](./amounts-and-targets.md) and issue #13.
+- Whether the gateway keeps session state other than spend (for example data-flow labels). `cumulative_max_amount` and `cumulative_<field>` are enforced on the authority path when a grant sets them. A missing ledger is `BLOCK`. The reference ledger is in-process, so more than one worker MUST share a store. See [amounts-and-targets.md](./amounts-and-targets.md).
 
 ## Reference
 

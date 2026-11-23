@@ -220,7 +220,39 @@ Conforming runtimes do not perform a consequential side effect unless the govern
 
 A receipt is verified on its own. `valid` is true only when the issuer public key was supplied and the Ed25519 signature matched. Structure and content hash without a key are `status: integrity_only` and `valid: false` (`MISSING_PUBLIC_KEY`). This draft does not define a store, an index, or a telemetry pipeline.
 
-Receipt v1 and the receipt checkpoint are not inside the signed-object envelope of [signed-objects.md](./signed-objects.md). Their signature is Ed25519 over the canonical unsigned body, not `ADAP/0.2/receipt` or `ADAP/0.2/checkpoint`. Moving those artifacts into that domain-separated envelope is a later upgrade. It is not claimed here. What this profile does record, on the signed receipt, is `execution.outcome` (`unknown` never sets `executed: true`), plus `extensions.enforcement_mode` and `extensions.credential_boundary`. A receipt minted with `unsafeDevAllowUnconfiguredChecks: true` sets `extensions.checks_applied.unsafe_dev_unconfigured_checks` to true. That receipt is not a conformance receipt.
+Receipt v1 and the receipt checkpoint stay outside the signed-object 0.2 envelope of [signed-objects.md](./signed-objects.md). This is a deliberate v0.1 compatibility constraint: the published proofs in `examples/proof/` were signed over the canonical unsigned body, and this profile does not move those bytes. Their signature is Ed25519 over that body, not `ADAP/0.2/receipt` or `ADAP/0.2/checkpoint`. Putting receipts and checkpoints inside the 0.2 envelope is a future breaking revision. It is not this change. Published proofs MUST remain verifiable offline with the current preimage.
+
+What this profile does record, on the signed receipt, is `execution.outcome`. `unknown` is the outcome when the executor was invoked and the runtime cannot claim a completed result, and it never sets `executed: true`. `not_dispatched` is only for a halt before the executor is called. `extensions.enforcement_mode` and `extensions.credential_boundary` are also on the signed body.
+
+`extensions.checks_applied` records the production checks that were actually enforced:
+
+| Field | True when |
+| --- | --- |
+| `root_authority` | `rootAuthority` was set and the dev opt-out was not |
+| `revocation_check` | `revocationCheck` was set and the dev opt-out was not |
+| `human_approver_kind` | approver kind was required |
+| `no_self_approval` | self-approval was not explicitly allowed |
+| `approval_policy` | an `approvalPolicy` hook was set |
+| `unsafe_dev_unconfigured_checks` | the receipt was minted with `unsafeDevAllowUnconfiguredChecks: true` |
+
+A verifier that sees `unsafe_dev_unconfigured_checks: true` MUST report `status: verified_nonconforming`, `valid: false`, and `failureReason: DEV_UNCONFIGURED_CHECKS`, even when the Ed25519 signature matches. It MUST NOT report `verified`.
+
+### Checkpoint (v0.1, outside the 0.2 envelope)
+
+`signReceiptCheckpoint` signs the RFC 8785 encoding of the unsigned object. The signature field is not in the preimage.
+
+| Field | Meaning |
+| --- | --- |
+| `v` | `1` |
+| `kind` | `adap.receipt.checkpoint` |
+| `issuer` | Receipt issuer id |
+| `issuerKeyId` | Fingerprint of the issuer key |
+| `sequence` | Sequence of the head receipt |
+| `contentHash` | `integrity.contentHash` of that receipt |
+| `signedAt` | ISO-8601 UTC time |
+| `signature` | Ed25519 over the canonical unsigned object, hex |
+
+`verifyReceiptCheckpoint` without the issuer public key returns `valid: false` and `MISSING_PUBLIC_KEY`. A later revision may wrap this object in `ADAP/0.2/checkpoint`. That wrap would change the preimage and would invalidate checkpoints already published. It is not part of v0.1. An external transparency log profile is future work and is not specified here.
 
 When an emitter sets `sequence` and `prevReceiptHash`, consecutive receipts form a hash chain: each signed body includes the prior receipt's `integrity.contentHash`. A verifier walks the ordered set: `sequence` increases by one, each `prevReceiptHash` names the previous receipt, and every receipt is from the same issuer key. That detects omission, insertion, and reordering inside the set. A dropped tail is detected when the verifier also holds a signed checkpoint (`kind: adap.receipt.checkpoint`) of the latest receipt: `sequence`, `contentHash`, issuer, and issuer key. `verifyReceiptChain(..., { checkpoint })` rejects a chain whose last receipt is not that head. The checkpoint is useful only when a copy is published somewhere the issuer does not control. Reference: `verifyReceiptChain` and `signReceiptCheckpoint` in `packages/audit-verify`.
 

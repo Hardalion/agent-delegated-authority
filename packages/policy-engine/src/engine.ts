@@ -191,6 +191,8 @@ export function evaluateToolCall(input: {
   toolName: string
   toolArgs?: Record<string, unknown>
   agentRole?: string
+  /** Authorized target, exposed as `tool.target`. */
+  toolTarget?: string
   /** Non-secret authz context for `context.*` conditions. */
   evaluationContext?: Record<string, unknown>
 }): PolicyDecision {
@@ -201,6 +203,7 @@ export function evaluateToolCall(input: {
       toolName: input.toolName,
       toolArgs: input.toolArgs,
       agentRole: input.agentRole,
+      toolTarget: input.toolTarget,
       context: input.evaluationContext,
     }),
   })

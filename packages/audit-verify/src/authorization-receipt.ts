@@ -158,8 +158,12 @@ export interface VerifyAuthorizationReceiptResult {
    * `integrity_only` means structure and content hash matched and no key was supplied.
    * That state is never `valid`.
    */
-  readonly status: 'verified' | 'integrity_only' | 'invalid'
-  readonly failureReason?: 'MISSING_PUBLIC_KEY' | 'SIGNATURE_NOT_VERIFIED' | 'STRUCTURE_INVALID'
+  readonly status: 'verified' | 'verified_nonconforming' | 'integrity_only' | 'invalid'
+  readonly failureReason?:
+    | 'MISSING_PUBLIC_KEY'
+    | 'SIGNATURE_NOT_VERIFIED'
+    | 'STRUCTURE_INVALID'
+    | 'DEV_UNCONFIGURED_CHECKS'
   readonly errors: readonly string[]
   readonly contentHash?: string
 }
@@ -584,20 +588,42 @@ export function verifyAuthorizationReceipt(
   if (signatureChecked && signatureOk !== true && !errors.some((item) => item.includes('signature'))) {
     errors.push('SIGNATURE_NOT_VERIFIED')
   }
-  const status = signatureVerified ? 'verified' : contentHashOk && !demoSignature ? 'integrity_only' : 'invalid'
+  const devOptOut = unsafeDevUnconfigured(r)
+  if (devOptOut) errors.push('unsafe_dev_unconfigured_checks')
+  const conforming = signatureVerified && !devOptOut
+  const status = conforming
+    ? 'verified'
+    : signatureVerified && devOptOut
+      ? 'verified_nonconforming'
+      : contentHashOk && !demoSignature
+        ? 'integrity_only'
+        : 'invalid'
 
   return {
-    valid: signatureVerified,
+    valid: conforming,
     contentHashOk,
     structureOk: true,
     signatureChecked,
     signatureOk,
     demoSignature,
     status,
-    failureReason: signatureVerified ? undefined : !signatureChecked ? 'MISSING_PUBLIC_KEY' : 'SIGNATURE_NOT_VERIFIED',
+    failureReason: conforming
+      ? undefined
+      : signatureVerified && devOptOut
+        ? 'DEV_UNCONFIGURED_CHECKS'
+        : !signatureChecked
+          ? 'MISSING_PUBLIC_KEY'
+          : 'SIGNATURE_NOT_VERIFIED',
     errors,
     contentHash: expected,
   }
+}
+
+function unsafeDevUnconfigured(receipt: AuthorizationReceiptV1): boolean {
+  const extensions = receipt.extensions
+  if (extensions == null || typeof extensions !== 'object') return false
+  const checks = (extensions as { checks_applied?: { unsafe_dev_unconfigured_checks?: unknown } }).checks_applied
+  return checks?.unsafe_dev_unconfigured_checks === true
 }
 
 export interface VerifyReceiptChainResult {

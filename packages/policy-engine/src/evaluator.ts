@@ -5,6 +5,7 @@
 export interface EvaluationContext {
   readonly tool?: {
     readonly name?: string
+    readonly target?: string
     readonly args?: Record<string, unknown>
   }
   readonly args?: Record<string, unknown>
@@ -28,6 +29,24 @@ type Token =
   | { type: 'comma' }
   | { type: 'dot' }
   | { type: 'eof' }
+
+function scanNumber(input: string, start: number): { readonly value: number; readonly next: number } {
+  let i = start
+  let num = ''
+  let dots = 0
+  while (i < input.length && /[0-9.]/.test(input[i]!)) {
+    if (input[i] === '.') {
+      dots += 1
+      if (dots > 1) throw new Error(`Invalid numeric literal at position ${start}`)
+    }
+    num += input[i]
+    i += 1
+  }
+  if (num === '' || num === '.') throw new Error(`Invalid numeric literal at position ${start}`)
+  const value = Number(num)
+  if (!Number.isFinite(value)) throw new Error(`Invalid numeric literal at position ${start}`)
+  return { value, next: i }
+}
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = []
@@ -77,7 +96,21 @@ function tokenize(input: string): Token[] {
       i += 1
       let value = ''
       while (i < input.length && input[i] !== quote) {
-        value += input[i]
+        const current = input[i]!
+        if (current === '\n' || current === '\r') {
+          throw new Error(`Unterminated string literal at position ${start}`)
+        }
+        if (current === '\\') {
+          const escaped = input[i + 1]
+          if (escaped == null) throw new Error(`Unterminated string literal at position ${start}`)
+          if (escaped === 'n') value += '\n'
+          else if (escaped === 't') value += '\t'
+          else if (escaped === '\\' || escaped === "'" || escaped === '"') value += escaped
+          else throw new Error(`Invalid string escape at position ${i}`)
+          i += 2
+          continue
+        }
+        value += current
         i += 1
       }
       if (i >= input.length) {
@@ -88,25 +121,19 @@ function tokenize(input: string): Token[] {
       continue
     }
 
-    if (/[0-9]/.test(ch)) {
+    if (ch === '-' && i + 1 < input.length && /[0-9]/.test(input[i + 1]!)) {
       const start = i
-      let num = ''
-      let dots = 0
-      while (i < input.length && /[0-9.]/.test(input[i]!)) {
-        if (input[i] === '.') {
-          dots += 1
-          if (dots > 1) {
-            throw new Error(`Invalid numeric literal at position ${start}`)
-          }
-        }
-        num += input[i]
-        i += 1
-      }
-      const value = Number(num)
-      if (!Number.isFinite(value)) {
-        throw new Error(`Invalid numeric literal at position ${start}`)
-      }
-      tokens.push({ type: 'number', value })
+      i += 1
+      const parsed = scanNumber(input, i)
+      i = parsed.next
+      tokens.push({ type: 'number', value: -parsed.value })
+      continue
+    }
+
+    if (/[0-9]/.test(ch)) {
+      const parsed = scanNumber(input, i)
+      i = parsed.next
+      tokens.push({ type: 'number', value: parsed.value })
       continue
     }
 
@@ -298,14 +325,26 @@ class Parser {
   }
 
   private parseArray(): unknown[] {
-    this.consume() // [
+    if (this.peek().type !== 'lbracket') throw new Error('Expected array literal')
+    this.consume()
     const values: unknown[] = []
-    while (this.peek().type !== 'rbracket') {
-      values.push(this.parsePrimary())
-      if (this.peek().type === 'comma') this.consume()
+    if (this.peek().type === 'rbracket') {
+      this.consume()
+      return values
     }
-    this.consume() // ]
-    return values
+    while (true) {
+      values.push(this.parsePrimary())
+      if (this.peek().type === 'comma') {
+        this.consume()
+        if (this.peek().type === 'rbracket') throw new Error('Trailing comma in array literal')
+        continue
+      }
+      if (this.peek().type === 'rbracket') {
+        this.consume()
+        return values
+      }
+      throw new Error('Expected comma between array elements')
+    }
   }
 
   private parsePrimary(): unknown {
@@ -336,7 +375,8 @@ class Parser {
         if ((memberName === 'contains' || memberName === 'icontains') && this.peek().type === 'lparen') {
           this.consume()
           const arg = this.parsePrimary()
-          if (this.peek().type === 'rparen') this.consume()
+          if (this.peek().type !== 'rparen') throw new Error('Expected closing parenthesis')
+          this.consume()
           return containsValue(current, arg, memberName === 'icontains')
         }
 
@@ -468,18 +508,23 @@ export function buildEvaluationContext(input: {
   args?: Record<string, unknown>
   payload?: string
   agentRole?: string
+  toolTarget?: string
   context?: Record<string, unknown>
 }): EvaluationContext {
   const mergedArgs = omitFreeformArgs(input.toolArgs ?? input.args)
   const inferred =
     input.toolName ?? (input.payload ? inferToolFromPayload(input.payload) : undefined)
+  const tool =
+    inferred != null
+      ? {
+          name: inferred,
+          args: mergedArgs,
+          ...(input.toolTarget != null ? { target: input.toolTarget } : {}),
+        }
+      : undefined
 
   return {
-    tool: inferred
-      ? { name: inferred, args: mergedArgs }
-      : input.toolName
-        ? { name: input.toolName, args: mergedArgs }
-        : undefined,
+    tool,
     args: mergedArgs,
     payload: input.payload,
     agentRole: input.agentRole,

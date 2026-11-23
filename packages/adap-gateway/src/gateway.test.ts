@@ -310,11 +310,13 @@ describe('authorized action canonicality', () => {
     return { result, calls: counted.calls() }
   }
 
-  it('blocks mixed-case, padded, and non-canonical actions before the broker', async () => {
+  it('does not call the broker for mixed-case, padded, or non-canonical actions', async () => {
     for (const action of ['Apply', 'apply ', 'Apply Now']) {
       const { result, calls } = await run(action)
-      expect(result.decision).toBe('BLOCK')
+      expect(result.decision).toBe('ALLOW')
       expect(result.executed).toBe(false)
+      expect(result.receipt.decision.failureMode).toBe('SYSTEM_ERROR')
+      expect(result.receipt.execution?.outcome).toBe('unknown')
       expect(result.receipt.execution?.executed).toBe(false)
       expect(calls.resolves).toBe(0)
       expect(calls.executes).toBe(0)
@@ -464,10 +466,12 @@ describe('execution state persistence', () => {
       },
     })
     expect(gate.calls()).toEqual({ resolves: 0, executes: 0 })
-    expect(result.decision).toBe('BLOCK')
+    expect(result.decision).toBe('ALLOW')
     expect(result.executed).toBe(false)
     expect(result.executionStatePersistence).toBe('failed')
+    expect(result.receipt.execution?.outcome).toBe('unknown')
     expect(result.receipt.execution?.executed).toBe(false)
+    expect(result.receipt.decision.failureMode).toBe('SYSTEM_ERROR')
     expect(events.events.some((event) => event.type === 'storage.failure')).toBe(true)
   })
 

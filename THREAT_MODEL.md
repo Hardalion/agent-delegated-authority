@@ -118,15 +118,15 @@ The property holds only when the operator's network gives the agent no other rou
 
 | Finding | Classification | Disposition |
 | --- | --- | --- |
-| Root of authority / self-issued roots | Confirmed limitation | Normative requirements + optional `rootAuthority` hook in [spec/delegation.md](spec/delegation.md) |
+| Root of authority / self-issued roots | Required in production | Missing `rootAuthority` is `BLOCK` unless `unsafeDevAllowUnconfiguredChecks` is set. See [spec/delegation.md](spec/delegation.md) |
 | Self-approval via agent key | Confirmed limitation | Normative approver binding in [spec/human-approval.md](spec/human-approval.md) |
 | Caller-chosen governing policy | Confirmed limitation | Normative selection rules in [spec/policy-decision.md](spec/policy-decision.md) |
-| No per-delegation revocation | Confirmed limitation | Normative + optional `revocationCheck` hook in [spec/delegation.md](spec/delegation.md) |
+| No per-delegation revocation | Required in production | Missing `revocationCheck` is `BLOCK` unless `unsafeDevAllowUnconfiguredChecks` is set. See [spec/delegation.md](spec/delegation.md) |
 | `max_*` only `max_amount` | **Superseded** | Generic `max_<field>` ceilings landed with PR #12 |
 | Missing numeric operands coerce | Partially addressed | Ordered comparisons fail closed on non-finite / non-numeric in the reference evaluator |
 | Receipt chain / demo signature | Confirmed defects | Fixed in `adap-receipt` emit path (#15); chain limits documented in [spec/authorization-receipt.md](spec/authorization-receipt.md) |
 | MCP binding missing | Confirmed gap | Normative + policy-only distinction in [spec/mcp-binding.md](spec/mcp-binding.md) |
-| Cumulative / session spend | Confirmed out of scope for v0.1 | Non-normative future (issue #13) |
+| Cumulative / session spend | Implemented when the grant sets it | `cumulative_max_amount` and `cumulative_<field>` charge a spend ledger before execution. A grant without those keys stays per-intent. A multi-worker deployment must share the ledger store |
 | Agent key in model process | Deployment boundary | Remains a deployment property, not a protocol claim |
 
 ## Out of scope

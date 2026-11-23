@@ -1,0 +1,15 @@
+{
+  "description": "Condition grammar decision vectors. The reference evaluator accepts these productions and rejects the malformed ones.",
+  "vectors": [
+    { "id": "and-or-parens", "condition": "(args.n == 1 || args.n == 2) && args.delta > -5", "expect": "true" },
+    { "id": "membership", "condition": "args.n in [1, 2, 3]", "expect": "true" },
+    { "id": "contains", "condition": "args.tags.contains('eu')", "expect": "true" },
+    { "id": "icontains", "condition": "args.note.icontains('WIRE')", "expect": "true" },
+    { "id": "escaped-string", "condition": "args.region == 'it\\'s'", "expect": "true" },
+    { "id": "missing-path", "condition": "args.missing != 1", "expect": "false" },
+    { "id": "short-circuit-and", "condition": "false && args.note > 'no'", "expect": "false" },
+    { "id": "missing-comma", "condition": "args.n in [1 2 3]", "expect": "reject" },
+    { "id": "missing-paren", "condition": "args.note.contains('wire'", "expect": "reject" },
+    { "id": "trailing-comma", "condition": "args.n in [1,]", "expect": "reject" }
+  ]
+}

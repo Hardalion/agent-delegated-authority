@@ -24,6 +24,7 @@ import { MAX_ISSUED_AT_SKEW_MS, resolveTrustedNow, type Clock } from './clock.js
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
+import { authorityMcpCall } from './mcp-tool.js'
 import { chargeCumulativeSpend, type SpendLedger } from './spend.js'
 import {
   assertChainProfileConsistency,
@@ -157,10 +158,58 @@ export interface RunAuthorityPathInput {
    * `max_amount` stays a per-intent ceiling. This ledger is the running sum.
    */
   readonly spendLedger?: SpendLedger
+  /**
+   * Runtime hash of the MCP tool definition about to be called (`sha256:` + hex).
+   * Required for an authority-enforcing MCP call (`target` under `mcp/`), and
+   * required when any delegation sets `tool_definition_hash`. A missing or
+   * different hash is `BLOCK` before policy evaluation and before dispatch.
+   */
+  readonly mcpToolDefinitionHash?: string
 }
 
 const NONE_EXEC = 'none'
 const UNHASHABLE_EXEC = 'unhashable'
+const TOOL_DEFINITION_PIN = /^sha256:[0-9a-f]{64}$/
+
+function assertToolDefinitionPin(
+  chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
+  runtimeHash: string | undefined,
+  required: boolean
+): void {
+  const pins: string[] = []
+  for (const delegation of chain) {
+    const pin = delegation.constraints.tool_definition_hash
+    if (pin == null) continue
+    if (typeof pin !== 'string' || !TOOL_DEFINITION_PIN.test(pin)) {
+      throw new AuthorityError('tool_definition', 'tool definition pin is malformed', true)
+    }
+    pins.push(pin)
+  }
+  if (pins.length === 0) {
+    if (required) {
+      throw new AuthorityError('tool_definition', 'tool definition pin is required', true)
+    }
+    return
+  }
+  if (pins.some((pin) => pin !== pins[0])) {
+    throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
+  }
+  if (runtimeHash !== pins[0]) {
+    throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
+  }
+}
+
+function assertMcpAuthority(
+  intent: { readonly action: string; readonly target: string },
+  chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
+  runtimeHash: string | undefined
+): void {
+  const call = authorityMcpCall(intent.action, intent.target)
+  if (call.kind === 'malformed') {
+    throw new AuthorityError('mcp_binding', call.reason, true)
+  }
+  assertToolDefinitionPin(chain, runtimeHash, call.kind === 'call')
+}
 
 function hasResolver(value: unknown): value is PolicyResolver {
   if (value == null || typeof value !== 'object') return false
@@ -237,6 +286,8 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     if (input.approval != null && input.approval.intent_hash !== intentHash) {
       throw new AuthorityError('approval', 'approval is not bound to this intent', true)
     }
+
+    assertMcpAuthority(presented.intent, presented.chain, input.mcpToolDefinitionHash)
 
     const usability = await input.ledger.assertUsable(
       presented.intent.actor,
@@ -316,7 +367,6 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         }
       }
     }
-
     const pendingStore = input.pendingStore
     const seenApprovals = input.seenApprovals
     const view: RunAuthorityPathInput & { now: Date } = {
@@ -391,6 +441,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         toolName: verified.intent.action,
         toolArgs: deepDataClone(verified.intent.parameters) as Record<string, unknown>,
         agentRole: verified.intent.actor,
+        toolTarget: verified.intent.target,
       })
 
       if (policyDecision.action !== 'REQUIRE_HUMAN') {
@@ -495,6 +546,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       toolName: verified.intent.action,
       toolArgs: deepDataClone(verified.intent.parameters) as Record<string, unknown>,
       agentRole: verified.intent.actor,
+      toolTarget: verified.intent.target,
     })
 
     // Only ALLOW reaches executeBound. REQUIRE_HUMAN pauses. Every other
@@ -811,36 +863,27 @@ async function executeBound(
   try {
     result = await input.execute(ctx)
   } catch (error) {
-    if (error instanceof ExecutionOutcomeUnknownError) {
-      await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
-      return seal(input, {
-        decision: 'ALLOW',
-        ruleId: bound.decision.ruleId,
-        reason: 'downstream outcome unknown',
-        alertSeverity: 'CRITICAL',
-        matched: bound.decision.matched,
-        intentHash: bound.intentHash,
-        delegationHash: bound.delegationHash,
-        policyHash: bound.policyHash,
-        executed: false,
-        failureMode: 'SYSTEM_ERROR',
-        principalId: bound.principalId,
-        executionOutcome: 'unknown',
-      })
-    }
-    await input.ledger.fail(input.intent.actor, input.intent.nonce, bound.intentHash)
+    // The executor was invoked. Authority already allowed dispatch, and a
+    // downstream side effect cannot be ruled out. This matches
+    // ExecutionOutcomeUnknownError: ALLOW, outcome unknown, executed false,
+    // SYSTEM_ERROR. `not_dispatched` is only for a halt before `execute`.
+    await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
     return seal(input, {
-      decision: 'BLOCK',
-      ruleId: 'execution',
-      reason: 'executor failed; nothing is recorded as executed',
+      decision: 'ALLOW',
+      ruleId: bound.decision.ruleId,
+      reason:
+        error instanceof ExecutionOutcomeUnknownError
+          ? 'downstream outcome unknown'
+          : 'executor failed after dispatch; downstream outcome is unknown',
       alertSeverity: 'CRITICAL',
-      matched: false,
+      matched: bound.decision.matched,
       intentHash: bound.intentHash,
       delegationHash: bound.delegationHash,
       policyHash: bound.policyHash,
       executed: false,
       failureMode: 'SYSTEM_ERROR',
       principalId: bound.principalId,
+      executionOutcome: 'unknown',
     })
   }
 
