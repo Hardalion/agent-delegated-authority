@@ -395,6 +395,8 @@ git clone https://github.com/hardalion/agent-delegated-authority.git
 cd agent-delegated-authority
 pnpm install && pnpm test && pnpm build && pnpm demo && pnpm attacks
 ```
+On Windows with `pnpm` 12+, `pnpm install` may block `esbuild` build scripts until you run `pnpm approve-builds`.
+
 
 ```bash
 node packages/policy-engine/dist/cli.js --tool apply --agent agt_reader --args "{\"amount\":800}" --json
