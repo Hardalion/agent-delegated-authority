@@ -99,4 +99,38 @@ export class PostgresExecutionLog {
       throw new Error(`execution log refused transition to ${input.state}`)
     }
   }
+
+  /** Provisional note. Does not change state, so an in-flight write can still complete. */
+  async annotate(intentHash: string, detail: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE adap_execution_log
+       SET detail = $3, updated_at = now()
+       WHERE tenant_id = $1 AND intent_hash = $2 AND state = 'started'`,
+      [this.tenantId, intentHash, detail],
+    )
+  }
+}
+
+export interface ReconciliationDecision {
+  readonly action: 'none' | 'transition' | 'annotate'
+  readonly state: ExecutionKnowledge
+  readonly detail: string
+}
+
+/**
+ * A negative lookup of a `started` write is provisional. Moving it to
+ * `reconciled` would reject the later `completed` transition.
+ */
+export function decideReconciliation(current: ExecutionKnowledge, found: boolean): ReconciliationDecision {
+  if (current === 'started' && !found) {
+    return { action: 'annotate', state: 'started', detail: 'downstream_has_no_record' }
+  }
+  if (current === 'unknown' || current === 'started') {
+    return {
+      action: 'transition',
+      state: 'reconciled',
+      detail: found ? 'downstream_has_one_record' : 'downstream_has_no_record',
+    }
+  }
+  return { action: 'none', state: current, detail: '' }
 }

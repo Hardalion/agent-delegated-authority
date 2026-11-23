@@ -103,8 +103,8 @@ export async function executeAuthorized(input: GatewayExecuteInput): Promise<Gat
   }
 
   const result = await runAuthorityPath({
-    unsafeDevAllowUnconfiguredChecks: input.unsafeDevAllowUnconfiguredChecks ?? true,
     ...input,
+    unsafeDevAllowUnconfiguredChecks: input.unsafeDevAllowUnconfiguredChecks === true,
     execute: async (ctx) => {
       authorizedCtx = ctx
       let action: string

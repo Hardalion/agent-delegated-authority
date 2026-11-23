@@ -29,6 +29,7 @@
   "dependencies": {
     "adap": "workspace:*",
     "adap-policy": "workspace:*",
+    "adap-receipt": "workspace:*",
     "adap-store-postgres": "workspace:*",
     "zod": "^4.6.6"
   },

@@ -71,6 +71,28 @@ export class ImmutablePolicyResolver implements PolicyResolver {
     if (!hash) return undefined
     return this.resolveByContentHash(hash)
   }
+
+  /**
+   * Keep a document resolvable by content hash after its URI is no longer active.
+   * Pending REQUIRE_HUMAN rows stay bound to that hash.
+   */
+  retainHistorical(policy: Policy, uri: string): ImmutablePolicyBinding {
+    if (typeof uri !== 'string' || uri.length === 0) {
+      throw new AuthorityError('policy', 'policy URI is required')
+    }
+    const parsed = PolicySchema.parse(policy)
+    const contentHash = sha256(parsed)
+    const existing = this.byHash.get(contentHash)
+    if (existing) return existing
+    const pin: ImmutablePolicyBinding = { uri, policy: parsed, contentHash }
+    this.byHash.set(contentHash, pin)
+    return pin
+  }
+
+  /** Drop the live URI mapping. The content hash remains. */
+  unbindUri(uri: string): void {
+    this.byUri.delete(uri)
+  }
 }
 
 /** Ensure the presented policy object matches the expected immutable hash. */

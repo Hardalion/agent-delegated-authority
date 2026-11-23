@@ -41,6 +41,7 @@ describe('gateway root authority conformance', () => {
     const resolveHandle = vi.fn(async () => 'test-handle')
     const execute = vi.fn(async () => ({ status: 'completed' as const, correlationId: 'test', body: {} }))
     const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
       chain: [root], intent, directory, rootAuthority,
       policy: STAGING_ALLOW_POLICY, policyUri: STAGING_ALLOW_URI, policyResolver,
       ledger: new NonceLedger(), signer: createIdentity('runtime'), clock: new FixedClock(now),

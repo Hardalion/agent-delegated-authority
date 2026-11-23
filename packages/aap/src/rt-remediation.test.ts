@@ -127,6 +127,7 @@ function run(
     pendingStore: options.pendingStore,
     policyResolver,
     signer: env.signer,
+    includeArgsUnredacted: true,
     approval: options.approval,
     execute: options.execute ?? (() => ({ ok: true })),
   })

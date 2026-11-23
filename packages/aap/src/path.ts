@@ -121,7 +121,9 @@ export interface RunAuthorityPathInput {
   /**
    * Optional per-delegation revocation check. `revoked` and `unavailable` fail closed.
    */
-  readonly revocationCheck?: (delegationId: string) => 'active' | 'revoked' | 'unavailable'
+  readonly revocationCheck?: (
+    delegationId: string,
+  ) => 'active' | 'revoked' | 'unavailable' | Promise<'active' | 'revoked' | 'unavailable'>
   /**
    * Optional human-approval identity policy. When set, self-approval and non-human
    * approvers fail closed.
@@ -158,6 +160,12 @@ export interface RunAuthorityPathInput {
    * `max_amount` stays a per-intent ceiling. This ledger is the running sum.
    */
   readonly spendLedger?: SpendLedger
+  /**
+   * Copy tool arguments into the receipt. Default false: the emitter redacts
+   * them. Set true only when the caller has decided the arguments are not secret.
+   */
+  readonly includeArgsUnredacted?: boolean
+  readonly argsRedactedAllowlist?: readonly string[]
   /**
    * Runtime hash of the MCP tool definition about to be called (`sha256:` + hex).
    * Required for an authority-enforcing MCP call (`target` under `mcp/`), and
@@ -358,7 +366,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     }
     if (input.revocationCheck) {
       for (const delegation of verified.chain) {
-        const status = input.revocationCheck(delegation.delegation_id)
+        const status = await input.revocationCheck(delegation.delegation_id)
         if (status === 'revoked') {
           throw new AuthorityError('revoked', `delegation ${delegation.delegation_id} is revoked`, true)
         }
@@ -1024,9 +1032,8 @@ function seal(
         : {}),
     },
     signer: input.signer.privateKey,
-    // Reference path records authorized parameters for offline review.
-    // Callers that must omit secrets should pass a narrower allowlist via a future hook.
-    includeArgsUnredacted: true,
+    includeArgsUnredacted: input.includeArgsUnredacted === true,
+    argsRedactedAllowlist: input.argsRedactedAllowlist,
   })
   return {
     decision: fields.decision,

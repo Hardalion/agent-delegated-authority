@@ -1,4 +1,4 @@
-import { assertCanonicalTarget, type RunAuthorityPathInput } from 'adap'
+import { assertCanonicalTarget, type DirectoryKeyRecord, type RunAuthorityPathInput } from 'adap'
 import { z } from 'zod'
 
 const GrantSchema = z.object({
@@ -8,14 +8,23 @@ const GrantSchema = z.object({
 }).strict()
 
 /** Operator configuration. Every capability in a root must be covered. */
+function issuerPresent(
+  directory: ReadonlyMap<string, string> | { list(identityId: string): readonly Pick<DirectoryKeyRecord, 'status'>[] },
+  issuerId: string,
+): boolean {
+  if (directory instanceof Map) return directory.has(issuerId)
+  const listed = directory as { list(identityId: string): readonly Pick<DirectoryKeyRecord, 'status'>[] }
+  return listed.list(issuerId).some((key) => key.status === 'active')
+}
+
 export function createRootAuthority(
   configuration: unknown,
-  directory: ReadonlyMap<string, string>,
+  directory: ReadonlyMap<string, string> | { list(identityId: string): readonly Pick<DirectoryKeyRecord, 'status'>[] },
 ): NonNullable<RunAuthorityPathInput['rootAuthority']> {
   const grants = z.array(GrantSchema).min(1).parse(configuration)
   for (const grant of grants) {
     assertCanonicalTarget(grant.target, { grant: true })
-    if (!directory.has(grant.issuerId)) {
+    if (!issuerPresent(directory, grant.issuerId)) {
       throw new Error('root grant issuer is absent from the identity directory')
     }
   }

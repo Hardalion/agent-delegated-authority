@@ -4,15 +4,20 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import {
   exportPublicKey,
+  MemoryAuthorityDirectory,
   publicKeyFingerprint,
   SharedNonceLedger,
+  type DirectoryIdentityKind,
   type Identity,
+  type RunAuthorityPathInput,
 } from 'adap'
 import {
   applyMigrations,
   createPool,
+  decideReconciliation,
   PostgresAtomicNonceBackend,
   PostgresExecutionLog,
+  PostgresGrantRevocation,
   PostgresPendingStore,
   PostgresPolicyRegistry,
 } from 'adap-store-postgres'
@@ -55,20 +60,35 @@ function loadIssuer(pemPath: string): Identity {
   }
 }
 
-function loadDirectory(filePath: string): Map<string, string> {
-  const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as {
-    entries?: Array<{ id?: string; publicKey?: string }>
-  }
-  const directory = new Map<string, string>()
-  for (const entry of parsed.entries ?? []) {
+const KINDS = new Set<DirectoryIdentityKind>(['human', 'agent', 'service', 'workload'])
+
+export function directoryFromConfig(parsed: unknown): MemoryAuthorityDirectory {
+  const body = parsed as { entries?: Array<{ id?: string; publicKey?: string; kind?: string }> }
+  const directory = new MemoryAuthorityDirectory()
+  for (const entry of body.entries ?? []) {
     if (!entry.id || !entry.publicKey) continue
-    directory.set(entry.id, entry.publicKey)
+    const kind = entry.kind != null && KINDS.has(entry.kind as DirectoryIdentityKind)
+      ? (entry.kind as DirectoryIdentityKind)
+      : undefined
+    directory.put({
+      identityId: entry.id,
+      kid: publicKeyFingerprint(entry.publicKey),
+      alg: 'Ed25519',
+      publicKey: entry.publicKey,
+      status: 'active',
+      kind,
+    })
   }
-  if (directory.size < 2) {
+  const ids = new Set((body.entries ?? []).filter((entry) => entry.id && entry.publicKey).map((entry) => entry.id))
+  if (ids.size < 2) {
     console.error(JSON.stringify({ channel: 'adap.security', type: 'boot.directory_incomplete' }))
     process.exit(1)
   }
   return directory
+}
+
+function loadDirectory(filePath: string): MemoryAuthorityDirectory {
+  return directoryFromConfig(JSON.parse(readFileSync(filePath, 'utf8')))
 }
 
 function tokenMatches(presented: string, expected: string): boolean {
@@ -107,6 +127,30 @@ async function migrateAndRegister(pool: ReturnType<typeof createPool>): Promise<
   throw last
 }
 
+export interface GatewayServerConfig {
+  readonly audience: string
+  readonly directory: RunAuthorityPathInput['directory']
+  readonly rootAuthority: NonNullable<RunAuthorityPathInput['rootAuthority']>
+  readonly approvalPolicy: NonNullable<RunAuthorityPathInput['approvalPolicy']>
+  readonly revocationCheck: NonNullable<RunAuthorityPathInput['revocationCheck']>
+}
+
+/** Fail closed. A missing audience, revocation check, or approval policy does not boot. */
+export function createGatewayServer(config: GatewayServerConfig): GatewayServerConfig & {
+  readonly unsafeDevAllowUnconfiguredChecks: false
+} {
+  if (typeof config.audience !== 'string' || config.audience.length === 0) {
+    throw new Error('gateway audience is required')
+  }
+  if (typeof config.revocationCheck !== 'function') {
+    throw new Error('gateway revocationCheck is required')
+  }
+  if (typeof config.approvalPolicy?.isHuman !== 'function') {
+    throw new Error('gateway approvalPolicy is required')
+  }
+  return { ...config, unsafeDevAllowUnconfiguredChecks: false }
+}
+
 export async function startGateway(): Promise<void> {
   const replica = process.env.ADAP_REPLICA_ID ?? 'gateway'
   const pool = createPool({
@@ -124,6 +168,17 @@ export async function startGateway(): Promise<void> {
     JSON.parse(readFileSync(requiredEnv('ADAP_ROOT_GRANTS_PATH'), 'utf8')),
     directory,
   )
+  const approvalPolicy = {
+    isHuman: (identityId: string) => directory.lookup(identityId)?.kind === 'human',
+  }
+  const grantRevocation = new PostgresGrantRevocation(pool)
+  const gateway = createGatewayServer({
+    audience: requiredEnv('ADAP_AUDIENCE'),
+    directory,
+    rootAuthority,
+    approvalPolicy,
+    revocationCheck: (delegationId) => grantRevocation.check(delegationId),
+  })
   const signer = loadIssuer(requiredEnv('ADAP_ISSUER_KEY_PATH'))
   const clientToken = requiredEnv('ADAP_GATEWAY_CLIENT_TOKEN')
   const broker = new VaultCredentialBroker({
@@ -215,13 +270,18 @@ export async function startGateway(): Promise<void> {
           }
           if (current.state === 'unknown' || current.state === 'started') {
             const found = await broker.lookup(intentHash)
-            await executionLog.record({
-              intentHash,
-              nonce: current.nonce,
-              correlationId: current.correlationId,
-              state: 'reconciled',
-              detail: found.found ? 'downstream_has_one_record' : 'downstream_has_no_record',
-            })
+            const decision = decideReconciliation(current.state, found.found)
+            if (decision.action === 'annotate') {
+              await executionLog.annotate(intentHash, decision.detail)
+            } else if (decision.action === 'transition') {
+              await executionLog.record({
+                intentHash,
+                nonce: current.nonce,
+                correlationId: current.correlationId,
+                state: decision.state,
+                detail: decision.detail,
+              })
+            }
           }
           const after = await executionLog.get(intentHash)
           res.writeHead(200, { 'content-type': 'application/json' })
@@ -278,8 +338,12 @@ export async function startGateway(): Promise<void> {
           chain: parsed.chain as never,
           intent: parsed.intent as never,
           approval: parsed.approval as never,
-          directory,
-          rootAuthority,
+          directory: gateway.directory,
+          rootAuthority: gateway.rootAuthority,
+          approvalPolicy: gateway.approvalPolicy,
+          revocationCheck: gateway.revocationCheck,
+          audience: gateway.audience,
+          unsafeDevAllowUnconfiguredChecks: gateway.unsafeDevAllowUnconfiguredChecks,
           policy: pin.policy,
           policyUri,
           ledger: new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool })),

@@ -90,6 +90,7 @@ services:
       ADAP_POLICY_BINDINGS_PATH: /secrets/policy-bindings.json
       ADAP_ISSUER_KEY_PATH: /secrets/issuer.pem
       ADAP_ROOT_GRANTS_PATH: /secrets/root-grants.json
+      ADAP_AUDIENCE: https://gateway.adap.local
       ADAP_GATEWAY_CLIENT_TOKEN: ${ADAP_GATEWAY_CLIENT_TOKEN}
       VAULT_ADDR: http://vault:8200
       ADAP_DOWNSTREAM_ALLOWLIST: http://downstream:8080/

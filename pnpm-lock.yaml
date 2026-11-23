@@ -45,6 +45,9 @@ importers:
       adap-policy:
         specifier: workspace:*
         version: link:../policy-engine
+      adap-receipt:
+        specifier: workspace:*
+        version: link:../audit-verify
       adap-store-postgres:
         specifier: workspace:*
         version: link:../adap-store-postgres
