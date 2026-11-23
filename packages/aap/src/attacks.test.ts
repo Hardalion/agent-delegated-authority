@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { formatAttack, runAttacks } from './attacks.js'
+import { IN_GRANT_INJECTION_NOTE, formatAttack, runAttacks, runKnownGaps } from './attacks.js'
 
 describe('attack suite', () => {
   it('rejects each attack before execution and verifies the receipt', async () => {
@@ -38,5 +38,29 @@ describe('attack suite', () => {
     expect(byId.get('05-expired-delegation')?.reason).toBe('expired or not-yet-valid authority')
     expect(byId.get('06-post-approval-mutation')?.reason).toBe('approval is not bound to this intent')
     expect(byId.get('06-post-approval-mutation')?.executorCalls).toBe(0)
+  })
+
+  it('records the in-grant injection gap as ALLOW and does not claim a block', async () => {
+    const gaps = await runKnownGaps()
+    expect(gaps.map((gap) => gap.id)).toEqual(['07-in-grant-injection'])
+    const [gap] = gaps
+    if (!gap) throw new Error('missing known gap')
+
+    // Current behavior. If a future change refuses this call, update the fixture and the README.
+    expect(gap.decision).toBe('ALLOW')
+    expect(gap.reason).toBe("Rule search_allow matched: tool.name == 'search'")
+    expect(gap.executed).toBe(true)
+    expect(gap.executorCalls).toBe(1)
+    expect(gap.receiptVerified).toBe(true)
+    expect(gap.policyHashMatches).toBe(true)
+    expect(gap.intentHashMatches).toBe(true)
+    expect(gap.closing).toBe('The receipt does not record which input caused the intent.')
+
+    const file = readFileSync(new URL(`../../../examples/attacks/${gap.id}.txt`, import.meta.url), 'utf8').replace(
+      /\r\n/g,
+      '\n'
+    )
+    expect(file).toBe(`${formatAttack(gap)}\n`)
+    expect(file).toContain(IN_GRANT_INJECTION_NOTE)
   })
 })

@@ -202,6 +202,8 @@ No language model decides these outcomes. The grant, the intent, and the policy 
 
 The same path refuses six further cases. `pnpm attacks` prints them. Each refusal is `BLOCK`, the executor is not called, and the receipt verifies with the issuer public key. See [examples/attacks/](./examples/attacks/).
 
+It then prints one known gap that is not refused. An injected instruction that keeps the call inside the grant is `ALLOW`: ADAP does not check why the model chose a call. See [07-in-grant-injection](./examples/attacks/07-in-grant-injection.txt).
+
 ## Receipt
 
 Every consequential agent action can leave a portable, independently verifiable proof of authority.
@@ -384,7 +386,7 @@ node examples/verify-proof.mjs
 
 That command checks the signatures, the delegation hashes inside the receipts, the policy content hash, and that the raised child grant is rejected.
 
-`pnpm attacks` runs the six refusals in `examples/attacks/`. Each one is an execution of the reference path.
+`pnpm attacks` runs the six refusals in `examples/attacks/`, then the known gap `07-in-grant-injection`, which is allowed. Each one is an execution of the reference path.
 
 ## Quick start
 
