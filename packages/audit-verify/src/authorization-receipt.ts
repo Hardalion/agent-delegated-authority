@@ -95,6 +95,12 @@ export interface ExecutionBinding {
   readonly outcome?: 'not_dispatched' | 'returned' | 'unknown' | 'failed_after_dispatch'
   /** Hash of the unsigned intent presented at the execution boundary. */
   readonly intentHash: string
+  /**
+   * The runtime's tool-definition hash for this call (`sha256:` + 64 lowercase hex),
+   * in the same form as a grant's `tool_definition_hash`. On `ALLOW` and
+   * `REQUIRE_HUMAN` it equals the pin. See spec/mcp-binding.md.
+   */
+  readonly toolDefinitionHash?: string
 }
 
 export interface HumanAttestation {
@@ -172,6 +178,8 @@ export interface VerifyAuthorizationReceiptResult {
 const DEMO_SIGNATURE_HEX = 'ab'.repeat(64)
 
 const HEX64 = /^[0-9a-f]{64}$/
+/** Same form as a grant's `tool_definition_hash` and `hashMcpToolDefinition`. */
+const TOOL_DEFINITION_HASH = /^sha256:[0-9a-f]{64}$/
 const HEX_SIG = /^[0-9a-f]{128}$/i
 const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
 
@@ -404,6 +412,14 @@ function validateStructure(receipt: unknown): string[] {
       if (typeof execution.intentHash === 'string') {
         errors.push('execution.intentHash must be 64 hex chars')
       }
+    }
+    // Absent means no tool definition was presented. Present (including null) must be well formed.
+    if (
+      execution.toolDefinitionHash !== undefined &&
+      (typeof execution.toolDefinitionHash !== 'string' ||
+        !TOOL_DEFINITION_HASH.test(execution.toolDefinitionHash))
+    ) {
+      errors.push('execution.toolDefinitionHash must be sha256: followed by 64 lowercase hex chars')
     }
   }
 

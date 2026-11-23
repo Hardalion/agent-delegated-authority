@@ -52,6 +52,29 @@
         "presentedHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "expect": { "action": "BLOCK", "executorCalled": false }
+    },
+    {
+      "id": "mcp-receipt-tool-def-binding",
+      "claim": "authority-enforcing",
+      "input": {
+        "toolDefinition": {
+          "tool_name": "pay",
+          "server_id": "treasury",
+          "description": "Send a payment in EUR (€)",
+          "input_schema": {
+            "required": ["amount"],
+            "type": "object",
+            "properties": { "amount": { "type": "integer", "minimum": 1 } }
+          },
+          "annotations": { "destructiveHint": true, "title": "Pay" }
+        }
+      },
+      "expect": {
+        "toolDefinitionHash": "sha256:6ab05dee283ccf69ccb095d994be13457447dffa55538a58f3334d124e2e3450",
+        "adapAction": "treasury.pay",
+        "adapTarget": "mcp/treasury/pay",
+        "receiptField": "execution.toolDefinitionHash"
+      }
     }
   ]
 }

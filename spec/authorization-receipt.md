@@ -154,6 +154,9 @@ A structurally valid receipt with a valid issuer signature means the issuer atte
 | `intentHash` | string | yes, when `execution` is present | Reference-profile hash of the unsigned intent presented at the execution boundary. SHA-256 over canonical JSON, 64 hex chars |
 | `executed` | boolean | no | Whether the governing runtime reported a side effect. Not an independent observation of an external system |
 | `executedAt` | ISO-8601 | no | Execution timestamp if committed |
+| `toolDefinitionHash` | string | no. Required for an authority-enforcing MCP call | The tool-definition hash the runtime presented for a call that is pin-checked ([mcp-binding.md](./mcp-binding.md)): `sha256:` followed by 64 lowercase hex chars, the same form as a grant's `tool_definition_hash`. On `ALLOW` and `REQUIRE_HUMAN` it equals the pin. On `BLOCK` it can differ from the pin. Covered by the content hash and the signature. Absent when the call is not pin-checked or no well-formed hash was presented |
+
+A verifier who also holds the tool definition recomputes `toolDefinitionHash` and, for an MCP call, checks that `intent.toolName` is `<server_id>.<tool_name>` and `execution.targetSystem` is `mcp/<server_id>/<tool_name>`. A definition that changed after the receipt was signed does not match. Like the other bindings, this records what the runtime resolved. It does not prove what the tool server ran.
 
 ### 4.7 `HumanAttestation`
 

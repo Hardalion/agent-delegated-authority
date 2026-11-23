@@ -138,6 +138,7 @@ export {
   adapBindingForMcpCall,
   authorityMcpCall,
   hashMcpToolDefinition,
+  verifyReceiptMcpToolBinding,
   type AuthorityMcpCall,
   type McpToolDefinition,
 } from './mcp-tool.js'

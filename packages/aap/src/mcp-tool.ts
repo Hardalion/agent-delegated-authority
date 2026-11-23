@@ -1,3 +1,4 @@
+import type { AuthorizationReceiptV1 } from 'adap-receipt'
 import { sha256 } from './crypto.js'
 
 /** Server ids cannot contain `.` or `/`, so `server.tool` does not collide with a dotted tool name. */
@@ -89,4 +90,43 @@ export function adapBindingForMcpCall(serverId: string, toolName: string): {
     action: `${serverId}.${toolName}`,
     target: `mcp/${serverId}/${toolName}`,
   }
+}
+
+/**
+ * Offline check that a receipt was issued for this MCP tool definition.
+ *
+ * Passes only when `execution.toolDefinitionHash` equals `hashMcpToolDefinition(definition)`,
+ * and the receipt's `intent.toolName` and `execution.targetSystem` are the action and target
+ * derived from the definition's server and tool name.
+ *
+ * This does not check the receipt signature. Verify the receipt with the issuer public key first.
+ */
+export function verifyReceiptMcpToolBinding(
+  receipt: Pick<AuthorizationReceiptV1, 'intent' | 'execution'>,
+  definition: McpToolDefinition,
+): { readonly valid: boolean; readonly errors: readonly string[] } {
+  const errors: string[] = []
+  let expected: string | undefined
+  let binding: { readonly action: string; readonly target: string } | undefined
+  try {
+    expected = hashMcpToolDefinition(definition)
+    binding = adapBindingForMcpCall(definition.server_id, definition.tool_name)
+  } catch {
+    errors.push('tool definition is malformed or could not be canonicalized')
+  }
+  const bound = receipt.execution?.toolDefinitionHash
+  if (bound === undefined) {
+    errors.push('receipt does not bind a tool definition')
+  } else if (expected !== undefined && bound !== expected) {
+    errors.push('receipt binds a different tool definition')
+  }
+  if (binding !== undefined) {
+    if (receipt.intent.toolName !== binding.action) {
+      errors.push(`receipt action is not ${binding.action}`)
+    }
+    if (receipt.execution?.targetSystem !== binding.target) {
+      errors.push(`receipt target is not ${binding.target}`)
+    }
+  }
+  return { valid: errors.length === 0, errors }
 }
