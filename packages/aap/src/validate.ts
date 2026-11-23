@@ -268,7 +268,7 @@ function assertParametersWithin(
       assertWithinCeiling(presented, ceiling, field, key)
       continue
     }
-    if (key === 'closed') continue
+    if (key === 'closed' || key === 'tool_definition_hash') continue
     if (profile === 'ceilings-v1') {
       const field = ceilingField(key)
       if (field) {
@@ -311,7 +311,7 @@ function assertParametersWithin(
   if (constraints.closed === true) {
     const allowed = new Set<string>(['currency'])
     for (const key of Object.keys(constraints)) {
-      if (key === 'closed' || key === 'currency' || key.startsWith('cumulative_')) continue
+      if (key === 'closed' || key === 'currency' || key === 'tool_definition_hash' || key.startsWith('cumulative_')) continue
       if (key === 'max_amount') {
         allowed.add('amount')
         continue

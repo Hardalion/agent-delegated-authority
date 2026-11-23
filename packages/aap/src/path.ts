@@ -157,10 +157,39 @@ export interface RunAuthorityPathInput {
    * `max_amount` stays a per-intent ceiling. This ledger is the running sum.
    */
   readonly spendLedger?: SpendLedger
+  /**
+   * Runtime hash of the MCP tool definition about to be called (`sha256:` + hex).
+   * Required when any delegation in the chain sets `tool_definition_hash`.
+   * A missing or different hash is `BLOCK` before the executor is called.
+   */
+  readonly mcpToolDefinitionHash?: string
 }
 
 const NONE_EXEC = 'none'
 const UNHASHABLE_EXEC = 'unhashable'
+const TOOL_DEFINITION_PIN = /^sha256:[0-9a-f]{64}$/
+
+function assertToolDefinitionPin(
+  chain: readonly { readonly constraints: { readonly tool_definition_hash?: unknown } }[],
+  runtimeHash: string | undefined
+): void {
+  const pins: string[] = []
+  for (const delegation of chain) {
+    const pin = delegation.constraints.tool_definition_hash
+    if (pin == null) continue
+    if (typeof pin !== 'string' || !TOOL_DEFINITION_PIN.test(pin)) {
+      throw new AuthorityError('tool_definition', 'tool definition pin is malformed', true)
+    }
+    pins.push(pin)
+  }
+  if (pins.length === 0) return
+  if (pins.some((pin) => pin !== pins[0])) {
+    throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
+  }
+  if (runtimeHash !== pins[0]) {
+    throw new AuthorityError('tool_definition', 'tool definition pin mismatch', true)
+  }
+}
 
 function hasResolver(value: unknown): value is PolicyResolver {
   if (value == null || typeof value !== 'object') return false
@@ -316,6 +345,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         }
       }
     }
+    assertToolDefinitionPin(verified.chain, input.mcpToolDefinitionHash)
 
     const pendingStore = input.pendingStore
     const seenApprovals = input.seenApprovals
@@ -391,6 +421,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
         toolName: verified.intent.action,
         toolArgs: deepDataClone(verified.intent.parameters) as Record<string, unknown>,
         agentRole: verified.intent.actor,
+        toolTarget: verified.intent.target,
       })
 
       if (policyDecision.action !== 'REQUIRE_HUMAN') {
@@ -495,6 +526,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
       toolName: verified.intent.action,
       toolArgs: deepDataClone(verified.intent.parameters) as Record<string, unknown>,
       agentRole: verified.intent.actor,
+      toolTarget: verified.intent.target,
     })
 
     // Only ALLOW reaches executeBound. REQUIRE_HUMAN pauses. Every other
@@ -811,6 +843,9 @@ async function executeBound(
   try {
     result = await input.execute(ctx)
   } catch (error) {
+    // The executor was invoked. A thrown error does not prove the downstream
+    // write did not happen, so the receipt outcome is `unknown`, never
+    // `not_dispatched`. `not_dispatched` is only for a halt before `execute`.
     if (error instanceof ExecutionOutcomeUnknownError) {
       await input.ledger.consume(input.intent.actor, input.intent.nonce, bound.intentHash)
       return seal(input, {
@@ -832,7 +867,7 @@ async function executeBound(
     return seal(input, {
       decision: 'BLOCK',
       ruleId: 'execution',
-      reason: 'executor failed; nothing is recorded as executed',
+      reason: 'executor failed after dispatch; downstream outcome is unknown',
       alertSeverity: 'CRITICAL',
       matched: false,
       intentHash: bound.intentHash,
@@ -841,6 +876,7 @@ async function executeBound(
       executed: false,
       failureMode: 'SYSTEM_ERROR',
       principalId: bound.principalId,
+      executionOutcome: 'unknown',
     })
   }
 

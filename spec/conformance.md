@@ -36,7 +36,7 @@ Principal
 | Redact receipt `argsRedacted` deny-by-default unless allowlisted or explicitly unredacted | `packages/audit-verify/src/emit-authorization-receipt.test.ts` |
 | Label policy-only MCP helpers as not full ADAP; authority-enforcing MCP follows [mcp-binding.md](./mcp-binding.md) | `packages/policy-engine/src/integrations/mcp.test.ts`, `examples/conformance/mcp-vectors.json` |
 
-## Optional operator hooks (fail closed when configured)
+## Production checks (fail closed by default)
 
 The reference HTTP gateway configures `rootAuthority` from operator-owned resource
 grants. Its regression vectors in `packages/adap-gateway/src/root-authority.test.ts`
@@ -44,11 +44,18 @@ cover a valid principal grant, an agent's self-issued root, a root issued by an
 untrusted agent to a second agent, and an authorized issuer granting an uncovered
 resource. Rejections must leave the credential broker uncalled.
 
-| Hook | MUST when present | Reference |
+These checks are not optional in a production runtime. A missing hook is `BLOCK`.
+`unsafeDevAllowUnconfiguredChecks: true` is the only opt-out. It is dev-only.
+The receipt records each check under `extensions.checks_applied`, including
+`unsafe_dev_unconfigured_checks`. A verifier that sees that flag MUST report
+`verified_nonconforming` and MUST NOT report `verified`.
+
+| Check | Production default | Reference |
 | --- | --- | --- |
-| `rootAuthority` | Reject unauthorized roots (`root_not_authorized`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
-| `revocationCheck` | `revoked` / `unavailable` → `BLOCK` | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#revocation) |
-| `approvalPolicy` | Reject non-human / self-approval when configured | `packages/aap/src/path.ts`, [human-approval.md](./human-approval.md#who-may-approve) |
+| `rootAuthority` | MUST be set. Unauthorized and self-issued roots are `BLOCK` (`root_not_authorized`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#root-of-authority) |
+| `revocationCheck` | MUST be set. `revoked` / `unavailable` are `BLOCK` | `packages/aap/src/path.ts`, [delegation.md](./delegation.md#revocation) |
+| Approver `kind: "human"` | MUST be enforced. Missing kind is `BLOCK`. An explicit non-human kind stays `BLOCK` under the dev opt-out | `packages/aap/src/path.ts`, [human-approval.md](./human-approval.md#who-may-approve) |
+| `audience` / `aud` | MUST be set. A missing or different `aud` is `BLOCK` (`AUDIENCE_MISMATCH`) | `packages/aap/src/path.ts`, [delegation.md](./delegation.md) |
 
 `BLOCK` and a pending human decision do not call the executor. A verifier checks the receipt offline from the issuer public key, the content hash, and, when the verifier also holds them, the delegations, the intent, and the policy document. The published files in `examples/proof/` are one such check: `node examples/verify-proof.mjs`. The six attacks are `pnpm attacks`. Structure and the content hash alone are not signature verification. MCP vectors: `examples/conformance/`.
 

@@ -78,14 +78,14 @@ The caller cannot raise the limit through request metadata. Enforcement must be 
 
 ## Who may approve
 
-Approving a hash is not informed consent by itself. A conforming runtime that enforces human identity binding:
+Approving a hash is not informed consent by itself. A conforming runtime:
 
-1. Requires the approver's directory entry to be of kind `human` when identity kinds are configured.
-2. Rejects an approver who appears as `subject` anywhere in the presented chain, or as the intent `actor` (no self-approval through the agent key).
-3. Requires the root issuer to be authorized for the namespace (see [delegation.md](./delegation.md#root-of-authority)) before treating that issuer as the sole allowed approver.
-4. Binds the approval to the intent hash of a canonical rendering of action, target, and every parameter the runtime will execute.
+1. MUST require the approver's directory entry to be `kind: "human"`. A missing kind is `BLOCK`. An explicit non-human kind is `BLOCK` even when the dev opt-out is set.
+2. MUST reject an approver who appears as `subject` anywhere in the presented chain, or as the intent `actor` (no self-approval through the agent key), unless `approvalPolicy.allowSelfApproval` is explicitly true.
+3. MUST require the root issuer to be authorized for the namespace (see [delegation.md](./delegation.md#root-of-authority)) before treating that issuer as the sole allowed approver.
+4. MUST bind the approval to the intent hash of a canonical rendering of action, target, and every parameter the runtime will execute.
 
-The reference path accepts an optional `approvalPolicy` hook for steps 1–3. When absent, the path still requires `approver_id` to match the root issuer and a verifiable signature.
+`unsafeDevAllowUnconfiguredChecks: true` turns off the missing-kind requirement only. The receipt then sets `checks_applied.human_approver_kind` to false and `checks_applied.unsafe_dev_unconfigured_checks` to true. A verifier MUST NOT report that receipt as `verified`. The path still requires `approver_id` to match the root issuer and a verifiable signature.
 
 ## Reference
 

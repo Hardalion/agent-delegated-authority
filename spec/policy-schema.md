@@ -22,8 +22,34 @@ Policies are JSON objects (YAML is a serialization). Conforming documents MUST v
 |-------|------|----------|-------------|
 | `ruleId` | string | yes | Stable identifier for audit and logs |
 | `action` | enum | yes | `ALLOW` \| `BLOCK` \| `REQUIRE_HUMAN` |
-| `condition` | string | yes | Safe expression (see [deterministic-evaluation.md](./deterministic-evaluation.md)) |
+| `condition` | string | yes | Safe expression. The grammar below is the whole language. [deterministic-evaluation.md](./deterministic-evaluation.md) states how it is evaluated |
 | `alertSeverity` | enum | yes | `LOW` \| `MEDIUM` \| `CRITICAL` |
+
+## Condition grammar
+
+This is the complete grammar. The reference evaluator in `packages/policy-engine/src/evaluator.ts` accepts these productions and MUST reject any other syntax, including a missing `)`, a missing comma in an array, and a trailing comma.
+
+```
+condition    = or
+or           = and *("||" and)
+and          = comparison *("&&" comparison)
+comparison   = membership / relation / boolean
+membership   = primary "in" array
+relation     = primary ("==" / "!=" / "<" / "<=" / ">" / ">=") primary
+boolean      = primary
+array        = "[" [ primary *("," primary) ] "]"
+primary      = path / method / string / number / "true" / "false" / "null" / "(" condition ")"
+method       = path "." ("contains" / "icontains") "(" primary ")"
+path         = ident *("." ident)
+ident        = ALPHA *(ALPHA / DIGIT / "_")
+string       = "'" *(unescaped / escape) "'" / DQUOTE *(unescaped / escape) DQUOTE
+escape       = "\" ("\" / "'" / DQUOTE / "n" / "t")
+number       = ["-"] 1*DIGIT ["." 1*DIGIT]
+```
+
+`&&` and `||` associate left to right and short-circuit. A false left side of `&&` does not evaluate the right side. A true left side of `||` does not evaluate the right side. `==` and `!=` against a missing path are false. `<`, `<=`, `>`, and `>=` require finite numbers, including a leading minus. A bare path is a condition only when its value is boolean. `.contains()` is case-sensitive. `.icontains()` folds ASCII case. `in` tests membership of the left value in the array. `tool.name`, `tool.target`, and `tool.args` are the tool context. `args` is the tool arguments.
+
+Vectors: [examples/conformance/policy-grammar-vectors.json](../examples/conformance/policy-grammar-vectors.json).
 
 ## Evaluation semantics
 

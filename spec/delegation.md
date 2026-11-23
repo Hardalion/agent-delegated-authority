@@ -40,7 +40,9 @@ A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 
 `cumulative_max_amount` is the running sum of `parameters.amount`. Any `cumulative_<field>` key is the running sum of `parameters.<field>` in the same units. A child may only lower it. When any delegation in the presented chain sets one, the runtime must pass a spend ledger or the path fails closed and does not execute. One intent cannot exceed the pool, and later intents cannot push the sum over it. `read` and `search` with no `amount` charge zero for the amount pool.
 
-`closed: true` rejects any parameter key that is not the field of a `max_<field>` ceiling, `currency`, or an exact-match constraint. A chain longer than 8 links is rejected before signature verification. `aud`, when the runtime sets an audience, must match that audience on every delegation, intent, and approval.
+`closed: true` rejects any parameter key that is not the field of a `max_<field>` ceiling, `currency`, or an exact-match constraint. `tool_definition_hash` is not a parameter. It is the MCP tool-definition pin in [mcp-binding.md](./mcp-binding.md). A chain longer than 8 links is rejected before signature verification.
+
+`aud` is required on every delegation, intent, and approval. A production runtime MUST set `audience` and MUST reject a missing or different `aud` (`AUDIENCE_MISMATCH`). The same default applies to root of authority, revocation, and human approver kind below. The only opt-out is `unsafeDevAllowUnconfiguredChecks: true`. That flag is dev-only. A receipt minted under it sets `extensions.checks_applied.unsafe_dev_unconfigured_checks` to true, and a verifier MUST NOT report that receipt as `verified`.
 
 ## Narrowing
 
@@ -69,7 +71,7 @@ A conforming runtime that enforces root of authority:
 3. Rejects a root whose issuer is also its subject, unless the configuration explicitly allows that for the namespace.
 4. Distinguishes identity kinds (`human`, `agent`, `service`) when verifying approvals and roots.
 
-The reference path accepts an optional `rootAuthority` hook on `runAuthorityPath`. When the hook is absent, root checks are deployment-owned and out of band. When present, a failed check is fail-closed `BLOCK`.
+A production runtime MUST supply `rootAuthority`. A missing hook is `BLOCK` (`root authority is required`). A failed check is `BLOCK` (`root_not_authorized`). `unsafeDevAllowUnconfiguredChecks: true` is the only way to run without the hook, and the receipt records that opt-out in `checks_applied`.
 
 ## Lifetime
 
@@ -86,13 +88,13 @@ A conforming runtime that supports revocation:
 3. Treats a revoked link as `BLOCK` with rule `revoked`.
 4. Fails closed when revocation status cannot be read.
 
-The reference path accepts an optional `revocationCheck` hook. When absent, only expiry applies. When present, `revoked` and `unavailable` fail closed.
+A production runtime MUST supply `revocationCheck`. A missing hook is `BLOCK` (`revocation check is required`). `revoked` and `unavailable` are `BLOCK`. `unsafeDevAllowUnconfiguredChecks: true` is the only way to run with expiry alone, and the receipt records that opt-out in `checks_applied`.
 
 ## Constraint scope
 
-In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them. A future revision may attach constraints per capability and support `closed: true` (any unnamed parameter is `BLOCK`).
+In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them or the grant sets `closed: true`. Per-capability constraints are not in this profile.
 
-`max_<field>` ceilings remain per-intent. The running sum is `cumulative_max_amount`, checked against the spend ledger on the authority path.
+`max_<field>` ceilings remain per-intent. `cumulative_max_amount` and `cumulative_<field>` are the running sums, charged on the spend ledger before execution. A grant that sets one and a runtime that does not pass a ledger is `BLOCK`. The reference ledger is in-process. More than one worker MUST share a ledger store. See [amounts-and-targets.md](./amounts-and-targets.md).
 
 ## Reference
 
