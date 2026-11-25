@@ -20,6 +20,7 @@ import {
   PostgresGrantRevocation,
   PostgresPendingStore,
   PostgresPolicyRegistry,
+  PostgresSpendLedger,
 } from 'adap-store-postgres'
 import { AlertingEventSink } from './alerts.js'
 import { JsonSecurityEventSink } from './events.js'
@@ -193,6 +194,8 @@ export async function startGateway(): Promise<void> {
     replica,
   )
   const executionLog = new PostgresExecutionLog(pool)
+  // Cumulative constraints fail closed without a ledger; one durable pool per database.
+  const spendLedger = new PostgresSpendLedger({ pool })
   let dbReady = false
   let vaultReady = false
   let dbWasReady = true
@@ -349,6 +352,7 @@ export async function startGateway(): Promise<void> {
           ledger: new SharedNonceLedger(new PostgresAtomicNonceBackend({ pool })),
           pendingStore: new PostgresPendingStore({ pool }),
           policyResolver: registry,
+          spendLedger,
           signer,
           broker,
           events,

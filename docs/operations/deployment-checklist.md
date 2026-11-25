@@ -23,7 +23,7 @@ The in-memory stores in `packages/aap` are correct for one process only.
 | --- | --- | --- |
 | S1 | Every gateway instance uses one shared atomic nonce store, keyed by `(actor_id, nonce)`. | Present the same signed intent to two instances at once. Exactly one executes. Reference: `PostgresAtomicNonceBackend` and `SharedNonceLedger` in `packages/adap-store-postgres`. Exclusion holds only when every instance uses the same database. |
 | S2 | The pending `REQUIRE_HUMAN` store is shared, and its approval queue cap is enforced atomically. | Same two-instance test with a pending approval. Reference: `PostgresPendingStore`. |
-| S3 | If any grant sets `cumulative_max_amount` or `cumulative_<field>`, every worker charges the same spend ledger. | `MemorySpendLedger` is one process. Workers with separate ledgers do not share a budget. |
+| S3 | If any grant sets `cumulative_max_amount` or `cumulative_<field>`, every worker charges the same spend ledger. | The gateway uses `PostgresSpendLedger` and migration 005. Workers with separate ledgers do not share a budget. |
 | S4 | New intents use nonces with at least 128 bits from a CSPRNG. | Use `generateSecureNonce` or an equivalent. |
 | S5 | Downstream writes are idempotent or reconcilable by intent hash. | A throw after a partial write, or an unknown outcome, still consumes the nonce and does not prove the write did not happen. See [outcome unknown](outcome-unknown.md). |
 

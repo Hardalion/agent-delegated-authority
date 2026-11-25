@@ -579,6 +579,73 @@ describe('execution state persistence', () => {
     expect(calls).toBe(0)
     expect(gate.calls()).toEqual({ resolves: 0, executes: 0 })
   })
+
+  it('records spend but does not mark the intent executed when the downstream outcome is unknown', async () => {
+    const { principal, directory, root, intent, signer, policyResolver, broker, calls } = setup()
+    const spendLedger = new MemorySpendLedger()
+    const events = new MemorySecurityEventSink()
+    const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
+      chain: [root],
+      intent,
+      directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      ledger: new NonceLedger(),
+      signer,
+      policyResolver,
+      spendLedger,
+      clock: new FixedClock(NOW),
+      broker,
+      events,
+    })
+    expect(result.decision).toBe('ALLOW')
+    expect(result.executed).toBe(false)
+    expect(result.executionStatePersistence).toBe('not_configured')
+    // Spend is charged before execution. A failed-after-dispatch outcome keeps
+    // the budget consumed; it does not prove the external side effect happened.
+    expect(spendLedger.spent(root.delegation_id)).toBeGreaterThan(0)
+    expect(result.receipt.execution.outcome).toBe('unknown')
+    expect(result.downstream?.status).toBe('unknown')
+    expect(events.events.some((e) => e.type === 'execution.outcome_unknown')).toBe(true)
+  })
+
+  it('does not execute when the downstream call fails, and spend remains recorded', async () => {
+    const { principal, directory, root, intent, signer, policyResolver, broker, calls } = setup()
+    const spendLedger = new MemorySpendLedger()
+    const events = new MemorySecurityEventSink()
+    const failing = {
+      async resolveHandle() {
+        return 'hdl_fail'
+      },
+      async execute(_handle, request) {
+        calls.resolves += 1
+        return { status: 'failed', correlationId: request.correlationId, error: 'operating_runtime_unavailable' }
+      },
+    }
+    const result = await executeAuthorized({
+      unsafeDevAllowUnconfiguredChecks: true,
+      chain: [root],
+      intent,
+      directory,
+      policy: ALLOW_APPLY,
+      policyUri: ALLOW_URI,
+      ledger: new NonceLedger(),
+      signer,
+      policyResolver,
+      spendLedger,
+      clock: new FixedClock(NOW),
+      broker: failing,
+      events,
+    })
+    expect(result.decision).toBe('ALLOW')
+    expect(result.executed).toBe(false)
+    expect(result.executionStatePersistence).toBe('not_configured')
+    expect(result.receipt.execution.outcome).toBe('failed_after_dispatch')
+    expect(result.downstream?.status).toBe('failed')
+    expect(events.events.some((e) => e.type === 'execution.failed')).toBe(true)
+    expect(spendLedger.spent(root.delegation_id)).toBeGreaterThan(0)
+  })
 })
 
 describe('bypass attempts', () => {

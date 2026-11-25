@@ -14,7 +14,7 @@ These are limits of the reference implementation and of a deployment. They are n
 | Vault dev mode | The local drill uses Vault dev mode. See [local staging](../operations/local-staging.md). |
 | Clock and policy registry | The operator supplies the clock and the policy documents. Caller `now` is rejected. |
 | External retest | Not done. |
-| Cumulative spend | Enforced only when a grant sets `cumulative_max_amount` or `cumulative_<field>`. `max_amount` stays per intent. The reference ledger is one process. Workers that do not share a store do not share a pool. |
+| Cumulative spend | Enforced only when a grant sets `cumulative_max_amount` or `cumulative_<field>`. `max_amount` stays per intent. The reference gateway charges a Postgres ledger, so workers on the same database share a pool; workers that do not share a store do not share a budget. |
 | Explicit `defaultAction: ALLOW` | Unmatched calls follow that configured action. v0.1 does not rewrite it to `BLOCK`. Consequential policies should set `BLOCK`. |
 | Freeform argument names | The evaluator does not run prompt text. A policy can still name a field the caller controls. There is no universal argument whitelist. |
 | Receipt chain | `verifyReceiptChain` does not detect a dropped tail. |

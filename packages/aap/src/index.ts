@@ -83,6 +83,7 @@ export {
   validateSignedDelegation,
   validateHumanApproval,
   assertCanonicalTarget,
+  assertCanonicalCurrency,
   NONCE_MAX_LENGTH,
   NONCE_PATTERN,
 } from './runtime-validate.js'

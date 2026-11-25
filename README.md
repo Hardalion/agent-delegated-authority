@@ -304,7 +304,7 @@ ADAP gateway / sidecar ──ALLOW──► operator write endpoint (credential 
 
 That holds only when the operator's network gives the agent no other route to the endpoint or the credential. `packages/adap-gateway` is a reference process for this boundary. It does not supply the operator's network policy. The protocol does not require that package.
 
-`max_amount` is a per-intent ceiling on the terminal grant. `cumulative_max_amount` and `cumulative_<field>`, when the grant sets them, are the running sums on a spend ledger. A grant that sets one and a runtime with no ledger does not execute. The reference ledger is in-process, so more than one worker must share a store. Optional receipt fields `sequence` and `prevReceiptHash` form a hash chain that `verifyReceiptChain` checks for gaps and reordering. Standalone receipts without those fields remain valid individually.
+`max_amount` is a per-intent ceiling on the terminal grant. `cumulative_max_amount` and `cumulative_<field>`, when the grant sets them, are the running sums on a spend ledger. A grant that sets one and a runtime with no ledger does not execute. The reference gateway charges a Postgres spend ledger, so workers on the same database share the pool; any other runtime must supply a shared store. Optional receipt fields `sequence` and `prevReceiptHash` form a hash chain that `verifyReceiptChain` checks for gaps and reordering. Standalone receipts without those fields remain valid individually.
 
 The example policy `basic-agent-authority` is synthetic. Identifiers such as `prn_example`, `agt_a`, and `resource/example` are not organizations.
 
