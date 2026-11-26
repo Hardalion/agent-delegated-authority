@@ -175,6 +175,77 @@ export function validateDelegationNarrowing(parent: SignedDelegation, child: Sig
 }
 
 /**
+ * Closed-world mode (finding #6).
+ *
+ * Signed-object 0.2 (`ceilings-v1`): closed by default. A parameter that no constraint
+ * declares is rejected unless the grant signs `closed: false`.
+ * Legacy v0.1: unchanged signed meaning, open unless the grant signs `closed: true`.
+ */
+export function isClosedWorld(constraints: Constraints, profile: ConstraintProfile): boolean {
+  if (hasOwn(constraints, 'closed')) {
+    const closed = (constraints as Record<string, unknown>).closed
+    if (typeof closed !== 'boolean') {
+      throw new AuthorityError('constraint', 'constraint closed must be a boolean', true)
+    }
+    return closed
+  }
+  return profile === 'ceilings-v1'
+}
+ 
+/** Parameter names a grant declares, and so permits in closed-world mode. */
+export function declaredParameterFields(
+  constraints: Constraints,
+  profile: ConstraintProfile
+): Set<string> {
+  const fields = new Set<string>(['currency'])
+  for (const key of Object.keys(constraints)) {
+    if (key === 'closed' || key === 'currency' || key === 'tool_definition_hash') continue
+    if (key === 'cumulative_max_amount') {
+      fields.add('amount')
+      continue
+    }
+    if (key.startsWith('cumulative_')) {
+      fields.add(key.slice('cumulative_'.length))
+      continue
+    }
+    if (key === 'max_amount') {
+      fields.add('amount')
+      continue
+    }
+    // Legacy keeps every other key, including `max_quantity`, as an exact match on that name.
+    const field = profile === 'ceilings-v1' ? ceilingField(key) : undefined
+    fields.add(field ?? key)
+  }
+  return fields
+}
+ 
+/**
+ * A closed parent stays closed down the chain, and a child cannot declare a parameter
+ * the parent did not. The intent is checked against the terminal grant only, so this
+ * is what keeps every ancestor's closed world in force.
+ */
+function assertClosedWorldNarrow(
+  parent: Constraints,
+  child: Constraints,
+  profile: ConstraintProfile
+): void {
+  if (!isClosedWorld(parent, profile)) return
+  if (!isClosedWorld(child, profile)) {
+    throw new AuthorityError('narrowing', 'child reopens a closed parent', true)
+  }
+  const allowed = declaredParameterFields(parent, profile)
+  for (const field of declaredParameterFields(child, profile)) {
+    if (!allowed.has(field)) {
+      throw new AuthorityError(
+        'narrowing',
+        `child declares parameter ${field} that the closed parent does not`,
+        true
+      )
+    }
+  }
+}
+
+/**
  * Profile-aware constraint narrowing.
  * Legacy: only `max_amount` may be reduced as a ceiling; every other key
  * (including `max_quantity`) must match exactly.
@@ -185,7 +256,10 @@ function assertConstraintsNarrow(
   child: Constraints,
   profile: ConstraintProfile
 ): void {
+    assertClosedWorldNarrow(parent, child, profile)
   for (const [key, parentVal] of ownEntries(parent as Record<string, unknown>)) {
+      // `closed` may only move from open to closed. assertClosedWorldNarrow enforces that.
+    if (key === 'closed') continue
     if (!hasOwn(child, key)) {
       throw new AuthorityError('narrowing', `child drops constraint ${key}`, true)
     }
@@ -308,17 +382,8 @@ function assertParametersWithin(
       throw new AuthorityError('constraint', `parameter ${key} is outside the delegation`, true)
     }
   }
-  if (constraints.closed === true) {
-    const allowed = new Set<string>(['currency'])
-    for (const key of Object.keys(constraints)) {
-      if (key === 'closed' || key === 'currency' || key === 'tool_definition_hash' || key.startsWith('cumulative_')) continue
-      if (key === 'max_amount') {
-        allowed.add('amount')
-        continue
-      }
-      const field = key.startsWith('max_') ? key.slice(4) : key
-      if (field) allowed.add(field)
-    }
+  if (isClosedWorld(constraints, profile)) {
+    const allowed = declaredParameterFields(constraints, profile)
     for (const key of Object.keys(parameters)) {
       if (!allowed.has(key)) {
         throw new AuthorityError('constraint', `undeclared parameter ${key}`, true)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Closed-world grants by default (#6)
+Signed-object 0.2 grants are now closed by default. A parameter that no constraint declares is `BLOCK` (`constraint`) unless the grant signs `closed: false`. Before this change, a grant of `{ max_amount, currency }` for `payments.transfer` let an agent choose any `recipient` or add any argument, and the call was ALLOWed with a valid receipt. Legacy v0.1 grants keep their signed meaning.
+Narrowing now preserves the closed world across the chain. The intent is checked against the terminal grant only, so a sub-agent could previously reopen a parent that set `closed: true` by adding an exact-match constraint on a new parameter name (for example `callback_url`). A child of a closed parent must be closed and may declare only parameters the parent declares. A child may close an open parent. `cumulative_<field>` now declares `<field>`, and a non-boolean `closed` is rejected.
+Breaking for 0.2 deployments: a grant that relied on unnamed parameters is now `BLOCK` until it names them or signs `closed: false`. Regression tests: `packages/aap/src/open-parameters.test.ts`.
+
 ### Security credit
 
 The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `createGatewayServer` requires an audience, `approvalPolicy.isHuman`, and a revocation check. Revocation is read from `adap_revoked_grants`, and a store failure is `unavailable` (`BLOCK`). Reported by Ahmed Shacker (@AS2812). Fixed in #47.
