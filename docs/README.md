@@ -6,6 +6,7 @@ ADAP is an open protocol. This repository also contains reference implementation
 | --- | --- |
 | [spec/](../spec/) | Protocol requirements |
 | [docs/architecture/reference.md](architecture/reference.md) | How the reference packages relate to the protocol |
+| [docs/integrations/mcp-proxy.md](integrations/mcp-proxy.md) | Design draft for an authority-enforcing MCP proxy (Milestone 1; no implementation yet) |
 | [docs/security/status.md](security/status.md) | Current security status of this tree |
 | [docs/security/regression-matrix.md](security/regression-matrix.md) | ADAP-001 through ADAP-011 and the tests that cover them |
 | [docs/operations/local-staging.md](operations/local-staging.md) | Local Compose drill |
