@@ -138,8 +138,19 @@ describe('spending bound', () => {
     expect(() => assertIntentWithinDelegation(intent({ max_quantity: 5 }), grant)).toThrow(
       /quantity is required/,
     )
-    expect(() => assertIntentWithinDelegation(intent({ quantity: 3, max_quantity: 5 }), grant)).not.toThrow()
-  })
+       // 0.2 is closed by default (#6): an echoed `max_quantity` is an undeclared parameter.
+    expect(() => assertIntentWithinDelegation(intent({ quantity: 3, max_quantity: 5 }), grant)).toThrow(
+      /undeclared parameter max_quantity/,
+    )
+    const open = ceilingsDelegation({
+      capabilities: [{ action: 'purchase', target: 'airline/*' }],
+      constraints: { max_quantity: 5, closed: false },
+    })
+    expect(() => assertIntentWithinDelegation(intent({ quantity: 3, max_quantity: 5 }), open)).not.toThrow()
+    expect(() => assertIntentWithinDelegation(intent({ quantity: 999, max_quantity: 5 }), open)).toThrow(
+      /exceeds delegated max_quantity/,
+    )
+ })
 
   it('keeps other max_* ceilings and rejects non-canonical limits', () => {
     const records = ceilingsDelegation({

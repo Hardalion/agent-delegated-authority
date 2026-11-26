@@ -40,7 +40,9 @@ A constraint key `max_<field>` is a per-intent ceiling on `parameters.<field>`.
 
 `cumulative_max_amount` is the running sum of `parameters.amount`. Any `cumulative_<field>` key is the running sum of `parameters.<field>` in the same units. A child may only lower it. When any delegation in the presented chain sets one, the runtime must pass a spend ledger or the path fails closed and does not execute. One intent cannot exceed the pool, and later intents cannot push the sum over it. A reused delegation id with a lower ceiling has its own pool, so the higher ceiling is not spent against the lower cap. Monetary pools require `currency` on the grant and the intent. A missing or different currency is `BLOCK`, and two currencies are not added together. `read` and `search` with no `amount` charge zero for the amount pool.
 
-`closed: true` rejects any parameter key that is not the field of a `max_<field>` ceiling, `currency`, or an exact-match constraint. `tool_definition_hash` is not a parameter. It is the MCP tool-definition pin in [mcp-binding.md](./mcp-binding.md). An authority-enforcing MCP call (`target` under `mcp/`) MUST set it. A non-MCP grant leaves it optional. A chain longer than 8 links is rejected before signature verification.
+<!-- `closed: true` rejects any parameter key that is not the field of a `max_<field>` ceiling, `currency`, or an exact-match constraint. `tool_definition_hash` is not a parameter. It is the MCP tool-definition pin in [mcp-binding.md](./mcp-binding.md). An authority-enforcing MCP call (`target` under `mcp/`) MUST set it. A non-MCP grant leaves it optional. A chain longer than 8 links is rejected before signature verification. -->
+
+`closed world` In signed-object 0.2 a grant is closed by default: the runtime rejects any parameter key that is not `currency`, the field of a `max_<field>` or `cumulative_<field>` ceiling (`amount` for `max_amount` and `cumulative_max_amount`), or the name of an exact-match constraint. A grant opens itself only by signing `closed: false`. A legacy v0.1 grant keeps its signed meaning and is closed only when it sets `closed: true`. `closed` MUST be a boolean. Narrowing preserves the closed world: a child of a closed parent MUST be closed and MUST NOT declare a parameter the parent does not declare, so adding an exact-match or ceiling key on a new field is rejected (`narrowing`). A child MAY close an open parent. `tool_definition_hash` is not a parameter. It is the MCP tool-definition pin in [mcp-binding.md](./mcp-binding.md). An authority-enforcing MCP call (`target` under `mcp/`) MUST set it. A non-MCP grant leaves it optional. A chain longer than 8 links is rejected before signature verification.
 
 `aud` is required on every delegation, intent, and approval. A production runtime MUST set `audience` and MUST reject a missing or different `aud` (`AUDIENCE_MISMATCH`). The same default applies to root of authority, revocation, and human approver kind below. The only opt-out is `unsafeDevAllowUnconfiguredChecks: true`. That flag is dev-only. A receipt minted under it sets `extensions.checks_applied.unsafe_dev_unconfigured_checks` to true, and a verifier MUST NOT report that receipt as `verified`.
 
@@ -55,6 +57,8 @@ A child cannot:
 - raise a `max_<field>` ceiling, including `max_amount` and `max_quantity` (canonical safe-integer units; see [amounts-and-targets.md](amounts-and-targets.md))
 - pass on a capability marked `delegable: false`
 - drop a parent constraint, including by relying on inherited / prototype properties
+  
+- reopen a closed parent (`closed: false`, or omitting `closed` under a legacy parent that set `closed: true`), or declare a parameter a closed parent does not declare
 
 Constraints are normalized to own-property data-only objects before narrowing and before terminal enforcement. Prototype-bearing constraint objects are rejected. Missing own constraints are not treated as unlimited authority.
 
@@ -92,7 +96,9 @@ A production runtime MUST supply `revocationCheck`. A missing hook is `BLOCK` (`
 
 ## Constraint scope
 
-In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them or the grant sets `closed: true`. Per-capability constraints are not in this profile.
+<!-- In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them or the grant sets `closed: true`. Per-capability constraints are not in this profile. -->
+
+In v0.1, constraints apply to the whole terminal delegation. In signed-object 0.2, parameters not named by any constraint are rejected unless the grant signs `closed: false`. In a legacy v0.1 grant they are unbounded unless policy rules cover them or the grant sets `closed: true`. Per-capability constraints are not in this profile.
 
 `max_<field>` ceilings remain per-intent. `cumulative_max_amount` and `cumulative_<field>` are the running sums, charged on the spend ledger before execution. A grant that sets one and a runtime that does not pass a ledger is `BLOCK`. The reference ledger is in-process. More than one worker MUST share a ledger store. See [amounts-and-targets.md](./amounts-and-targets.md).
 
