@@ -1,10 +1,15 @@
 {
   "name": "adap-store-postgres",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
+  "sideEffects": false,
   "description": "PostgreSQL atomic nonce and pending-approval adapters for ADAP production deployments",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/hardalion/agent-delegated-authority",
+  "bugs": {
+    "url": "https://github.com/hardalion/agent-delegated-authority/issues"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -20,9 +25,11 @@
   "files": [
     "dist",
     "migrations",
+    "LICENSE",
     "README.md"
   ],
   "scripts": {
+    "prepublishOnly": "pnpm build",
     "prebuild": "pnpm --dir ../.. --filter adap build",
     "build": "tsc",
     "pretypecheck": "pnpm --dir ../.. --filter adap build",

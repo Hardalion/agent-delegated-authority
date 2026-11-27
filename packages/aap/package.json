@@ -1,12 +1,22 @@
 {
   "name": "adap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
+  "sideEffects": false,
   "description": "Reference implementation of the Agent Delegated Authority Protocol (ADAP): delegation, signed intent, policy decision, human approval, receipt",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/hardalion/agent-delegated-authority",
+  "bugs": {
+    "url": "https://github.com/hardalion/agent-delegated-authority/issues"
+  },
   "files": [
     "dist",
+    "!dist/print-demo.*",
+    "!dist/print-attacks.*",
+    "!dist/launch-proof.*",
+    "!dist/verify-published-proof.*",
+    "LICENSE",
     "README.md"
   ],
   "engines": {
@@ -22,6 +32,7 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "pnpm build",
     "prebuild": "pnpm --dir ../.. --filter adap-policy --filter adap-receipt build",
     "build": "tsc",
     "pretypecheck": "pnpm --dir ../.. --filter adap-policy --filter adap-receipt build",

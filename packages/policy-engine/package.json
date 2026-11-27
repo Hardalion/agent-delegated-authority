@@ -1,10 +1,15 @@
 {
   "name": "adap-policy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
+  "sideEffects": false,
   "description": "Reference policy evaluator for the Agent Delegated Authority Protocol (Apache 2.0)",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/hardalion/agent-delegated-authority",
+  "bugs": {
+    "url": "https://github.com/hardalion/agent-delegated-authority/issues"
+  },
   "bin": {
     "adap-policy": "./dist/cli.js"
   },
@@ -23,7 +28,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {

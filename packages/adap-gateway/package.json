@@ -1,10 +1,15 @@
 {
   "name": "adap-gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
+  "sideEffects": false,
   "description": "Reference ADAP execution gateway with credential isolation boundary",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/hardalion/agent-delegated-authority",
+  "bugs": {
+    "url": "https://github.com/hardalion/agent-delegated-authority/issues"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -17,8 +22,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "LICENSE", "README.md"],
   "scripts": {
+    "prepublishOnly": "pnpm build",
     "prebuild": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
     "build": "tsc",
     "pretypecheck": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
