@@ -6,7 +6,7 @@
 import { createPublicKey, sign as signEd25519, verify as verifyEd25519, type KeyObject } from 'node:crypto'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
-import { canonicalJson } from './canonical-json.js'
+import { canonicalJson, CanonicalJsonError } from './canonical-json.js'
 
 export const AUTHORIZATION_RECEIPT_FORMAT_VERSION = 1 as const
 export const AUTHORIZATION_RECEIPT_KIND = 'adap.receipt' as const
@@ -538,12 +538,22 @@ function normalizeAuthorizationOutcomeSafe(
 export function verifyReceiptSignature(receipt: AuthorizationReceiptV1, publicKeySpki: string): boolean {
   const { signature, ...unsigned } = receipt
   if (!/^[0-9a-f]{128}$/i.test(signature)) return false
+  // Non-canonical receipt content cannot have been signed by this scheme, so it
+  // does not verify. Fail closed rather than throwing on untrusted input. A bad
+  // public key is a caller error and still throws.
+  let preimage: string
+  try {
+    preimage = canonicalReceiptJson(unsigned)
+  } catch (error) {
+    if (error instanceof CanonicalJsonError) return false
+    throw error
+  }
   const key = createPublicKey({
     key: Buffer.from(publicKeySpki.trim(), 'base64url'),
     type: 'spki',
     format: 'der',
   })
-  return verifyEd25519(null, Buffer.from(canonicalReceiptJson(unsigned)), key, Buffer.from(signature, 'hex'))
+  return verifyEd25519(null, Buffer.from(preimage), key, Buffer.from(signature, 'hex'))
 }
 
 export type VerifyAuthorizationReceiptOptions = {
@@ -576,7 +586,28 @@ export function verifyAuthorizationReceipt(
 
   const r = receipt as AuthorizationReceiptV1
   const { signature: _sig, ...unsigned } = r
-  const expected = contentHashOfUnsignedReceipt(unsigned)
+  // A structurally valid receipt can still carry content that is not canonical
+  // JSON (for example a lone UTF-16 surrogate in a free-text field). The hash
+  // preimage rejects it, but this verifier must fail closed with a result, not
+  // throw: it is called on untrusted receipts, including from verifyReceiptChain.
+  let expected: string
+  try {
+    expected = contentHashOfUnsignedReceipt(unsigned)
+  } catch (error) {
+    if (error instanceof CanonicalJsonError) {
+      return {
+        valid: false,
+        contentHashOk: false,
+        structureOk: true,
+        signatureChecked: false,
+        demoSignature: false,
+        status: 'invalid',
+        failureReason: 'STRUCTURE_INVALID',
+        errors: [`receipt content is not canonical JSON: ${error.message}`],
+      }
+    }
+    throw error
+  }
   const contentHashOk = expected === r.integrity.contentHash
   const demoSignature = r.signature.toLowerCase() === DEMO_SIGNATURE_HEX
   const errors: string[] = []
@@ -696,12 +727,22 @@ export function verifyReceiptCheckpoint(
     return { valid: false, errors: ['MISSING_PUBLIC_KEY'] }
   }
   const { signature, ...unsigned } = checkpoint
+  // Non-canonical checkpoint content cannot have been signed; fail closed.
+  let preimage: string
+  try {
+    preimage = canonicalReceiptJson(unsigned)
+  } catch (error) {
+    if (error instanceof CanonicalJsonError) {
+      return { valid: false, errors: ['checkpoint content is not canonical JSON'] }
+    }
+    throw error
+  }
   const key = createPublicKey({
     key: Buffer.from(publicKeySpki.trim(), 'base64url'),
     type: 'spki',
     format: 'der',
   })
-  const ok = verifyEd25519(null, Buffer.from(canonicalReceiptJson(unsigned)), key, Buffer.from(signature, 'hex'))
+  const ok = verifyEd25519(null, Buffer.from(preimage), key, Buffer.from(signature, 'hex'))
   if (!ok) errors.push('checkpoint signature invalid')
   return { valid: errors.length === 0, errors }
 }
