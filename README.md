@@ -31,8 +31,8 @@ A broad credential is not that authority. Signatures and keys still exist. They 
 Node 22 or newer. Package `0.2.0`.
 
 ```bash
-pnpm add adap adap-policy adap-receipt
-npm install adap adap-policy adap-receipt
+pnpm add adap-core adap-policy adap-receipt
+npm install adap-core adap-policy adap-receipt
 ```
 
 The snippet is an ES module. It grants one MCP tool, runs that grant through `runAuthorityPath`, and checks the signed receipt against the tool definition. `lookup` is `ALLOW` and the executor runs. `pay` of 40 is `REQUIRE_HUMAN` and the executor does not run. `pay` of 300 is `BLOCK` and the executor does not run. A `REQUIRE_HUMAN` continues only with `signApproval` bound to that intent hash.
@@ -54,7 +54,7 @@ import {
   verifyProtocolReceipt,
   verifyReceiptMcpToolBinding,
   type McpToolDefinition,
-} from 'adap'
+} from 'adap-core'
 import type { Policy } from 'adap-policy'
 
 const policy: Policy = {
@@ -418,7 +418,7 @@ A refused action gets a receipt too. `executed` is false. Specification: [spec/a
 | Piece | What it is | What it is not |
 | --- | --- | --- |
 | **ADAP** (`spec/`) | Open delegated-authority protocol (Apache 2.0) | Hardalion Nexus, a hosted control plane, or a vendor SDK |
-| **Reference packages** (`adap`, `adap-policy`, `adap-receipt`, `adap-gateway`) | One conforming implementation of the protocol | Required to use ADAP; not native SAP/Stripe/AWS connectors |
+| **Reference packages** (`adap-core`, `adap-policy`, `adap-receipt`, `adap-gateway`) | One conforming implementation of the protocol | Required to use ADAP; not native SAP/Stripe/AWS connectors |
 | **Policy-only helpers** (`McpToolGate`, `integrations/`) | Evaluate tool args against a policy document | Full ADAP (no signed intent, delegation, capability, or receipt) |
 | **Hackathon `/api/gate`** (event branch `hackathon/participants`) | Local demo console for summit participants | Normative ADAP or production enforcement |
 | **Hardalion Nexus** | Separate commercial product that can *implement* ADAP semantics | Part of this protocol repository |
@@ -502,7 +502,7 @@ rules:
 agent-delegated-authority/
 ├── spec/
 ├── packages/
-│   ├── aap/                  adap
+│   ├── aap/                  adap-core
 │   ├── policy-engine/        adap-policy
 │   ├── audit-verify/         adap-receipt
 │   ├── adap-gateway/
@@ -524,7 +524,7 @@ agent-delegated-authority/
 | [spec/](./spec/) | Protocol requirements |
 | `adap-policy` | Reference evaluator, CLI `adap-policy` |
 | `adap-receipt` | Offline Authorization Receipt verification |
-| `adap` | Reference authority path in `packages/aap`. Not normative. The caller supplies the execution callback. |
+| `adap-core` | Reference authority path in `packages/aap`. Not normative. The caller supplies the execution callback. |
 | `adap-store-postgres` | Reference PostgreSQL nonce, pending, policy, and execution-log adapters. Not a hosted database. |
 | `adap-gateway` | Reference process that runs the authority path and a credential broker. Not required by the protocol. |
 | [examples/](./examples/) | Illustrations, plus `examples/proof/` which verifies offline |

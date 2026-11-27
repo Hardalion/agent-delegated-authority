@@ -1,4 +1,4 @@
-import { assertCanonicalTarget, AuthorityError, type PolicyResolver } from 'adap'
+import { assertCanonicalTarget, AuthorityError, type PolicyResolver } from 'adap-core'
 import { z } from 'zod'
 
 const BindingSchema = z.object({

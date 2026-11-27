@@ -25,15 +25,15 @@
   "files": ["dist", "LICENSE", "README.md"],
   "scripts": {
     "prepublishOnly": "pnpm build",
-    "prebuild": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
+    "prebuild": "pnpm --dir ../.. --filter adap-core --filter adap-store-postgres build",
     "build": "tsc",
-    "pretypecheck": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
+    "pretypecheck": "pnpm --dir ../.. --filter adap-core --filter adap-store-postgres build",
     "typecheck": "tsc --noEmit",
-    "pretest": "pnpm --dir ../.. --filter adap --filter adap-store-postgres build",
+    "pretest": "pnpm --dir ../.. --filter adap-core --filter adap-store-postgres build",
     "test": "vitest run"
   },
   "dependencies": {
-    "adap": "workspace:*",
+    "adap-core": "workspace:*",
     "adap-policy": "workspace:*",
     "adap-receipt": "workspace:*",
     "adap-store-postgres": "workspace:*",

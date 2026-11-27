@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createIdentity, FixedClock, ImmutablePolicyResolver, NonceLedger,
   signDelegation, signIntent,
-} from 'adap'
+} from 'adap-core'
 import { executeAuthorized } from './executor.js'
 import { createRootAuthority } from './root-authority.js'
 import { STAGING_ALLOW_POLICY, STAGING_ALLOW_URI } from './staging-policies.js'

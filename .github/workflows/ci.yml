@@ -105,6 +105,6 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build authority packages
-        run: pnpm --filter adap build && pnpm --filter adap-store-postgres build
+        run: pnpm --filter adap-core build && pnpm --filter adap-store-postgres build
       - name: Postgres integration
         run: pnpm test:integration:postgres

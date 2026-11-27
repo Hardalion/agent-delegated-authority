@@ -1,4 +1,4 @@
-import { assertCanonicalTarget, type DirectoryKeyRecord, type RunAuthorityPathInput } from 'adap'
+import { assertCanonicalTarget, type DirectoryKeyRecord, type RunAuthorityPathInput } from 'adap-core'
 import { z } from 'zod'
 
 const GrantSchema = z.object({

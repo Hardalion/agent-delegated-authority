@@ -1,5 +1,5 @@
 {
-  "name": "adap",
+  "name": "adap-core",
   "version": "0.2.0",
   "private": false,
   "type": "module",

@@ -3,7 +3,7 @@
  * ADAP is not an identity provider. Deployments plug verified keys into the directory.
  */
 
-import { importPublicKey, verifyObject, AuthorityError } from 'adap'
+import { importPublicKey, verifyObject, AuthorityError } from 'adap-core'
 
 export type KeyStatus = 'active' | 'revoked' | 'expired'
 

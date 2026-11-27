@@ -2,7 +2,7 @@
 
 ## 0.2.0 — 2026-11-27
 
-First npm release of `adap-receipt`, `adap-policy`, `adap`, `adap-store-postgres`, and `adap-gateway`. These are reference packages. They are not a hosted authority service.
+First npm release of `adap-receipt`, `adap-policy`, `adap-core`, `adap-store-postgres`, and `adap-gateway`. These are reference packages. They are not a hosted authority service. npm rejected the unscoped name `adap` as too similar to existing package names, so the reference authority path is published as `adap-core`.
 
 Breaking relative to the `v0.1.0` git tag: human-approval payloads bind `agent_id`, `delegation_chain_hash`, and `policy_content_hash`. Signed objects may use `adap: 0.2` envelopes, and a chain that mixes legacy and `0.2` objects is rejected. Canonical JSON follows RFC 8785, so hashes that covered integer-like keys under the old order must be re-issued. The policy schema accepts `ALLOW`, `BLOCK`, and `REQUIRE_HUMAN`. `DEFER` and `SIMULATE` are rejected on new policy documents. The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `receiptId` is no longer derived only from the intent hash and the decision.
 

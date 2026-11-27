@@ -30,16 +30,16 @@
   ],
   "scripts": {
     "prepublishOnly": "pnpm build",
-    "prebuild": "pnpm --dir ../.. --filter adap build",
+    "prebuild": "pnpm --dir ../.. --filter adap-core build",
     "build": "tsc",
-    "pretypecheck": "pnpm --dir ../.. --filter adap build",
+    "pretypecheck": "pnpm --dir ../.. --filter adap-core build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run src/postgres.integration.test.ts",
     "migrate": "node dist/migrate-cli.js"
   },
   "dependencies": {
-    "adap": "workspace:*",
+    "adap-core": "workspace:*",
     "adap-policy": "workspace:*",
     "pg": "^8.16.3"
   },

@@ -2,7 +2,7 @@
  * Fault-injection against real PostgreSQL when ADAP_PG_URL / ADAP_PG_FORCE is set.
  */
 import { describe, expect, it } from 'vitest'
-import { AuthorityError, SharedNonceLedger } from 'adap'
+import { AuthorityError, SharedNonceLedger } from 'adap-core'
 import { createPool } from './pool.js'
 import { applyMigrations } from './migrate.js'
 import { PostgresAtomicNonceBackend } from './nonce-backend.js'

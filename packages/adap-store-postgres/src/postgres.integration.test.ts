@@ -16,7 +16,7 @@ import {
   runAuthorityPath,
   ImmutablePolicyResolver,
   sha256,
-} from 'adap'
+} from 'adap-core'
 import type { Policy } from 'adap-policy'
 import { createPool } from './pool.js'
 import { applyMigrations } from './migrate.js'

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createIdentity, FixedClock, ImmutablePolicyResolver, NonceLedger,
   PendingAuthorizationStore, signDelegation, signIntent,
-} from 'adap'
+} from 'adap-core'
 import { createPolicySelector } from './policy-selection.js'
 import { executeAuthorized } from './executor.js'
 import {
