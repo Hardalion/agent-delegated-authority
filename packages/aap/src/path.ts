@@ -24,7 +24,8 @@ import { MAX_ISSUED_AT_SKEW_MS, resolveTrustedNow, type Clock } from './clock.js
 import type { Decision, HumanApproval, Identity, SignedDelegation, SignedIntent } from './protocol.js'
 import { unsignedDelegation, unsignedIntent } from './protocol.js'
 import { deepDataClone } from './snapshot.js'
-import { authorityMcpCall } from './mcp-tool.js'
+import { authorityMcpCall, hashMcpToolDefinition, type McpToolDefinition } from './mcp-tool.js'
+import { validateParametersAgainstSchema } from './schema-validate.js'
 import { chargeCumulativeSpend, type SpendLedger } from './spend.js'
 import {
   assertChainProfileConsistency,
@@ -181,6 +182,16 @@ export interface RunAuthorityPathInput {
    * `execution.toolDefinitionHash` and passed to the executor.
    */
   readonly mcpToolDefinitionHash?: string
+  /**
+   * The full pinned MCP tool definition whose hash is `mcpToolDefinitionHash`.
+   * When present on a pin-checked call, `intent.parameters` is validated against
+   * its `input_schema` before policy evaluation: an undeclared key, a case/fold
+   * variant of a declared key, or a value whose type does not match the schema is
+   * `BLOCK` (`parameter_schema`). The presented definition must hash to the pin,
+   * so it cannot describe a schema other than the one the grant authorized.
+   * Omitting it preserves the prior behaviour (hash pin only, no shape check).
+   */
+  readonly mcpToolDefinition?: McpToolDefinition
 }
 
 const NONE_EXEC = 'none'
@@ -244,6 +255,31 @@ function assertMcpAuthority(
     throw new AuthorityError('mcp_binding', call.reason, true)
   }
   assertToolDefinitionPin(chain, runtimeHash, call.kind === 'call')
+}
+
+/**
+ * When the runtime presents the full pinned tool definition, enforce its
+ * `input_schema` against `intent.parameters`. Runs only on a pin-checked call
+ * (a chain that sets `tool_definition_hash`, or an `mcp/` target), so callers
+ * that do not pass a definition are unaffected. The presented definition must
+ * hash to the presented pin, so it cannot stand in for a different schema.
+ */
+function assertParametersConformToPin(
+  intent: { readonly target: string; readonly parameters: Readonly<Record<string, unknown>> },
+  chain: readonly { readonly constraints?: { readonly tool_definition_hash?: unknown } }[],
+  definition: McpToolDefinition | undefined,
+  runtimeHash: string | undefined,
+): void {
+  if (definition === undefined) return
+  const pinRelevant =
+    intent.target.startsWith('mcp/') ||
+    chain.some((delegation) => delegation.constraints?.tool_definition_hash != null)
+  if (!pinRelevant) return
+  const definitionHash = hashMcpToolDefinition(definition)
+  if (runtimeHash !== undefined && runtimeHash !== definitionHash) {
+    throw new AuthorityError('tool_definition', 'presented tool definition does not match its hash', true)
+  }
+  validateParametersAgainstSchema(intent.parameters, definition.input_schema, 'parameters')
 }
 
 function hasResolver(value: unknown): value is PolicyResolver {
@@ -323,6 +359,7 @@ export async function runAuthorityPath(input: RunAuthorityPathInput): Promise<Pr
     }
 
     assertMcpAuthority(presented.intent, presented.chain, input.mcpToolDefinitionHash)
+    assertParametersConformToPin(presented.intent, presented.chain, input.mcpToolDefinition, input.mcpToolDefinitionHash)
 
     const usability = await input.ledger.assertUsable(
       presented.intent.actor,
@@ -1058,6 +1095,7 @@ function seal(
         human_approver_kind: input.unsafeDevAllowUnconfiguredChecks !== true,
         no_self_approval: input.approvalPolicy?.allowSelfApproval !== true,
         approval_policy: Boolean(input.approvalPolicy),
+        parameter_schema: toolDefinitionHash !== undefined && input.mcpToolDefinition != null,
         unsafe_dev_unconfigured_checks: input.unsafeDevAllowUnconfiguredChecks === true,
       },
       enforcement_mode: input.enforcementMode ?? 'in_process',
