@@ -190,8 +190,13 @@ function assertConstraintsNarrow(
       throw new AuthorityError('narrowing', `child drops constraint ${key}`, true)
     }
     const childVal = (child as Record<string, unknown>)[key]
-    const reducibleCeiling =
+    // Every cumulative ceiling is a running-sum bound the child may lower (spec/delegation.md).
+    // `cumulative_max_amount` and any `cumulative_<field>` are reducible, not exact-match keys.
+    const isCumulativeCeiling =
       key === 'cumulative_max_amount' ||
+      (key.startsWith('cumulative_') && /^[A-Za-z][A-Za-z0-9_]*$/.test(key.slice('cumulative_'.length)))
+    const reducibleCeiling =
+      isCumulativeCeiling ||
       (profile === 'ceilings-v1' ? isMaxAmountKey(key) : key === 'max_amount')
     if (
       reducibleCeiling &&
@@ -311,7 +316,14 @@ function assertParametersWithin(
   if (constraints.closed === true) {
     const allowed = new Set<string>(['currency'])
     for (const key of Object.keys(constraints)) {
-      if (key === 'closed' || key === 'currency' || key === 'tool_definition_hash' || key.startsWith('cumulative_')) continue
+      if (key === 'closed' || key === 'currency' || key === 'tool_definition_hash') continue
+      if (key.startsWith('cumulative_')) {
+        // A cumulative ceiling bounds parameters.<field>. That parameter is required
+        // (unless read/search omits amount), so closed-world must admit it.
+        const field = key === 'cumulative_max_amount' ? 'amount' : key.slice('cumulative_'.length)
+        if (/^[A-Za-z][A-Za-z0-9_]*$/.test(field)) allowed.add(field)
+        continue
+      }
       if (key === 'max_amount') {
         allowed.add('amount')
         continue
