@@ -142,5 +142,10 @@ export {
   type AuthorityMcpCall,
   type McpToolDefinition,
 } from './mcp-tool.js'
+export {
+  validateParametersAgainstSchema,
+  type ObjectSchema,
+  type PropertySchema,
+} from './schema-validate.js'
 export { BASIC_AGENT_AUTHORITY, BASIC_AGENT_AUTHORITY_URI } from './example-policy.js'
 export { DEMO_NOW, runAgentToAgentDemo, type AgentToAgentDemo } from './agents.js'
