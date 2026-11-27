@@ -94,7 +94,7 @@ A production runtime MUST supply `revocationCheck`. A missing hook is `BLOCK` (`
 
 In v0.1, constraints apply to the whole terminal delegation. Parameters not named by any constraint are unbounded unless policy rules cover them or the grant sets `closed: true`. Per-capability constraints are not in this profile.
 
-`max_<field>` ceilings remain per-intent. `cumulative_max_amount` and `cumulative_<field>` are the running sums, charged on the spend ledger before execution. A grant that sets one and a runtime that does not pass a ledger is `BLOCK`. The reference ledger is in-process. More than one worker MUST share a ledger store. See [amounts-and-targets.md](./amounts-and-targets.md).
+`max_<field>` ceilings remain per-intent. `cumulative_max_amount` and `cumulative_<field>` are the running sums, charged on the spend ledger before execution. A grant that sets one and a runtime that does not pass a ledger is `BLOCK`. The reference gateway charges a Postgres spend ledger, so workers on the same database share the pool. Any other runtime MUST share a ledger store across workers. See [amounts-and-targets.md](./amounts-and-targets.md).
 
 ## Reference
 

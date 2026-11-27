@@ -46,7 +46,7 @@ Retained from review (PR #9). Not required for v0.1 conformance:
 
 - Whether receipts MUST bind a hash of the tool result (indirect prompt injection via results).
 - Whether server-initiated MCP sampling/elicitation is an intent, and under whose delegation.
-- Whether the gateway keeps session state other than spend (for example data-flow labels). `cumulative_max_amount` and `cumulative_<field>` are enforced on the authority path when a grant sets them. A missing ledger is `BLOCK`. The reference ledger is in-process, so more than one worker MUST share a store. See [amounts-and-targets.md](./amounts-and-targets.md).
+- Whether the gateway keeps session state other than spend (for example data-flow labels). `cumulative_max_amount` and `cumulative_<field>` are enforced on the authority path when a grant sets them. A missing ledger is `BLOCK`. The reference gateway charges a Postgres spend ledger, so workers on the same database share the pool; any other runtime MUST supply a shared store. See [amounts-and-targets.md](./amounts-and-targets.md).
 
 ## Reference
 

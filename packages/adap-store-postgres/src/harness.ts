@@ -17,7 +17,7 @@ export async function withFreshStore<T>(
     await applyMigrations(pool)
     // Truncate between tests for isolation
     await pool.query(
-      `TRUNCATE adap_nonces, adap_pending, adap_policies, adap_execution_log RESTART IDENTITY CASCADE`,
+      `TRUNCATE adap_nonces, adap_pending, adap_policies, adap_execution_log, adap_spend RESTART IDENTITY CASCADE`,
     )
     return await fn(pool)
   } finally {

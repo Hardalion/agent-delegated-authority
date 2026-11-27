@@ -23,6 +23,7 @@ import { applyMigrations } from './migrate.js'
 import { PostgresAtomicNonceBackend } from './nonce-backend.js'
 import { PostgresPendingStore } from './pending-store.js'
 import { PostgresPolicyRegistry } from './policy-registry.js'
+import { PostgresSpendLedger } from './spend-ledger.js'
 import { DEFAULT_PG_URL } from './harness.js'
 
 const PG_URL = process.env.ADAP_PG_URL ?? DEFAULT_PG_URL
@@ -46,7 +47,7 @@ const ALLOW_URI = 'allow-apply@1.0.0'
 async function freshPool() {
   const pool = createPool({ connectionString: PG_URL, max: 16 })
   await applyMigrations(pool)
-  await pool.query(`TRUNCATE adap_nonces, adap_pending, adap_policies, adap_execution_log`)
+  await pool.query(`TRUNCATE adap_nonces, adap_pending, adap_policies, adap_execution_log, adap_spend`)
   return pool
 }
 
@@ -480,6 +481,105 @@ describe.skipIf(!RUN)('PostgreSQL atomic nonce backend (real DB)', () => {
       await expect(reg.registerAsync(ALLOW_APPLY, ALLOW_URI)).rejects.toBeInstanceOf(AuthorityError)
     } finally {
       await pool.end()
+    }
+  })
+})
+
+describe.skipIf(!RUN)('PostgreSQL spend ledger (real DB)', () => {
+  const charge = (
+    overrides: Partial<import('adap').SpendCharge> = {},
+  ): import('adap').SpendCharge => ({
+    delegationId: 'dlg_spend',
+    intentHash: 'ih_spend_1',
+    amount: 40,
+    ceiling: 100,
+    field: 'amount',
+    currency: 'EUR',
+    ...overrides,
+  })
+
+  it('applies every charge in a call, or none when one exceeds its ceiling', async () => {
+    const pool = await freshPool()
+    try {
+      const ledger = new PostgresSpendLedger({ pool })
+      await expect(
+        ledger.spend([
+          charge({ delegationId: 'dlg_a', intentHash: 'ih_a', amount: 40 }),
+          charge({ delegationId: 'dlg_b', intentHash: 'ih_b', amount: 90, ceiling: 80 }),
+        ]),
+      ).rejects.toBeInstanceOf(AuthorityError)
+      expect(await ledger.spent('dlg_a')).toBe(0)
+      expect(await ledger.spent('dlg_b')).toBe(0)
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('replays an intent without charging twice, and rejects a changed amount', async () => {
+    const pool = await freshPool()
+    try {
+      const ledger = new PostgresSpendLedger({ pool })
+      await ledger.spend([charge()])
+      await ledger.spend([charge()])
+      expect(await ledger.spent('dlg_spend')).toBe(40)
+      await expect(ledger.spend([charge({ amount: 41 })])).rejects.toBeInstanceOf(AuthorityError)
+      expect(await ledger.spent('dlg_spend')).toBe(40)
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('fails closed when a pool ceiling changes', async () => {
+    const pool = await freshPool()
+    try {
+      const ledger = new PostgresSpendLedger({ pool })
+      await ledger.spend([charge()])
+      await expect(
+        ledger.spend([charge({ intentHash: 'ih_spend_2', ceiling: 500 })]),
+      ).rejects.toBeInstanceOf(AuthorityError)
+      expect(await ledger.spent('dlg_spend')).toBe(40)
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('concurrent charges from independent instances cannot exceed the ceiling', async () => {
+    const pool = await freshPool()
+    try {
+      const a = new PostgresSpendLedger({ pool })
+      const b = new PostgresSpendLedger({ pool })
+      const results = await Promise.allSettled([
+        a.spend([charge({ amount: 60, intentHash: 'ih_race_a' })]),
+        b.spend([charge({ amount: 60, intentHash: 'ih_race_b' })]),
+      ])
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+      expect(await a.spent('dlg_spend')).toBe(60)
+    } finally {
+      await pool.end()
+    }
+  })
+
+  it('persists across a new pool and keeps enforcing the remaining budget', async () => {
+    const first = await freshPool()
+    const delegationId = 'dlg_restart'
+    try {
+      await new PostgresSpendLedger({ pool: first }).spend([
+        charge({ delegationId, intentHash: 'ih_restart_1', amount: 40 }),
+      ])
+    } finally {
+      await first.end()
+    }
+    const second = createPool({ connectionString: PG_URL, max: 4 })
+    try {
+      const ledger = new PostgresSpendLedger({ pool: second })
+      expect(await ledger.spent(delegationId)).toBe(40)
+      await expect(
+        ledger.spend([charge({ delegationId, intentHash: 'ih_restart_2', amount: 70 })]),
+      ).rejects.toBeInstanceOf(AuthorityError)
+      await ledger.spend([charge({ delegationId, intentHash: 'ih_restart_3', amount: 60 })])
+      expect(await ledger.spent(delegationId)).toBe(100)
+    } finally {
+      await second.end()
     }
   })
 })
