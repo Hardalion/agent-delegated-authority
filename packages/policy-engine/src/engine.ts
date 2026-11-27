@@ -5,6 +5,7 @@ import {
   buildEvaluationContext,
   evaluateCondition,
   NonFiniteComparisonError,
+  NonScalarOperandError,
   NumericComparisonError,
   type EvaluationContext,
 } from './evaluator.js'
@@ -129,6 +130,15 @@ export function evaluatePolicy(input: EvaluatePolicyInput): PolicyDecision {
           action: 'BLOCK',
           ruleId: 'numeric_comparison_rejected',
           reason: 'ordered comparison requires finite numbers',
+          alertSeverity: 'CRITICAL',
+        }
+      }
+      if (error instanceof NonScalarOperandError) {
+        return {
+          matched: false,
+          action: 'BLOCK',
+          ruleId: 'non_scalar_operand_rejected',
+          reason: 'equality and membership require scalar operands',
           alertSeverity: 'CRITICAL',
         }
       }

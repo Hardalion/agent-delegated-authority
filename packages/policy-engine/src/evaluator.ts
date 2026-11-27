@@ -271,7 +271,11 @@ class Parser {
         try {
           this.parseAnd()
         } catch (error) {
-          if (!(error instanceof NumericComparisonError) && !(error instanceof NonFiniteComparisonError)) {
+          if (
+            !(error instanceof NumericComparisonError) &&
+            !(error instanceof NonFiniteComparisonError) &&
+            !(error instanceof NonScalarOperandError)
+          ) {
             throw error
           }
         }
@@ -295,7 +299,11 @@ class Parser {
         try {
           this.parseComparison()
         } catch (error) {
-          if (!(error instanceof NumericComparisonError) && !(error instanceof NonFiniteComparisonError)) {
+          if (
+            !(error instanceof NumericComparisonError) &&
+            !(error instanceof NonFiniteComparisonError) &&
+            !(error instanceof NonScalarOperandError)
+          ) {
             throw error
           }
         }
@@ -317,10 +325,11 @@ class Parser {
       // An unresolved path (undefined) is not a member of any list, and an
       // unresolved list element (undefined) is not a member to test against (#63).
       if (left === undefined) return false
+      // A membership test needs a scalar left. An array/object left let an agent
+      // smuggle disallowed values past an allowlist by also including a permitted
+      // one. Fail closed instead (defence in depth behind input_schema validation).
+      if (!isScalarOperand(left)) throw new NonScalarOperandError()
       const present = values.filter((v) => v !== undefined)
-      if (Array.isArray(left)) {
-        return present.some((v) => left.includes(v))
-      }
       return present.includes(left)
     }
 
@@ -425,7 +434,8 @@ class Parser {
         // token stream stays aligned (#25).
         if (
           error instanceof NumericComparisonError ||
-          error instanceof NonFiniteComparisonError
+          error instanceof NonFiniteComparisonError ||
+          error instanceof NonScalarOperandError
         ) {
           if (this.peek().type === 'rparen') this.consume()
           throw error
@@ -454,9 +464,32 @@ export class NumericComparisonError extends Error {
   }
 }
 
+/**
+ * An equality or membership operator saw a non-scalar operand (an array or a
+ * plain object). The scalar a policy author compares against cannot equal, or be
+ * a member of a list alongside, an array/object, so the agent must not be able to
+ * pick the argument's shape to slip past an allowlist (`in`) or a denylist
+ * (`==`/`!=`). Callers must fail closed.
+ */
+export class NonScalarOperandError extends Error {
+  constructor() {
+    super('equality and membership require scalar operands')
+    this.name = 'NonScalarOperandError'
+  }
+}
+
+/** A scalar the grammar can compare or test for membership: string, number, boolean, or null. */
+function isScalarOperand(value: unknown): boolean {
+  return value === null || (typeof value !== 'object' && typeof value !== 'function')
+}
+
 function compare(operator: string, left: unknown, right: unknown): boolean {
   if (operator === '==' || operator === '!=') {
     if (left === undefined || right === undefined) return false
+    // Equality against a scalar is meaningless for an array/object operand, and
+    // treating it as "not equal" let an agent bypass a `!=` denylist (or a `==`
+    // allowlist) by wrapping the value. Fail closed rather than silently false.
+    if (!isScalarOperand(left) || !isScalarOperand(right)) throw new NonScalarOperandError()
     return operator === '==' ? left === right : left !== right
   }
 
