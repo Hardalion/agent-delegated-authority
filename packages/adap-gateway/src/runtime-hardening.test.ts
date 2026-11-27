@@ -12,7 +12,7 @@ import {
   signApproval,
   signDelegation,
   signIntent,
-} from 'adap'
+} from 'adap-core'
 import type { Policy } from 'adap-policy'
 import {
   decideReconciliation,

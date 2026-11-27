@@ -19,7 +19,7 @@ import {
   runAuthorityPath,
   signDelegation,
   signIntent,
-} from 'adap'
+} from 'adap-core'
 
 const principal = createIdentity('prn_example')
 const agent = createIdentity('agt_example')

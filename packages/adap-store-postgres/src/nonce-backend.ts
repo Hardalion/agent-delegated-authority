@@ -3,7 +3,7 @@ import type {
   NonceRecord,
   NonceStatus,
   VersionedNonceRecord,
-} from 'adap'
+} from 'adap-core'
 import type { Pool } from './pool.js'
 
 export interface PostgresNonceBackendOptions {

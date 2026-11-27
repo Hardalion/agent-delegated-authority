@@ -39,7 +39,7 @@ importers:
 
   packages/adap-gateway:
     dependencies:
-      adap:
+      adap-core:
         specifier: workspace:*
         version: link:../aap
       adap-policy:
@@ -67,7 +67,7 @@ importers:
 
   packages/adap-store-postgres:
     dependencies:
-      adap:
+      adap-core:
         specifier: workspace:*
         version: link:../aap
       adap-policy:

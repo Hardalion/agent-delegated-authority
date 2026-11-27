@@ -7,7 +7,7 @@ import {
   type PendingContinuation,
   type PendingPutOptions,
   type PendingStore,
-} from 'adap'
+} from 'adap-core'
 import type { Pool } from './pool.js'
 
 export interface PostgresPendingStoreOptions {

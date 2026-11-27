@@ -1,4 +1,4 @@
-import { assertCanonicalTarget } from 'adap'
+import { assertCanonicalTarget } from 'adap-core'
 
 /** Canonical tool/action name: lowercase, trimmed, no whitespace. */
 export function canonicalizeAction(action: unknown): string {

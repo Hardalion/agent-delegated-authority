@@ -4,7 +4,7 @@ import {
   type ExecutionContext,
   type ProtocolResult,
   type RunAuthorityPathInput,
-} from 'adap'
+} from 'adap-core'
 import {
   canonicalizeAction,
   canonicalizeTarget,

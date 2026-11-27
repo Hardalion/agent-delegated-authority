@@ -10,7 +10,7 @@ import {
   type DirectoryIdentityKind,
   type Identity,
   type RunAuthorityPathInput,
-} from 'adap'
+} from 'adap-core'
 import {
   applyMigrations,
   createPool,

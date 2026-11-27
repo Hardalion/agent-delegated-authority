@@ -36,8 +36,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          pnpm --filter adap-receipt publish --access public --provenance --no-git-checks
-          pnpm --filter adap-policy publish --access public --provenance --no-git-checks
-          pnpm --filter adap publish --access public --provenance --no-git-checks
-          pnpm --filter adap-store-postgres publish --access public --provenance --no-git-checks
-          pnpm --filter adap-gateway publish --access public --provenance --no-git-checks
+          publish_if_missing() {
+            name="$1"
+            version="$(node -p "require('./packages/$2/package.json').version")"
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "skip ${name}@${version}"
+            else
+              pnpm --filter "$name" publish --access public --provenance --no-git-checks
+            fi
+          }
+          publish_if_missing adap-receipt audit-verify
+          publish_if_missing adap-policy policy-engine
+          publish_if_missing adap-core aap
+          publish_if_missing adap-store-postgres adap-store-postgres
+          publish_if_missing adap-gateway adap-gateway

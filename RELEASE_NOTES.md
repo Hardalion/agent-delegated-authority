@@ -8,7 +8,7 @@ Packages, published together:
 | --- | --- |
 | `adap-receipt` | Offline Authorization Receipt checks |
 | `adap-policy` | Deterministic policy evaluation |
-| `adap` | Reference authority path: delegation, signed intent, decision, receipt |
+| `adap-core` | Reference authority path: delegation, signed intent, decision, receipt |
 | `adap-store-postgres` | Reference Postgres nonce, pending, and policy adapters |
 | `adap-gateway` | Reference process that keeps the rail credential out of the agent |
 

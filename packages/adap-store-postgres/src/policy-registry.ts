@@ -4,7 +4,7 @@ import {
   sha256,
   type ImmutablePolicyBinding,
   type PolicyResolver,
-} from 'adap'
+} from 'adap-core'
 import { PolicySchema, type Policy } from 'adap-policy'
 import type { Pool } from './pool.js'
 

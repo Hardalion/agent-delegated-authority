@@ -8,7 +8,7 @@ import {
   ImmutablePolicyResolver,
   FixedClock,
   AuthorityError,
-} from 'adap'
+} from 'adap-core'
 import type { Policy } from 'adap-policy'
 import { MemoryCredentialBroker, type CredentialBroker } from './credentials.js'
 import { executeAuthorized, attemptDirectBrokerExecute } from './executor.js'
