@@ -36,8 +36,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          pnpm --filter adap-receipt publish --access public --provenance
-          pnpm --filter adap-policy publish --access public --provenance
-          pnpm --filter adap publish --access public --provenance
-          pnpm --filter adap-store-postgres publish --access public --provenance
-          pnpm --filter adap-gateway publish --access public --provenance
+          pnpm --filter adap-receipt publish --access public --provenance --no-git-checks
+          pnpm --filter adap-policy publish --access public --provenance --no-git-checks
+          pnpm --filter adap publish --access public --provenance --no-git-checks
+          pnpm --filter adap-store-postgres publish --access public --provenance --no-git-checks
+          pnpm --filter adap-gateway publish --access public --provenance --no-git-checks
