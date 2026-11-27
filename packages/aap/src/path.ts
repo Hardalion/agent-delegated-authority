@@ -1,4 +1,4 @@
-import type { KeyObject } from 'node:crypto'
+import { randomBytes, type KeyObject } from 'node:crypto'
 import {
   emitAuthorizationReceipt,
   verifyAuthorizationReceipt,
@@ -1034,7 +1034,11 @@ function seal(
     issuer: input.signer.id,
     issuerKeyId: publicKeyFingerprint(input.signer.publicKey),
     decidedAt,
-    receiptId: `rcpt_${fields.intentHash.slice(0, 20)}_${fields.executed ? 'exec' : fields.decision.toLowerCase()}`,
+    // A unique per-emission suffix. The same intent can produce more than one receipt
+    // (for example two refusals), and those receipts must not share a receiptId, or a
+    // receipt log fails verifyReceiptChain's duplicate-receiptId check (#62). The readable
+    // intent/decision prefix is kept; the random tail matches emitAuthorizationReceipt.
+    receiptId: `rcpt_${fields.intentHash.slice(0, 20)}_${fields.executed ? 'exec' : fields.decision.toLowerCase()}_${randomBytes(6).toString('hex')}`,
     execution: {
       targetSystem: input.intent.target,
       executed: fields.executionOutcome === 'unknown' ? false : fields.executed,
