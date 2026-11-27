@@ -1,0 +1,12 @@
+dist/print-demo.js
+dist/print-demo.d.ts
+dist/print-demo.d.ts.map
+dist/print-attacks.js
+dist/print-attacks.d.ts
+dist/print-attacks.d.ts.map
+dist/launch-proof.js
+dist/launch-proof.d.ts
+dist/launch-proof.d.ts.map
+dist/verify-published-proof.js
+dist/verify-published-proof.d.ts
+dist/verify-published-proof.d.ts.map

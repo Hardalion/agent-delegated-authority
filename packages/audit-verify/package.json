@@ -1,10 +1,15 @@
 {
   "name": "adap-receipt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Offline Authorization Receipt verifier (Apache 2.0)",
   "license": "Apache-2.0",
   "type": "module",
+  "sideEffects": false,
   "private": false,
+  "homepage": "https://github.com/hardalion/agent-delegated-authority",
+  "bugs": {
+    "url": "https://github.com/hardalion/agent-delegated-authority/issues"
+  },
   "bin": {
     "adap-receipt": "./dist/cli.js"
   },
@@ -14,7 +19,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },

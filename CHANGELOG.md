@@ -1,10 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-11-27
 
-### Security credit
+First npm release of `adap-receipt`, `adap-policy`, `adap`, `adap-store-postgres`, and `adap-gateway`. These are reference packages. They are not a hosted authority service.
 
-The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `createGatewayServer` requires an audience, `approvalPolicy.isHuman`, and a revocation check. Revocation is read from `adap_revoked_grants`, and a store failure is `unavailable` (`BLOCK`). Reported by Ahmed Shacker (@AS2812). Fixed in #47.
+Breaking relative to the `v0.1.0` git tag: human-approval payloads bind `agent_id`, `delegation_chain_hash`, and `policy_content_hash`. Signed objects may use `adap: 0.2` envelopes, and a chain that mixes legacy and `0.2` objects is rejected. Canonical JSON follows RFC 8785, so hashes that covered integer-like keys under the old order must be re-issued. The policy schema accepts `ALLOW`, `BLOCK`, and `REQUIRE_HUMAN`. `DEFER` and `SIMULATE` are rejected on new policy documents. The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `receiptId` is no longer derived only from the intent hash and the decision.
+
+### Added
+
+- Authorization receipts for a pin-checked call bind `execution.toolDefinitionHash`. On `ALLOW` and `REQUIRE_HUMAN` that value equals the grant's `tool_definition_hash`. `verifyReceiptMcpToolBinding` checks it offline against the tool definition (#51).
+- `adap: 0.2` signed-object envelopes, actor-scoped nonces, optional receipt hash chains, and cumulative ceilings (`cumulative_max_amount`, `cumulative_<field>`) charged on a spend ledger before execution.
+- Reference packages `adap-gateway` and `adap-store-postgres`. They are not required by the protocol.
+
+### Fixed
+
+- A missing path does not match inside `in` or `.contains()`. An empty needle does not match every string (#63, #69).
+- Each emission gets its own `receiptId`, so two refusals of one intent no longer fail `verifyReceiptChain` as duplicates (#62, #68).
+- `closed: true` with a cumulative ceiling admits the parameter that ceiling bounds. A child may lower any `cumulative_<field>` and still may not raise it (#58, #59, #67).
+- Runtime, spend, and verifier edge cases from #47: unbound approval, non-finite amounts, caller-supplied time, exclusive nonce claim, and receipt semantic checks. A policy comparison that sees `NaN` or an infinity returns `BLOCK` (`amount_not_finite`).
+
+### Security
+
+- The reference gateway no longer defaults `unsafeDevAllowUnconfiguredChecks` to true. `createGatewayServer` requires an audience, `approvalPolicy.isHuman`, and a revocation check. Revocation is read from `adap_revoked_grants`, and a store failure is `unavailable` (`BLOCK`). Reported by Ahmed Shacker (@AS2812). Fixed in #47.
+- `REQUIRE_HUMAN` requires a `PendingAuthorizationStore`. Continuation needs a signed approval bound to that intent. A caller-supplied `now` is rejected. The path uses a trusted clock.
+
+### Docs
+
+- In-grant prompt injection is recorded as a known gap. `pnpm attacks` prints it after the six refusals. The fixture is `examples/attacks/07-in-grant-injection.txt` (#52). The open tracking issue is #48.
+- Deployment checklist for adopters (#53). npm quickstart in `README.md`.
+
+### Known limitations
+
+- **#65, targeted for v0.2.1.** A gateway throw before the downstream call (execution-state persistence, canonicalization mismatch, or broker rejection) is still signed as `ALLOW` with `outcome: unknown`. The lowercase action rule can also refuse a camelCase MCP tool name such as `getCustomer` on that path.
+- **#64.** A missing path makes `!=` false. That is the rule in `spec/deterministic-evaluation.md`. A `BLOCK` condition such as `args.currency != 'EUR'` does not fire when `currency` is absent, so a later matching rule can `ALLOW`. This release does not change that comparison.
+- **#48 / #52.** Prompt injection that stays inside the grant is `ALLOW`. The receipt does not record which input caused the intent. `THREAT_MODEL.md` states this limit.
+
+## Unreleased archive
+
+The notes below were the pre-release log. The `0.2.0` sections above are the release text. The detail here is unchanged history, not a second set of claims.
 
 ### Security remediation (#19, #3, #20, #21)
 

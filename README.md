@@ -26,6 +26,174 @@ Identity tells you who an agent is. Authorization tells you what it may access. 
 
 A broad credential is not that authority. Signatures and keys still exist. They do not, by themselves, decide what an agent may do.
 
+## Quickstart
+
+Node 22 or newer. Package `0.2.0`.
+
+```bash
+pnpm add adap adap-policy adap-receipt
+npm install adap adap-policy adap-receipt
+```
+
+The snippet is an ES module. It grants one MCP tool, runs that grant through `runAuthorityPath`, and checks the signed receipt against the tool definition. `lookup` is `ALLOW` and the executor runs. `pay` of 40 is `REQUIRE_HUMAN` and the executor does not run. `pay` of 300 is `BLOCK` and the executor does not run. A `REQUIRE_HUMAN` continues only with `signApproval` bound to that intent hash.
+
+```typescript
+import {
+  adapBindingForMcpCall,
+  createIdentity,
+  FixedClock,
+  hashMcpToolDefinition,
+  ImmutablePolicyResolver,
+  importPublicKey,
+  MemoryAuthorityDirectory,
+  NonceLedger,
+  PendingAuthorizationStore,
+  runAuthorityPath,
+  signDelegation,
+  signIntent,
+  verifyProtocolReceipt,
+  verifyReceiptMcpToolBinding,
+  type McpToolDefinition,
+} from 'adap'
+import type { Policy } from 'adap-policy'
+
+const policy: Policy = {
+  version: '1.0.0',
+  policyName: 'mcp-tools',
+  targetAgents: ['*'],
+  defaultAction: 'BLOCK',
+  rules: [
+    {
+      ruleId: 'pay_over_cap',
+      action: 'BLOCK',
+      condition: "tool.name == 'treasury.pay' && args.amount > 100",
+      alertSeverity: 'CRITICAL',
+    },
+    {
+      ruleId: 'pay_needs_human',
+      action: 'REQUIRE_HUMAN',
+      condition: "tool.name == 'treasury.pay'",
+      alertSeverity: 'MEDIUM',
+    },
+    {
+      ruleId: 'lookup_allow',
+      action: 'ALLOW',
+      condition: "tool.name == 'crm.lookup'",
+      alertSeverity: 'LOW',
+    },
+  ],
+}
+
+const now = new Date('2026-10-06T18:00:00.000Z')
+const issued = now.toISOString()
+const expires = new Date(now.getTime() + 4 * 60 * 1000).toISOString()
+const audience = 'https://gw.example'
+const policyUri = 'mcp-tools@1.0.0'
+
+const lookup: McpToolDefinition = {
+  server_id: 'crm',
+  tool_name: 'lookup',
+  description: 'Look up a customer record by id',
+  input_schema: { type: 'object', properties: { customer_id: { type: 'string' } } },
+}
+const pay: McpToolDefinition = {
+  server_id: 'treasury',
+  tool_name: 'pay',
+  description: 'Send a payment',
+  input_schema: { type: 'object', properties: { amount: { type: 'integer' } } },
+}
+
+const principal = createIdentity('prn_example')
+const agent = createIdentity('agt_example')
+const signer = createIdentity('reference-runtime')
+const directory = new MemoryAuthorityDirectory([
+  {
+    identityId: principal.id,
+    kid: principal.kid,
+    alg: 'Ed25519',
+    publicKey: principal.publicKey,
+    status: 'active',
+    kind: 'human',
+  },
+  {
+    identityId: agent.id,
+    kid: agent.kid,
+    alg: 'Ed25519',
+    publicKey: agent.publicKey,
+    status: 'active',
+    kind: 'agent',
+  },
+])
+const policyResolver = new ImmutablePolicyResolver()
+policyResolver.register(policy, policyUri)
+
+async function decide(tool: McpToolDefinition, parameters: Record<string, unknown>, nonce: string) {
+  const call = adapBindingForMcpCall(tool.server_id, tool.tool_name)
+  const pin = hashMcpToolDefinition(tool)
+  const grant = signDelegation(
+    {
+      delegation_id: `del_${nonce}`,
+      issuer: principal.id,
+      subject: agent.id,
+      capabilities: [{ action: call.action, target: call.target }],
+      constraints: { tool_definition_hash: pin },
+      issued_at: issued,
+      expires_at: expires,
+      aud: audience,
+    },
+    principal,
+  )
+  const intent = signIntent(
+    {
+      intent_id: `int_${nonce}`,
+      actor: agent.id,
+      delegation_chain: [grant.delegation_id],
+      action: call.action,
+      target: call.target,
+      parameters,
+      nonce,
+      issued_at: issued,
+      expires_at: expires,
+      aud: audience,
+    },
+    agent,
+  )
+  return runAuthorityPath({
+    chain: [grant],
+    intent,
+    directory,
+    policy,
+    policyUri,
+    clock: new FixedClock(now),
+    ledger: new NonceLedger(),
+    pendingStore: new PendingAuthorizationStore(),
+    policyResolver,
+    signer,
+    audience,
+    rootAuthority: { mayIssueRoot: () => true },
+    revocationCheck: () => 'active',
+    mcpToolDefinitionHash: pin,
+    execute: () => ({ ok: true }),
+  })
+}
+
+const allowed = await decide(lookup, { customer_id: 'c_1' }, 'n-allow')
+const stepUp = await decide(pay, { amount: 40 }, 'n-human')
+const denied = await decide(pay, { amount: 300 }, 'n-block')
+
+console.log(allowed.decision, allowed.executed) // ALLOW true
+console.log(stepUp.decision, stepUp.executed) // REQUIRE_HUMAN false
+console.log(denied.decision, denied.executed) // BLOCK false
+
+if (allowed.receipt == null) throw new Error('missing receipt')
+const verified = verifyProtocolReceipt(allowed.receipt, importPublicKey(signer.publicKey))
+const bound = verifyReceiptMcpToolBinding(allowed.receipt, lookup)
+console.log(verified.valid, bound.valid) // true true
+console.log(allowed.receipt.execution?.toolDefinitionHash === hashMcpToolDefinition(lookup))
+```
+
+Threat model: [THREAT_MODEL.md](./THREAT_MODEL.md). Reporting: [SECURITY.md](./SECURITY.md). Normative text: [spec/](./spec/). Worked runs: [examples/](./examples/).
+
 ## ADAP in 60 seconds
 
 ```
@@ -388,9 +556,9 @@ That command checks the signatures, the delegation hashes inside the receipts, t
 
 `pnpm attacks` runs the six refusals in `examples/attacks/`, then the known gap `07-in-grant-injection`, which is allowed. Each one is an execution of the reference path.
 
-## Quick start
+## Repository proof
 
-The reference packages are not currently published to npm. Clone the repository and run the proof.
+The npm quickstart is above. This checkout still runs the reference proof locally.
 
 ```bash
 git clone https://github.com/hardalion/agent-delegated-authority.git
