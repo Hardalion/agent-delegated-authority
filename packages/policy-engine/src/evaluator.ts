@@ -212,11 +212,20 @@ function resolvePath(ctx: EvaluationContext, path: string): unknown {
 
 function containsValue(current: unknown, arg: unknown, ignoreCase: boolean): boolean {
   if (typeof current === 'string') {
+    // A substring test needs a resolved, non-empty string needle. A missing path
+    // (undefined), null, an object, or '' never matches — otherwise `String(arg)`
+    // would turn them into "undefined"/"null"/"[object Object]"/"" and match (#63).
+    if (typeof arg !== 'string' || arg.length === 0) return false
     const haystack = ignoreCase ? current.toLowerCase() : current
-    const needle = ignoreCase ? String(arg).toLowerCase() : String(arg)
+    const needle = ignoreCase ? arg.toLowerCase() : arg
     return haystack.includes(needle)
   }
   if (Array.isArray(current)) {
+    // Array membership needs a resolved scalar. A missing path, null, or object
+    // argument is not a member of anything (#63).
+    if (typeof arg !== 'string' && typeof arg !== 'number' && typeof arg !== 'boolean') {
+      return false
+    }
     return current.some((item) => {
       if (ignoreCase && typeof item === 'string' && typeof arg === 'string') {
         return item.toLowerCase() === arg.toLowerCase()
@@ -305,10 +314,14 @@ class Parser {
     if (op.type === 'op' && op.value === 'in') {
       this.consume()
       const values = this.parseArray()
+      // An unresolved path (undefined) is not a member of any list, and an
+      // unresolved list element (undefined) is not a member to test against (#63).
+      if (left === undefined) return false
+      const present = values.filter((v) => v !== undefined)
       if (Array.isArray(left)) {
-        return values.some((v) => left.includes(v))
+        return present.some((v) => left.includes(v))
       }
-      return values.includes(left)
+      return present.includes(left)
     }
 
     if (op.type === 'op' && ['==', '!=', '>', '<', '>=', '<='].includes(op.value)) {
